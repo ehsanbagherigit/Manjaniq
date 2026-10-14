@@ -24,18 +24,20 @@ jobs:
         with:
           go-version: '1.22'
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Install Android NDK
         run: |
-          sudo apt-get update
-          sudo apt-get install -y android-ndk
-          echo "ANDROID_NDK_HOME=/usr/lib/android-ndk" >> $GITHUB_ENV
+          sdkmanager --install "ndk;25.2.9519653"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
 
       - name: Build Native Library (arm64-v8a)
         run: |
           export CGO_ENABLED=1
           export GOOS=android
           export GOARCH=arm64
-          export CC=aarch64-linux-android24-clang
+          export CC=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
           go build -buildmode=c-shared -o app/src/main/jniLibs/arm64-v8a/libmanjaniq_native.so native/bridge.go
 
       # The exec bit may not survive a commit made from an sdcard filesystem.
