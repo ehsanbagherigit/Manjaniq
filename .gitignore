@@ -1,0 +1,25 @@
+# Build outputs
+/build
+/app/build
+/*/build
+
+# Gradle
+.gradle
+local.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+
+# Engine
+/engine/
+
+# Native / engine build artifacts
+*.apk
+*.aab
+*.so
+!app/src/main/jniLibs/**/*.so
