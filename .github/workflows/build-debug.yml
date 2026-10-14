@@ -19,8 +19,24 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install Android NDK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y android-ndk
+          echo "ANDROID_NDK_HOME=/usr/lib/android-ndk" >> $GITHUB_ENV
+
+      - name: Build Native Library (arm64-v8a)
+        run: |
+          export CGO_ENABLED=1
+          export GOOS=android
+          export GOARCH=arm64
+          export CC=aarch64-linux-android24-clang
+          go build -buildmode=c-shared -o app/src/main/jniLibs/arm64-v8a/libmanjaniq_native.so native/bridge.go
 
       # The exec bit may not survive a commit made from an sdcard filesystem.
       - name: Make Gradle wrapper executable

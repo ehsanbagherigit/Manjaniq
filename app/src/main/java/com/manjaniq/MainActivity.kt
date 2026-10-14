@@ -1,6 +1,7 @@
 package com.manjaniq
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -19,7 +20,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -59,10 +60,13 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun HomeScreen(engineState: EngineState = EngineState.STOPPED) {
+    var bridgeResult by remember { mutableStateOf("Not run yet") }
+    var isError by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(MaterialTheme.colorscheme.background)
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -79,6 +83,51 @@ fun HomeScreen(engineState: EngineState = EngineState.STOPPED) {
         )
         Spacer(modifier = Modifier.height(8.dp))
         StatusCard(engineState = engineState)
+        
+        // Native Bridge Test Section
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(16.dp)
+                )
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "NATIVE BRIDGE TEST",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 2.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = bridgeResult,
+                color = if (isError) Color.Red else MaterialTheme.colorScheme.onSurface,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = {
+                    try {
+                        bridgeResult = NativeBridge.testBridge()
+                        isError = false
+                    } catch (e: Exception) {
+                        bridgeResult = "Error: ${e.message}"
+                        isError = true
+                        Log.e("Manjaniq", "Native bridge call failed", e)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Text(text = "Run Native Test")
+            }
+        }
+
         Spacer(modifier = Modifier.weight(1f))
         Button(
             onClick = { /* Engine start will be wired in a later phase. */ },
