@@ -3,11 +3,24 @@ package com.manjaniq
 import android.util.Log
 
 object NativeBridge {
+
+    /** Captured [System.loadLibrary] failure, or null when loading succeeded. */
+    private val loadError: Throwable?
+
     init {
-        try {
+        val error = try {
             System.loadLibrary("manjaniq_native")
-        } catch (e: Throwable) {
-            Log.e("NativeBridge", "Failed to load manjaniq_native: ${e.message}")
+            null
+        } catch (t: Throwable) {
+            t
+        }
+        loadError = error
+        if (error != null) {
+            try {
+                Log.e("NativeBridge", "Failed to load manjaniq_native: ${error.message}")
+            } catch (t: Throwable) {
+                // Logging must never mask the library-load failure.
+            }
         }
     }
 
@@ -16,8 +29,9 @@ object NativeBridge {
     fun testBridge(): String {
         return try {
             GoHelloWorld() ?: "Native call returned null"
-        } catch (e: Throwable) {
-            "Native call failed: ${e.message}"
+        } catch (t: Throwable) {
+            val loadFailure = loadError?.let { "; library load failed: $it" } ?: ""
+            "Native call failed: ${t.message}$loadFailure"
         }
     }
 }
