@@ -1,7 +1,6 @@
 package main
 
 import "C"
-import "fmt"
 
 //export GoHelloWorld
 func GoHelloWorld() *C.char {
