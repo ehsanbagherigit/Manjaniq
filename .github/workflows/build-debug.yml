@@ -68,7 +68,7 @@ jobs:
           go build \
             -buildmode=c-shared \
             -o app/src/main/jniLibs/arm64-v8a/libmanjaniq_native.so \
-            native/bridge.go
+            ./native
 
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
