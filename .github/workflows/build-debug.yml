@@ -65,10 +65,11 @@ jobs:
           export GOOS=android
           export GOARCH=arm64
           export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+          export GO111MODULE=off
           go build \
             -buildmode=c-shared \
             -o app/src/main/jniLibs/arm64-v8a/libmanjaniq_native.so \
-            ./native
+            ./native/bridge.go
 
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
