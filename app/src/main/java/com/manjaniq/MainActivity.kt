@@ -66,7 +66,7 @@ fun HomeScreen(engineState: EngineState = EngineState.STOPPED) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorscheme.background)
+            .background(MaterialTheme.colorScheme.background)
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {

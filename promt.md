@@ -1,192 +1,488 @@
-Manjaniq — Phase 3 Implementation: Android Native Engine Integration
+MANJANIQ — Autonomous Engineering Audit, Debugging, Repair, and Verification Protocol
 
-We are moving from project analysis to implementation. Do not repeat the completed project analysis or spend time producing another proposal. Read the relevant project files, understand the existing architecture, and start implementing Phase 3.
+0. Role and mission
 
-1. Read the existing project documentation first
+Act as a senior software engineer, Android engineer, Kotlin/Jetpack Compose specialist, Go/cgo engineer, native integration engineer, Gradle build engineer, CI/CD engineer, test engineer, and security-conscious code reviewer.
 
-Read these files from the actual repository root:
+Your mission is to understand the actual Manjaniq codebase, diagnose the current CI failure, perform a systematic code audit, fix confirmed defects, add appropriate regression tests, validate every change, and continue debugging newly revealed failures until the project reaches a verifiably successful build or a documented external blocker.
 
-- "README.md"
-- "ARCHITECTURE.md"
-- "ROADMAP.md"
-- "UI_DESIGN_GUIDE.md"
-- "DEVELOPMENT_LOG.md"
-- ".gitignore"
-- ".github/workflows/build-debug.yml"
+Do not merely explain possible fixes. When repository access and tool permissions allow, inspect the files, make justified changes, and run the checks yourself.
 
-Then inspect the actual Android project structure, including:
+Do not assume that a long investigation automatically means a correct result. Every conclusion must be supported by source code, command output, test results, official documentation, or a clearly labeled inference.
 
-- "settings.gradle.kts"
-- Root "build.gradle.kts"
-- "gradle.properties"
-- "gradle/wrapper/gradle-wrapper.properties"
-- "app/build.gradle.kts"
-- "app/src/main/AndroidManifest.xml"
-- "app/src/main/java/" and all relevant Kotlin source files
-- Existing resources and any native-library directories
+The ultimate objective is a reproducible Android debug APK, a working native bridge to the extent supported by the project's design, and a reliable GitHub Actions workflow.
 
-Inspect the existing core abstractions:
+1. Repository identity and known environment
 
-- "core/models/EngineState.kt"
-- "core/models/RSTAConfig.kt"
-- "core/models/OperationResult.kt"
-- "core/interfaces/EngineController.kt"
-- "core/interfaces/EngineStatusProvider.kt"
-- "core/interfaces/Logger.kt"
+Repository:
+"git@github.com:ehsanbagherigit/Manjaniq.git"
 
-Verify actual paths and filenames before using them. Do not assume that the repository structure is exactly as described in previous notes.
+Branch:
+"master"
 
-2. Inspect the real Go engine before choosing the integration approach
+Known local working directory:
+"~/projects_link/manjaniq"
 
-Read the Go module definition and source files under:
+Latest known commit at the start of this investigation:
+"297f32d" — "Fix Android SDK configuration in CI"
 
-- "engine/rstaspoof/"
+Known project configuration:
 
-Inspect the actual entry point, package declarations, exported functions, server lifecycle, listener creation, configuration handling, shutdown behavior, and dependencies.
+- Android application using Kotlin and Jetpack Compose.
+- Gradle wrapper 8.9.
+- Android Gradle Plugin 8.7.2.
+- Kotlin 2.0.21.
+- JDK 17.
+- compileSdk 35.
+- targetSdk 35.
+- minSdk 26.
+- Android native library targeting "arm64-v8a".
+- Go shared library built using cgo and Android NDK 25.2.9519653.
+- GitHub Actions workflow: ".github/workflows/build-debug.yml".
+- Android native bridge files include "native/bridge.go" and "app/src/main/java/com/manjaniq/NativeBridge.kt".
+- Primary application UI includes "app/src/main/java/com/manjaniq/MainActivity.kt".
 
-In particular, determine:
+These are known historical facts. Inspect the current checkout to verify that they remain accurate before relying on them.
 
-- Whether the current engine can be reused as a library or requires a small adapter.
-- How it starts and stops its TCP proxy.
-- Whether it uses command-line flags, process-level termination, or global state that would complicate embedding.
-- Which Go dependencies and build constraints affect Android compilation.
-- Whether "CGO_ENABLED=1" and the Android NDK toolchain are required for the chosen approach.
+2. Non-negotiable safety rules
 
-Do not modify "engine/rstaspoof/" during this Phase 3 proof of concept.
+Protected code
 
-Do not assume JNI, "gomobile", a subprocess, or any other integration mechanism is automatically the best option. Make a decision based on the actual source. Prefer the simplest reliable approach that can eventually support real engine startup, configuration, status, logs, and controlled shutdown.
+Do not inspect for modification purposes, edit, delete, rename, reformat, regenerate, move, or change files under:
 
-3. Build environment
+"engine/rstaspoof/"
 
-My phone's confirmed Android ABI is:
+Treat this subtree as protected, including any nested Git repository. Do not run broad formatting or cleanup commands that might touch it. Do not change its history, configuration, or contents.
 
-"arm64-v8a"
+If a defect appears to originate in this protected subtree, document the evidence and request explicit authorization before changing it.
 
-GitHub Actions is the intended build environment. The existing workflow has already built a debug APK successfully.
+Git and data safety
 
-Provision the required tools in CI as needed:
+- Begin by checking the branch, current commit, working tree, and local modifications.
+- Preserve all user-created changes, including uncommitted and untracked files.
+- Never run "git reset --hard", force-push, history rewriting, or destructive cleanup.
+- Never overwrite a user change without inspecting and preserving it.
+- Never commit or push without explicit approval.
+- Do not create tags or releases without explicit approval.
+- Do not modify production signing credentials, release keys, secrets, or deployment settings.
+- Do not print private keys, tokens, passwords, or secret environment variables.
+- Avoid adding dependencies unless necessary and justified.
+- Do not suppress compiler errors, disable tests, skip failing Gradle tasks, or weaken quality checks merely to obtain a green build.
+- Do not generate fake source files or fake native functions to simulate successful integration.
+- Keep changes minimal, logically grouped, and reviewable.
+- Never claim a command ran successfully unless you actually executed it and observed its exit status.
 
-- JDK compatible with the existing project
-- Android SDK
-- Android NDK
-- Go toolchain
-- Existing Gradle wrapper
+Approval boundaries
 
-Do not require me to install Android SDK or NDK in Termux.
+You may inspect files and run non-destructive diagnostic commands without asking first.
 
-Do not add unnecessary local build prerequisites. If a specific runtime test requires my phone, clearly distinguish that from compilation tasks that CI can perform.
+You may make narrowly scoped source fixes and add appropriate tests, preserving existing changes and the protected subtree.
 
-4. Implement a minimal but meaningful native integration proof of concept
+Before any Git commit, push, release, destructive operation, major architectural rewrite, dependency migration with broad impact, or change to protected code, stop and request approval.
 
-Implement the smallest working native integration test that fits the existing project and can be extended for the real RSTA engine.
+If an execution environment cannot perform a necessary operation, state the limitation and give the exact next step.
 
-The test must:
+3. Initial repository inventory
 
-1. Build an Android-compatible native library for "arm64-v8a".
-2. Package that library into the debug APK using the Android Gradle build.
-3. Load the library from Kotlin using the selected native integration mechanism.
-4. Call a native function from the app.
-5. Return a known, deterministic result, such as "Manjaniq native bridge OK".
-6. Display the result or failure clearly in the app UI and write a diagnostic log.
-7. Handle library-load or native-call failures without crashing the entire app.
-8. Avoid pretending that the actual RSTA proxy is running.
+Before editing anything, execute and record the results of:
 
-The experiment must validate the real build and runtime chain, not merely create an unused ".so" file.
+- "pwd"
+- "git status --short"
+- "git branch --show-current"
+- "git log -5 --oneline"
+- "git diff --check"
+- "git diff --stat"
+- "git diff --cached --stat"
 
-Keep the PoC separate from the existing Go engine source. Use a clearly named, isolated directory for any test-only bridge or wrapper code.
+Also inspect relevant untracked files without deleting them.
 
-If a Go-based native library and JNI bridge are appropriate, implement the required bridge correctly. Do not assume that a Go-exported C function is automatically a valid JNI method. If a C/C++ JNI shim is needed, include it in the build.
+Identify:
 
-If the source inspection reveals that this approach is unnecessarily complex or unsuitable, choose a technically justified alternative and document the reason briefly in "DEVELOPMENT_LOG.md".
+- Existing local changes.
+- The current branch and commit.
+- Any divergence between local and remote branches, if remote inspection is available.
+- The project's source roots and module structure.
+- Existing test suites.
+- Build and CI configuration.
+- Architecture and development documents.
+- Existing lint, formatting, and test commands.
 
-5. Integrate with the existing Android app
+Do not treat an empty "git diff" as proof that the entire repository is clean; untracked files must also be checked.
 
-Preserve the current project architecture, package names, theme, and existing screen behavior.
+Build a concise file inventory of the actual application and native integration. Avoid dumping huge files indiscriminately. Read complete relevant files and trace definitions and callers where necessary.
 
-Reuse existing abstractions where appropriate. Avoid creating duplicate engine interfaces or unrelated architecture.
+4. Current confirmed failure — investigate first
 
-Add only the UI needed to run or display the native bridge test. Make it obvious whether the test has:
+The most recent known GitHub Actions run for commit "297f32d" failed during Kotlin compilation.
 
-- Not run yet
-- Succeeded
-- Failed
+The relevant error was:
 
-The app must remain launchable even if native library loading fails.
+app/src/main/java/com/manjaniq/MainActivity.kt:69:14
+None of the following candidates is applicable:
+Modifier.background(brush: Brush, shape: Shape = ..., alpha: Float = ...)
+Modifier.background(color: Color, shape: Shape = ...)
 
-Do not enable or simulate the real RSTA Start/Stop behavior in this PoC. The engine status must not claim that RSTA is running when only the native bridge has been tested.
+app/src/main/java/com/manjaniq/MainActivity.kt:69:39
+Unresolved reference 'colorscheme'
 
-Respect the existing dark visual design and Persian RTL / English LTR conventions where relevant.
+Execution failed for task ':app:compileDebugKotlin'.
 
-6. Update GitHub Actions
+The actual source expression must be inspected. Do not assume the correct replacement without reading the source and related theme definitions.
 
-Modify ".github/workflows/build-debug.yml" only as necessary to:
+Required source inspection
 
-- Install or configure the required toolchains.
-- Build the native library for "arm64-v8a".
-- Package it into the Android APK.
-- Run the available Gradle build and validation tasks.
-- Upload the resulting debug APK as an artifact with an obvious, stable name.
-- Fail clearly if native compilation or APK packaging fails.
+Read:
 
-Avoid hardcoded machine-specific paths. Use supported SDK/NDK setup methods and environment variables.
+- The complete "MainActivity.kt".
+- All relevant imports.
+- The composable containing line 69.
+- The surrounding composables and modifier chains.
+- The app theme and color definitions.
+- Any "MaterialTheme" extensions or custom theme wrappers.
+- Relevant Compose dependencies and version declarations.
+- Existing UI design documentation, if applicable.
 
-Keep secrets out of the workflow. Do not add release signing, publishing, or unrelated CI complexity.
+Determine:
 
-7. Testing and verification
+1. What "colorscheme" was intended to reference.
+2. Whether this is a typo, wrong identifier, incorrect scope, missing import, invalid type, or incompatible API usage.
+3. Why "Modifier.background" cannot resolve an applicable overload.
+4. Whether other UI code contains the same incorrect identifier or pattern.
+5. Whether the correct fix should use an existing theme color, a defined color constant, or another type supported by the existing Compose dependencies.
 
-Run every feasible automated check in the available environment.
+Apply the smallest correct fix consistent with the existing design system.
 
-Verify at least:
+Do not arbitrarily invent a new color scheme or replace the UI with a simpler screen to bypass compilation.
 
-- The native library is produced for the intended Android ABI.
-- The APK contains the expected native library at the correct location, typically "lib/arm64-v8a/".
-- The APK build succeeds.
-- The Kotlin native-loading code and native symbols are consistent.
-- Failures are reported clearly.
+After fixing it:
 
-Use CI to validate compilation and packaging. Actual loading and execution must be verified on my physical phone after I install the artifact.
+- Run "git diff --check".
+- Inspect the full diff.
+- Run the Kotlin compile task.
+- If compilation succeeds, run the complete debug APK build.
+- Continue investigating any newly revealed failures.
 
-Do not claim that device runtime testing passed before I perform that test.
+5. Full application source audit
 
-Provide a simple on-screen verification path so I do not need Android Studio, ADB, or Logcat access.
+After resolving the confirmed blocker, perform a systematic audit of the application code.
 
-8. Repository and change safety
+Kotlin and Compose
 
-- Do not modify "engine/rstaspoof/".
-- Do not rewrite Git history.
-- Do not force-push.
-- Do not commit or push anything.
-- Do not overwrite unrelated user changes.
-- Do not change the app's overall architecture or redesign the UI.
-- Do not add dependencies unless they are necessary for the chosen implementation.
-- Keep the changes focused and reviewable.
+Inspect for:
 
-9. Documentation
+- Unresolved references and incorrect imports.
+- Invalid API usage.
+- Incorrect composable calls or parameter types.
+- Modifier ordering mistakes that affect behavior.
+- Incorrect state ownership or state updates.
+- UI state that does not update after an operation.
+- Unsafe lifecycle assumptions.
+- Incorrect coroutine scopes or cancellation behavior.
+- Unnecessary recompositions or unstable state patterns where they cause a real defect.
+- Theme inconsistencies and invalid color or typography references.
+- Accessibility issues such as missing content descriptions for meaningful controls.
+- Hard-coded values that contradict the existing design system.
+- Misleading enabled/disabled states.
+- Click handlers that do not perform the advertised operation.
+- Unhandled exceptions and misleading error messages.
+- Resource references that do not exist.
+- Incorrect manifest declarations.
+- Incorrect minimum SDK or platform API assumptions.
 
-Update "DEVELOPMENT_LOG.md" with:
+Do not refactor working code solely to match personal style preferences. Prioritize correctness, maintainability, and regression risk.
 
-- The implementation completed.
-- The files changed.
-- The chosen integration method and why it was selected.
-- The CI build result.
-- The native ABI and packaging verification result.
-- Any remaining limitations.
-- The exact device test still required.
+Android lifecycle and application behavior
 
-Update "ROADMAP.md" only if needed to reflect the verified status of Phase 3. Do not mark the phase complete until its acceptance criteria have actually passed.
+Inspect:
 
-10. Final report and next step
+- Activity startup and recreation behavior.
+- UI behavior after process recreation where relevant.
+- Resource and configuration handling.
+- Runtime permission handling, if applicable.
+- Error handling around native library loading.
+- Whether Start and Stop controls accurately reflect the real engine state.
+- Whether unavailable engine functionality is clearly represented rather than falsely reported as running.
 
-When implementation is complete, report:
+Do not claim that the engine is operational merely because the UI renders or the native library is packaged.
 
-1. What was implemented.
-2. Exact files created or modified.
-3. Build and automated test results.
-4. GitHub Actions workflow status, if available.
-5. Artifact name and where to retrieve it.
-6. Simple, step-by-step instructions for installing and testing on my phone.
-7. Any actual blocker, with the relevant error and the smallest required action.
+Gradle and dependency configuration
 
-Then stop and wait for my device-test result before beginning the next phase.
+Inspect:
 
-Do not ask me for another analysis approval. Start by reading the files, then implement the PoC. Only stop early if a concrete technical blocker prevents progress, and explain it precisely.
+- Gradle wrapper files and version.
+- Root and app Gradle configuration.
+- Plugin versions.
+- Kotlin and Compose compatibility.
+- SDK configuration.
+- Dependency declarations and repositories.
+- Java/Kotlin target compatibility.
+- Build variants and application ID.
+- Manifest and resource processing.
+- Native library packaging configuration.
+- Duplicate or conflicting dependencies.
+- Reproducibility of the build.
+
+Only change versions when a real incompatibility or maintenance requirement is established. Avoid broad dependency upgrades during a focused repair unless the evidence demands them.
+
+6. Native Go/Android integration audit
+
+Inspect the complete native bridge path without modifying "engine/rstaspoof/".
+
+Read:
+
+- "native/bridge.go".
+- "NativeBridge.kt".
+- All current call sites of the native bridge.
+- The Gradle configuration that loads and packages the shared library.
+- The workflow steps that compile the Go library.
+- Any native integration documentation.
+
+Verify the actual ABI and JNI contract.
+
+Important: a Go function exported through cgo is not automatically a valid JNI entry point merely because it is exported from a shared library. Determine whether the Kotlin external method maps to a real JNI symbol with the correct signature, or whether an explicit JNI/C wrapper is needed.
+
+Verify:
+
+- The correct Go build mode.
+- "GOOS=android".
+- "GOARCH=arm64".
+- "CGO_ENABLED=1".
+- The NDK compiler path and target API.
+- Shared library output location.
+- Correct native symbol names and calling conventions.
+- Kotlin library loading name.
+- The exact JNI signature expected by the runtime.
+- ABI compatibility.
+- Whether the generated ".so" is packaged in the APK.
+- Whether library loading or native method invocation can fail at runtime.
+
+Use the smallest correct bridge implementation consistent with the project architecture. If necessary, add a small native smoke test that calls the intended bridge function, but do not introduce a fake implementation.
+
+Clearly distinguish:
+
+- Static/source-level verification.
+- Successful cross-compilation.
+- APK packaging verification.
+- Successful runtime library loading.
+- Successful invocation on a real Android device or emulator.
+
+Never report runtime JNI integration as working if only compilation or packaging was tested.
+
+7. GitHub Actions and CI audit
+
+Inspect ".github/workflows/build-debug.yml" and any other relevant workflow files.
+
+Check:
+
+- Valid YAML structure and indentation.
+- Correct trigger configuration.
+- Checkout and toolchain setup.
+- SDK environment consistency.
+- Android SDK Manager discovery.
+- License acceptance.
+- Installation of the required Android platform, build tools, and NDK.
+- Native compilation order.
+- Gradle wrapper permissions.
+- Debug APK output path.
+- Artifact upload configuration.
+- Error propagation from shell scripts.
+- Accidental masking of failed commands.
+- Reproducibility on the GitHub-hosted Linux runner.
+
+Do not configure "ANDROID_HOME" and "ANDROID_SDK_ROOT" to different directories.
+
+Review the previously observed cache warning from "actions/setup-go":
+"Restore cache failed: Dependencies file is not found ... Supported file pattern: go.sum"
+
+Determine whether this repository legitimately uses Go modules and whether the workflow actually needs dependency caching. Do not create an artificial "go.sum" just to suppress a warning. If caching is inappropriate for the current single-file native build, consider disabling that cache explicitly and explain why.
+
+Review deprecation notices separately from build failures. Update action versions only if compatible with the project's environment, and keep these maintenance changes separate from the immediate Kotlin repair where possible.
+
+A workflow that parses as YAML is not necessarily a workflow that builds correctly. Validate it with available tooling and the actual GitHub Actions run.
+
+8. Research and documentation policy
+
+When a failure depends on a library API, toolchain behavior, Gradle configuration, Android NDK, or JNI ABI details, consult current official documentation where internet access is available.
+
+Prefer:
+
+- Official Android developer documentation.
+- Official Kotlin documentation.
+- Official Jetpack Compose documentation.
+- Official Gradle documentation.
+- Official Go and cgo documentation.
+- Official Android NDK documentation.
+- Official GitHub Actions documentation.
+- Maintainer documentation for a specific dependency when relevant.
+
+Use external sources to verify uncertain API behavior or compatibility. Do not invent documentation links, version guarantees, or API signatures.
+
+Clearly distinguish:
+
+- Findings from the repository.
+- Findings from command output.
+- Findings from official documentation.
+- Inferences that still require testing.
+
+If internet access is unavailable, proceed using the checked-out code and installed tools, and record that the external documentation check could not be completed.
+
+9. Testing strategy
+
+Use a staged testing approach.
+
+Stage 1 — Source and repository checks
+
+- Inspect diffs.
+- Run "git diff --check".
+- Check for whitespace mistakes and accidental file changes.
+- Confirm the protected subtree remains untouched.
+- Use available static analysis or formatting checks when they are already configured.
+
+Stage 2 — Focused Kotlin compile
+
+Run:
+
+"./gradlew :app:compileDebugKotlin --stacktrace"
+
+Capture the actual exit status and first meaningful compilation error.
+
+Stage 3 — Full debug build
+
+Run:
+
+"./gradlew assembleDebug --stacktrace"
+
+Do not proceed as if the build passed if this command fails.
+
+Stage 4 — Native build
+
+Run the repository's actual native build command with the required Android NDK toolchain.
+
+Verify the resulting shared library exists and is an Android ARM64 shared object.
+
+Stage 5 — APK inspection
+
+If the APK was successfully generated, inspect its contents using an available Android SDK tool such as "apkanalyzer" or "unzip -l".
+
+Verify the APK includes the expected native library:
+
+"lib/arm64-v8a/libmanjaniq_native.so"
+
+Also verify that the APK output path matches the workflow artifact path.
+
+Stage 6 — Tests and static analysis
+
+Run existing unit tests, instrumentation tests, and lint tasks that are supported by the project and environment.
+
+Use appropriate tests for any new logic or bug fix. If a task is unsupported or unavailable, report that fact rather than claiming success.
+
+Stage 7 — Runtime checks
+
+If an Android device or emulator is available, install and launch the APK and inspect runtime logs. Test native library loading and invoke the bridge where possible.
+
+If no device/emulator is available, do not pretend runtime testing occurred.
+
+Stage 8 — CI verification
+
+After approval to push, monitor the GitHub Actions run for the exact commit. Verify the workflow result and confirm that the expected APK artifact exists.
+
+A green workflow alone does not prove the native method works at runtime. Report the precise level of verification achieved.
+
+10. Regression prevention
+
+For every confirmed bug:
+
+1. Identify the minimal reproducible failure.
+2. Make the smallest appropriate fix.
+3. Add a regression test when practical.
+4. Re-run the failing test or build.
+5. Review the diff to confirm the test covers the actual defect.
+6. Document any residual risk.
+
+Do not add brittle tests that merely search for a particular string when a stronger compile-time or behavior test is available.
+
+If the existing project lacks an appropriate test framework, explain the smallest reasonable option before introducing new dependencies.
+
+11. Iterative debugging loop
+
+Use this loop for every newly revealed blocker:
+
+1. Run the relevant failing command.
+2. Capture the command, exit status, and complete relevant error context.
+3. Find the first meaningful root-cause error rather than focusing only on the final Gradle summary.
+4. Trace the error to the responsible code, configuration, or environment.
+5. State the hypothesis and supporting evidence.
+6. Apply one logically grouped fix.
+7. Inspect the diff.
+8. Run "git diff --check".
+9. Re-run the exact failed check.
+10. Run the next broader verification level after the focused check passes.
+11. Record the result and move to the next blocker.
+
+Continue until the full debug build and required CI checks pass, or until a specific external blocker is demonstrated.
+
+Do not stop after fixing only the first visible error if another failure appears later in the pipeline.
+
+Do not make repeated speculative edits without gathering new evidence.
+
+If the same error persists after two attempts, stop making blind edits. Re-examine the source, compiler version, dependencies, build configuration, and the actual failing task. Explain what new evidence is needed.
+
+If a build is blocked by unavailable network access, missing SDK components, unsupported host architecture, or another environmental limitation, isolate that blocker and complete all independent checks that can be performed locally.
+
+12. Maintain an engineering audit report
+
+Maintain a concise Markdown report in memory or a temporary working note while investigating. If the repository already has a development log, update it only when appropriate and after reviewing its conventions.
+
+Track:
+
+- Issue ID.
+- Severity.
+- Affected file and line.
+- Observed symptom.
+- Root cause.
+- Evidence.
+- Fix applied.
+- Tests run.
+- Test results.
+- Remaining risk.
+- Whether the fix is committed or pushed.
+
+Do not create a large amount of documentation that duplicates the source code. Keep the report useful and concise.
+
+Classify findings as:
+
+- Critical: security or data-integrity risk, or severe application failure.
+- High: build blocker, native crash, or essential functionality failure.
+- Medium: incorrect behavior or reliability issue.
+- Low: maintainability or minor UX issue.
+- Informational: warning or optional improvement.
+
+Do not inflate severity to make the audit appear more thorough.
+
+13. Scope management
+
+Work in this order:
+
+Priority 1: Resolve the confirmed Kotlin compiler failure.
+
+Priority 2: Obtain a successful complete debug APK build.
+
+Priority 3: Audit and fix any additional failures revealed by the full build.
+
+Priority 4: Verify native library compilation, packaging, and JNI correctness.
+
+Priority 5: Improve tests and CI reproducibility.
+
+Priority 6: Review non-blocking warnings and maintenance improvements.
+
+Do not combine unrelated large refactors with the urgent build repair. If a broader architectural change appears necessary, document it and ask for approval before proceeding.
+
+14. Definition of done
+
+The repair is complete only when the actual evidence supports the reported result.
+
+Required completion evidence, where the environment permits:
+
+- Kotlin compilation exits with code 0.
+- "assembleDebug" exits with code 0.
+- Native library compilation
