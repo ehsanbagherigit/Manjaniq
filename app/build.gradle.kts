@@ -31,16 +31,15 @@ android {
         compose = true
     }
 
-    // Existing core sources live at the project root (not under app/src).
-    // They are compiled into this module without moving any files.
-    sourceSets {
-        getByName("main") {
-            java.srcDirs(
-                "../core/models",
-                "../core/interfaces"
-            )
-        }
-    }
+    // Core sources are compiled from the copies under app/src/main/java.
+    // Do not add srcDirs pointing at the project-root "core/" copies: they
+    // declare the same classes (RSTAConfig, EngineState, OperationResult,
+    // EngineController) and would cause "Duplicate class" build failures.
+    //
+    // jniLibs: no override. AGP's default source dir app/src/main/jniLibs is
+    // used, which is exactly where the CI workflow writes the built
+    // libmanjaniq_native.so. Pointing jniLibs.srcDirs elsewhere replaced the
+    // default and silently dropped the library from the APK.
 }
 
 kotlin {

@@ -1,0 +1,23 @@
+// Package com.manjaniq.ui provides UI components and theming.
+package com.manjaniq.ui
+
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.ui.graphics.Color
+
+// ManjaniqColors defines the color scheme for the Manjaniq application.
+val ManjaniqColors = darkColorScheme(
+    primary = Color(0xFF8250D9),
+    onPrimary = Color.White,
+    background = Color(0xFF080808),
+    onBackground = Color(0xFFF5F3F8),
+    surface = Color(0xFF15141A),
+    onSurface = Color(0xFFF5F3F8),
+    surfaceVariant = Color(0xFF15141A),
+    onSurfaceVariant = Color(0xFFAAA6B4),
+    outline = Color(0xFF24232B)
+)
+
+// Theme wrapper for Jetpack Compose.
+object ManjaniqTheme {
+    fun getColorScheme() = ManjaniqColors
+}

@@ -97,6 +97,69 @@ The root `.gitignore` was prepared for the initial GitHub setup. The following i
 - **Confirmed** that no files under `engine/rstaspoof/` were modified.
 - **Confirmed** that only `.gitignore` was modified during the preparation task.
 
+### 2026-10-17 — Phase 3 Verification & Fix
+
+### Critical Issues Fixed
+
+**Issue 1: Staged engine/rstaspoof files (SOLVED)**
+- **Problem**: 12 `engine/rstaspoof/*.go` files were incorrectly staged for commit, despite being a separate repository that should be completely ignored.
+- **Risk**: Would have committed the entire Go engine into the Manjaniq project history, violating the project architecture.
+- **Action**: Restored `engine/` directory to `.gitignore` and unstaged all engine/rstaspoof files.
+- **Status**: FIXED - engine/rstaspoof files are now unstaged and will not be committed.
+
+**Issue 2: Missing /engine/ in .gitignore (SOLVED)**
+- **Problem**: The `/engine/` line was removed from .gitignore during Phase 3 work, making the engine directory eligible for staging.
+- **Risk**: Would have allowed accidental commit of engine/rstaspoof files.
+- **Action**: Restored `/engine/` line to .gitignore (consistent with HEAD and development log).
+- **Status**: FIXED - .gitignore now correctly includes `/engine/`.
+
+### Current Staging Status
+
+**Staged (ready for commit):**
+- `ENGINEERING_README.md` - Phase 3 JNI integration documentation
+- `app/build.gradle.kts` - Updates for JNI support
+- `app/src/main/java/com/manjaniq/core/interfaces/EngineController.kt` - Core models updates
+- `app/src/main/java/com/manjaniq/core/models/RSTAConfig.kt` - Core models updates
+- `app/src/main/java/com/manjaniq/core/models/Result.kt` - Core models updates
+- `app/src/main/java/com/manjaniq/ui/components/ManjaniqApp.kt` - UI updates
+- `app/src/main/java/com/manjaniq/ui/components/StatusCard.kt` - UI updates
+- `app/src/main/java/com/manjaniq/ui/theme/ManjaniqTheme.kt` - UI updates
+
+**Unstaged (modified in working directory):**
+- `app/build.gradle.kts` - JNI source set configuration
+- `app/src/main/java/com/manjaniq/MainActivity.kt` - MainActivity JNI integration
+- `app/src/main/java/com/manjaniq/NativeBridge.kt` - JNI bridge implementation
+- `native/bridge.c` - JNI C wrapper
+- `native/bridge.go` - JNI Go wrapper
+- `native/verify_native_lib.sh` - JNI verification script
+- `promt.md` - Corrections and improvements
+
+### Phase 3 Verification
+
+**Verified:**
+- ✅ Project architecture is preserved (engine/rstaspoof remains separate)
+- ✅ .gitignore correctly excludes the engine directory
+- ✅ No engine/rstaspoof files are staged for commit
+- ✅ Native integration work (Phase 3) is preserved in working directory
+
+**Not Yet Verified:**
+- **❌ Kotlin/Android compilation (NOT VERIFIED)** - Core files remain uncompiled
+- **❌ Unit tests (NOT VERIFIED)** - Tests have not been run
+- **❌ JNI verification (NOT VERIFIED)** - Native library has not been built and loaded
+
+### Next Steps (PLANNED)
+
+1. **Verify JNI Native Library**: Run `./gradlew assembleDebug` to build APK with native library
+2. **Test Native Integration**: Install APK and verify JNI calls work on device
+3. **Run Unit Tests**: Execute `./gradlew :app:testDebugUnitTest` for Android tests
+4. **Run Lint/TypeCheck**: Execute `./gradlew lint` to verify code quality
+
+### Known Limitations
+
+- No Android/Gradle build configuration existed at the time of Phase 2 review and core reference check, so the six Kotlin files remain uncompiled.
+- The `fakeSNIMethod` values accepted by the engine's `FakeSNIBypass` implementation were not exhaustively enumerated; only the default (`"prefix_fake"`) is source-verified so far.
+- Android SDK/NDK toolchain must be properly configured for JNI development.
+
 ### Next Steps (PLANNED — not completed)
 
 1. **PLANNED** — Initialize the Git repository and set up the remote origin.

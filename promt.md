@@ -1,191 +1,210 @@
-Manjaniq — Complete Pre-Push Audit, Repair, and Validation
+Task: Audit and Fix Manjaniq Android APK Build Pipeline
 
-Mission
+You are a senior Android, Go, JNI/CGO, and GitHub Actions engineer. Your task is to inspect, debug, and FIX the existing Manjaniq project so that GitHub Actions can reliably build and verify a working Android debug APK.
 
-Perform a thorough, evidence-based audit of the Manjaniq Android project before any changes are pushed to GitHub.
+Do not stop after providing recommendations. Inspect the actual repository, make the necessary safe code/configuration changes, and run all checks supported by the environment.
 
-Primary goal: Make the existing GitHub Actions workflow pass reliably, eliminate the current build failure, detect and fix related problems, and verify the Android native JNI bridge as thoroughly as the available environment allows.
+1. Critical safety rules
 
-Strict rule: DO NOT push, commit, amend, reset, rebase, or force-push anything. I will approve Git operations separately. Do not discard my existing changes.
+- Preserve all existing user work and unrelated changes.
+- NEVER run "git reset", "git clean", "git checkout --", "git restore", "git stash", or destructive cleanup commands.
+- Do not commit, push, amend commits, or rewrite Git history.
+- Do not overwrite existing files without first inspecting their contents and diffs.
+- Do not delete directories, nested repositories, binaries, or files simply because they appear unnecessary.
+- Do not print secrets, tokens, private keys, or ".env" contents.
+- Do not claim a build or test succeeded unless you actually ran it and verified its exit status.
+- Make focused, explainable changes. Avoid unrelated redesigns and changes to the networking engine's intended behavior.
+- Inspect both staged and unstaged changes before editing. Preserve both.
+- Do not assume the working tree is clean.
 
-Repository: "Manjaniq"
-Branch: "master"
+2. Project facts
 
-Recent relevant changes:
+The project is an Android application called Manjaniq. The repository uses branch "master" and contains:
 
-- "app/src/main/java/com/manjaniq/MainActivity.kt"
-- "promt.md"
-- "native/bridge.go"
-- "native/bridge.c"
+- "go.mod", declaring "module manjaniq" and Go 1.22.
+- "engine/rstaspoof/", containing the Go networking engine.
+- "native/bridge.go" and "native/bridge.c", implementing the JNI/CGO bridge.
+- "native/verify_native_lib.sh", intended to validate the native shared library.
+- "app/src/main/java/com/manjaniq/NativeBridge.kt", containing Kotlin native declarations.
+- "app/build.gradle.kts", containing Android source-set and JNI library configuration.
+- ".github/workflows/build-debug.yml".
+- ".github/workflows/android_ci.yml".
+
+The intended Android ABI is "arm64-v8a". The expected native library name is "libmanjaniq_native.so", loaded through "System.loadLibrary("manjaniq_native")".
+
+The existing code includes JNI exports such as:
+
+- "Java_com_manjaniq_NativeBridge_GoHelloWorld"
+- "Java_com_manjaniq_NativeBridge_StartEngine"
+- "Java_com_manjaniq_NativeBridge_StopEngine"
+- "Java_com_manjaniq_NativeBridge_IsEngineRunning"
+- "Java_com_manjaniq_NativeBridge_GetEngineState"
+- "Java_com_manjaniq_NativeBridge_GetMetrics"
+
+Inspect the actual Kotlin and Go source before assuming these declarations or signatures are complete and correct.
+
+3. Known problems to investigate and fix
+
+A. Go Modules and cross-compilation
+
+The current "build-debug.yml" sets:
+
+"GO111MODULE=off"
+
+However, the project has a "go.mod" file, and "native/bridge.go" imports:
+
+"manjaniq/engine/rstaspoof"
+
+This configuration may break module resolution. Fix the native build to use the repository's actual Go module correctly.
+
+Use Android NDK Clang with appropriate CGO configuration for Android ARM64. Verify the correct compiler target, Android API level, linker settings, and "-buildmode=c-shared" requirements.
+
+Do not assume that setting "GOOS=android" and "GOARCH=arm64" alone produces a valid Android shared library.
+
+Build the entire native package, including required C source files. Do not compile only "native/bridge.go" if doing so omits "bridge.c" or other necessary package files.
+
+B. Native library packaging
+
+The existing workflow builds the native library into:
+
+"app/src/main/jniLibs/arm64-v8a/libmanjaniq_native.so"
+
+However, "app/build.gradle.kts" currently contains:
+
+"jniLibs.srcDirs("native")"
+
+Investigate the real Gradle source-set configuration and select a consistent packaging strategy. Ensure the generated library is included in the final APK at:
+
+"lib/arm64-v8a/libmanjaniq_native.so"
+
+Avoid duplicate library packaging, stale binaries, incorrect source directories, or silently packaging an old library.
+
+Ensure verification checks the exact library that will be packaged, and verify the extracted library from the final APK as well.
+
+C. Fix the native verification script
+
+Inspect and correct "native/verify_native_lib.sh".
+
+Known concerns include:
+
+- The script invokes "fail" before its function definition in some error paths.
+- Its undefined-symbol check appears incorrect: "nm" commonly marks undefined symbols with "U", not "T.*Undefined".
+- Its ELF check currently distinguishes ELF32/ELF64 but does not adequately validate the expected ARM64 architecture.
+- ELF64 alone does not prove that the library targets Android rather than Linux.
+- Symbol matching must correctly identify exported JNI symbols without false positives or false negatives.
+- The verifier must fail with a nonzero exit code when required checks fail.
+- The script must validate the library's existence and nonzero size.
+- It must verify the expected JNI exports and the consistency between the actual Kotlin native declarations and native implementation.
+- It must account for legitimate dynamically resolved Android/system symbols. Do not reject every undefined dynamic symbol indiscriminately.
+- It must not require unnecessary exports or reject valid symbol names without justification.
+
+Use tools available in GitHub Actions, such as "llvm-readelf", "readelf", "llvm-nm", "nm", or other suitable NDK utilities.
+
+Verify ELF class, machine architecture, shared-library format, and Android-target indicators as appropriate. Clearly distinguish what can be proven statically from what requires runtime testing.
+
+Preserve useful existing checks and add regression tests for the verifier where practical.
+
+D. JNI and C wrapper consistency
+
+Inspect "native/bridge.go", "native/bridge.c", "native/libmanjaniq_native.h", and "NativeBridge.kt".
+
+Previously, a source search found no references to "libmanjaniq_native.h" under "native" or "app". Determine whether it is a required source header, a generated c-shared header, or an obsolete artifact. Do not delete it without establishing its role.
+
+Verify that C wrapper functions such as "NewStringUTF_wrapper" are defined and linked correctly.
+
+Check that:
+
+- Every required Kotlin native method has a matching exported JNI symbol.
+- Argument and return types agree across Kotlin, JNI, C, and Go.
+- The shared library can load without missing required symbols.
+- No required C source is omitted from the build.
+- The build does not depend on stale generated files.
+
+E. Duplicate or conflicting workflows
+
+The repository has two workflows:
+
 - ".github/workflows/build-debug.yml"
+- ".github/workflows/android_ci.yml"
 
-The most recent GitHub Actions failure was:
+They appear to perform overlapping tasks but use different native library output paths and build commands. One version previously attempted to compile "native/bridge.go" directly, potentially omitting the C wrapper.
 
-"go: cannot find main module, but found .git/config ..."
+Inspect both files in full. Validate their YAML syntax with a real parser if available. Determine the safest maintainable solution.
 
-A subsequent unpushed workflow edit added "GO111MODULE=off" and changed the Go build command. Verify whether that solution is actually valid. Do not assume it works.
+Prefer one authoritative APK build pipeline unless there is a concrete reason to retain two. If a workflow is redundant, inspect its history/content and make a documented, non-destructive decision about how to prevent conflicting or inconsistent builds. Do not leave contradictory instructions or packaging paths.
 
-Phase 1 — Establish the current state
+Ensure triggers work for the actual "master" branch and retain "workflow_dispatch" where appropriate.
 
-1. Inspect "git status", the current branch, the latest commits, and the complete diff against "HEAD".
-2. Identify tracked, modified, staged, and untracked files.
-3. Preserve all existing user changes.
-4. Read the complete relevant files, including:
-   - ".github/workflows/build-debug.yml"
-   - "native/bridge.go"
-   - "native/bridge.c"
-   - "app/src/main/java/com/manjaniq/NativeBridge.kt"
-   - "app/src/main/java/com/manjaniq/MainActivity.kt"
-   - "settings.gradle" or "settings.gradle.kts"
-   - root and app Gradle build files
-   - "AndroidManifest.xml"
-   - any Go module or native build configuration, if present
-5. Inspect the complete GitHub Actions workflow, not just the failed step.
+F. Android and Gradle integration
 
-Do not modify Git history or delete files.
+Inspect the Android Gradle configuration, manifest, Kotlin source sets, and existing UI.
 
-Phase 2 — Fix the Go/cgo native build correctly
+Verify:
 
-Review the current Go build command against the actual Go toolchain behavior.
+- Java/Kotlin compatibility settings.
+- Correct inclusion of core model/interface sources.
+- Correct JNI library packaging and ABI.
+- "System.loadLibrary("manjaniq_native")" matches the actual output name.
+- Internet or other Android permissions are present only when required by the real implementation.
+- The Start/Stop UI correctly invokes the native bridge and reports real engine state.
+- Errors from native startup and shutdown are not silently treated as success.
+- The application does not report "RUNNING" before startup has actually succeeded.
 
-Verify all of the following:
+Do not declare VPN or foreground-service functionality unless the implementation genuinely requires and supports it.
 
-1. Whether the project has a "go.mod" file and whether module mode is appropriate.
-2. Whether "GO111MODULE=off" is compatible with the selected Go version and the intended build command.
-3. Whether explicitly passing "native/bridge.go" and "native/bridge.c" to "go build" is valid. Remember that Go's build command does not necessarily accept C source files as ordinary Go source arguments.
-4. Whether the correct solution is to build the Go package from the "native" directory, initialize a module, or use another valid approach.
-5. Whether "native/bridge.c" is actually compiled and linked into the resulting shared library.
-6. Whether the cgo preamble contains declarations only when required by "//export" rules.
-7. Whether all required C headers and JNI types are available to the NDK compiler.
-8. Whether "CGO_ENABLED", "GOOS", "GOARCH", "CC", and the Android API level are set correctly.
-9. Whether the selected Go version supports the chosen Android/arm64/cgo build configuration.
-10. Whether the generated library exports the expected JNI symbol:
-    "Java_com_manjaniq_NativeBridge_GoHelloWorld"
+G. Native engine lifecycle and security
 
-Do not blindly add "go.mod", disable module mode, or rewrite the native code without explaining why the chosen solution is correct.
+Inspect the Go engine, JNI bridge, and existing tests.
 
-Prefer the smallest maintainable fix that works with the existing project.
+Review Start/Stop behavior, repeated calls, cleanup after failure, shutdown and restart, error propagation, synchronization, and concurrent calls where applicable.
 
-Phase 3 — Verify JNI end to end as far as possible
+Add focused tests for concrete defects, without rewriting the engine unnecessarily.
 
-Compare the Kotlin declaration with the exported native function:
+Review for accidentally tracked secrets, private keys, ".env" files, binaries, unsafe commands, incorrect ".gitignore" rules, and important missing tests. Report sensitive-file paths and exposure types only; never print secret contents.
 
-- Package: "com.manjaniq"
-- Class: "NativeBridge"
-- Method: "GoHelloWorld"
-- Static versus instance method conventions
-- JNI parameter and return types
-- Library name passed to "System.loadLibrary"
-- Shared library filename and location
+4. Required validation
 
-Verify that:
+Run the checks that are supported by the environment, including:
 
-- The expected native symbol is exported in the dynamic symbol table.
-- "NewStringUTF_wrapper" is linked into the shared library.
-- The native library is built for Android "arm64-v8a", not Linux or desktop.
-- The library is packaged into the APK at "lib/arm64-v8a/libmanjaniq_native.so".
-- Kotlin calls the correct library and method.
-- Native memory is managed safely.
+- Go formatting checks for project-owned Go source files.
+- "go vet ./..."
+- "go test ./..."
+- "git diff --check"
+- "git diff --cached --check"
+- Workflow YAML syntax validation.
+- Native Android ARM64 cross-compilation using the configured NDK.
+- Native ELF and JNI symbol validation.
+- Gradle configuration and Android unit tests.
+- "./gradlew assembleDebug"
+- APK contents verification, including the expected "arm64-v8a" native library.
+- Verification of the extracted native library from the final APK.
 
-If the local environment lacks Android SDK/NDK tools, clearly identify the limitation. Do not pretend that a native build, symbol inspection, or device test was performed when it was not.
+Do not blindly reformat unrelated files or overwrite existing user changes.
 
-Phase 4 — Audit the entire CI workflow
+If the current environment cannot run Android builds, clearly identify the limitation and ensure the GitHub Actions workflow performs the required validation.
 
-Inspect and validate every relevant workflow step, including:
+5. Definition of done
 
-- Trigger configuration
-- Checkout
-- Java and JDK setup
-- Android SDK setup
-- Android platform and build-tools installation
-- NDK installation and environment variables
-- Go installation and version
-- Native library compilation
-- Native library output path
-- Gradle wrapper permissions
-- Gradle dependency resolution
-- Kotlin compilation
-- Debug APK assembly
-- Artifact upload
+The task is complete only when:
 
-Check working directories, relative paths, environment-variable scope, shell syntax, YAML indentation, and step ordering.
+1. The native library is built for Android ARM64 using the correct Go module and NDK toolchain.
+2. Required JNI/C symbols are linked and verified.
+3. Gradle packages the correct library into the APK.
+4. The final APK is checked for required files and ABI.
+5. The workflow fails on actual build, test, packaging, or verification errors.
+6. Conflicting workflows or output paths are resolved.
+7. Available tests and static checks have been run and their actual results recorded.
+8. Existing user changes and unrelated networking-engine behavior remain preserved.
 
-Ensure the native library is built before Gradle packages the APK.
+6. Final report
 
-Ensure failures stop the workflow and produce useful error messages.
+When finished, provide:
 
-Do not disable tests, suppress errors, add "continue-on-error", or weaken validation just to make GitHub Actions appear green.
+- Root causes discovered.
+- Files changed and the purpose of each change.
+- Validation commands actually executed.
+- Which tests passed and which failed.
+- Any checks that could not be executed and why.
+- Any remaining risks or manual steps needed in GitHub Actions.
 
-Phase 5 — Run all available local validations
-
-Run the checks that are genuinely available in the current environment. At minimum:
-
-1. "git diff --check"
-2. YAML syntax validation using an available validator
-3. Go formatting and static checks where applicable
-4. Native build checks where the necessary compiler and headers exist
-5. Gradle wrapper and project configuration checks
-6. Kotlin compilation or Gradle build if the required Android SDK is available
-7. Inspect all changes, including untracked files
-
-If a check cannot run because a tool is missing, record it as NOT RUN, not PASS.
-
-Do not install random tools or alter the system unnecessarily. If an appropriate tool is available through the project, use it.
-
-Phase 6 — Test the actual CI build without pushing
-
-Investigate whether the workflow can be tested locally with the tools already installed, such as an available YAML/workflow validator or compatible local runner.
-
-Do not assume a local environment can reproduce GitHub-hosted Android builds perfectly.
-
-If a full hosted CI run is impossible without pushing, say so explicitly. Do not claim that GitHub Actions is guaranteed to pass based solely on static inspection.
-
-Do not push, create a remote branch, or trigger any remote workflow.
-
-Phase 7 — Repair and repeat
-
-Fix any concrete problems found during the audit, then rerun the relevant checks.
-
-Repeat until:
-
-- All locally runnable checks pass.
-- The workflow configuration is internally consistent.
-- The native build command is valid for the actual Go/cgo toolchain.
-- The JNI signatures and packaging paths agree.
-- No unexplained errors remain.
-
-If a check still fails, investigate the real error and fix it where possible. Do not hide or bypass the failure.
-
-Phase 8 — Final report and approval gate
-
-Return a concise but complete report with these sections:
-
-A. Problems found
-
-List each issue, its root cause, and whether it was fixed.
-
-B. Files changed
-
-List every modified, added, or deleted file and explain why.
-
-C. Validation results
-
-For every check, report exactly one of:
-
-- PASS — actually executed and passed
-- FAIL — executed and failed
-- NOT RUN — unavailable or not executed
-
-Include the actual command or evidence for important checks.
-
-D. Remaining risks
-
-Explain any validation that still requires GitHub Actions, a real Android device, or unavailable SDK/NDK tools.
-
-E. Next step
-
-Tell me exactly what remains before I can safely commit and push.
-
-Never say the project is fully verified or guarantee a green GitHub Actions run unless the corresponding build actually ran successfully.
-
-Stop after presenting the report. Wait for my explicit approval before any commit or push.
+Do not merely describe the changes you would make. Make the safe, necessary changes first, validate them, and then report the real results.
