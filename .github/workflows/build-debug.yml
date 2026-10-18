@@ -314,18 +314,21 @@ jobs:
           tail -n 400 connected.log 2>&1 | head -n 400 || echo "no connected.log"
           echo "===== logcat_connected.txt tail ====="
           tail -n 200 logcat_connected.txt 2>&1 | head -n 200 || echo "no logcat_connected"
-          echo "===== Surfacing last 80 log lines as annotations (blob logs are blocked) ====="
-          tail -n 400 connected.log 2>&1 | grep -i -E "FAIL|BUILD|error|Exception|AndroidRuntime|FATAL|manjaniq|Expected|Assertion" | tail -n 80 > /tmp/diag.txt || tail -n 80 connected.log > /tmp/diag.txt
+          echo "===== Surfacing full connected.log tail as annotations ====="
+          # Always dump last 80 raw lines as errors so root cause is visible even if grep misses
+          tail -n 80 connected.log > /tmp/raw_tail.txt || true
+          echo "--- RAW TAIL (80) ---"
+          cat /tmp/raw_tail.txt || true
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            printf '::error::[raw tail] %s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-900)"
+          done < /tmp/raw_tail.txt
+          echo "--- FILTERED DIAG ---"
+          tail -n 400 connected.log 2>&1 | grep -i -E "FAIL|BUILD|error|Exception|AndroidRuntime|FATAL|manjaniq|Expected|Assertion|What went wrong|Try:" | tail -n 80 > /tmp/diag.txt || true
           if [ -s /tmp/diag.txt ]; then
             while IFS= read -r line; do
-              printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-900)"
+              printf '::error::[diag] %s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-900)"
             done < /tmp/diag.txt
-          else
-            echo "::error::connectedDebugAndroidTest failed but no diag pattern matched - dumping raw tail"
-            tail -n 80 connected.log > /tmp/raw.txt || true
-            while IFS= read -r line; do
-              printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-900)"
-            done < /tmp/raw.txt
           fi
 
       - name: Publish failure excerpt as PR comment (if PR)
