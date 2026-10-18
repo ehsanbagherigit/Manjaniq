@@ -15,6 +15,10 @@ import (
 // CI host. They do not — and cannot — prove DPI bypass on a live
 // network; that needs a device on a filtering network.
 
+// diagEngine, when set, has its internals logged on a mustFinish
+// timeout. Field reads are deliberately lock-free diagnostics.
+var diagEngine *Engine
+
 // mustFinish runs a lifecycle call and fails the test, naming the
 // call, instead of letting a wedged lifecycle hang the whole test
 // binary until the go test timeout (observed once in CI, where
@@ -29,6 +33,16 @@ func mustFinish(t *testing.T, name string, fn func() error) error {
 	case err := <-done:
 		return err
 	case <-time.After(20 * time.Second):
+		if diagEngine != nil {
+			srv := diagEngine.server
+			t.Logf("DIAG engineState=%v serverNil=%v serveDoneNil=%v",
+				diagEngine.state, srv == nil, diagEngine.serveDone == nil)
+			if srv != nil {
+				t.Logf("DIAG server=%p listen=%s:%d lnNil=%v closed=%v clients=%d upstream=%d",
+					srv, srv.listenHost, srv.listenPort, srv.ln == nil,
+					srv.closed.Load(), len(srv.clients), len(srv.upstream))
+			}
+		}
 		// One compact line per goroutine that touches engine code:
 		// "STUCK goroutine 12 [chan receive] :: top <- frames".
 		// Compact on purpose: CI mirrors these lines into check
@@ -48,13 +62,15 @@ func mustFinish(t *testing.T, name string, fn func() error) error {
 				l = strings.TrimSpace(l)
 				// Function lines have no leading tab in the raw dump;
 				// file:line lines start with a tab (now trimmed to a
-				// path) and contain ".go:". Keep the former.
+				// path) and contain ".go:". Keep the former. Eight
+				// frames reach past net internals to the caller
+				// (Serve vs echo server) that identifies a goroutine.
 				if l == "" || strings.Contains(l, ".go:") ||
 					strings.HasPrefix(l, "created by") {
 					continue
 				}
 				frames = append(frames, l)
-				if len(frames) == 4 {
+				if len(frames) == 8 {
 					break
 				}
 			}
@@ -135,6 +151,7 @@ func startEcho(t *testing.T) int {
 func TestEngineEndToEndFragment(t *testing.T) {
 	ClearLogs()
 	engine := NewEngine()
+	diagEngine = engine
 	cfg := Config{
 		ListenHost:       "127.0.0.1",
 		ListenPort:       0, // ephemeral; actual addr via Metrics
