@@ -1117,6 +1117,7 @@ type ProxyServer struct {
 	// in-flight connections on shutdown.
 	mu       sync.Mutex
 	ln       net.Listener
+	closed   atomic.Bool // set by Stop; Serve exits on the next Accept error
 	clients  map[net.Conn]struct{} // accepted client connections
 	upstream map[net.Conn]struct{} // dialled target connections
 }
@@ -1166,6 +1167,7 @@ func (ps *ProxyServer) Listen() error {
 		return err
 	}
 	ps.ln = ln
+	ps.closed.Store(false)
 	if ta, ok := ln.Addr().(*net.TCPAddr); ok {
 		ps.listenPort = ta.Port // resolves an ephemeral :0 to the real port
 	}
@@ -1205,7 +1207,12 @@ func (ps *ProxyServer) Serve() error {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			if errors.Is(err, net.ErrClosed) {
+			// Stop() sets closed before closing the listener, so
+			// shutdown never depends on how the runtime wraps the
+			// closed-listener error. (A CI run once hung 10 minutes
+			// in this loop's error path; never spin on errors after
+			// an intentional close.)
+			if ps.closed.Load() || errors.Is(err, net.ErrClosed) {
 				return nil
 			}
 			continue
@@ -1235,6 +1242,7 @@ func (ps *ProxyServer) Start() error {
 // Stop closes the listener (ending Serve) and every connection the
 // server is relaying. [Manjaniq integration]
 func (ps *ProxyServer) Stop() {
+	ps.closed.Store(true)
 	ps.mu.Lock()
 	if ps.ln != nil {
 		_ = ps.ln.Close()

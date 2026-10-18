@@ -13,6 +13,22 @@ import (
 // CI host. They do not — and cannot — prove DPI bypass on a live
 // network; that needs a device on a filtering network.
 
+// mustFinish runs a lifecycle call and fails the test, naming the
+// call, instead of letting a wedged lifecycle hang the whole test
+// binary until the go test timeout (observed once in CI).
+func mustFinish(t *testing.T, name string, fn func() error) error {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- fn() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(20 * time.Second):
+		t.Fatalf("%s did not finish within 20s (possible deadlock)", name)
+		return nil // unreachable
+	}
+}
+
 func TestFragmentStrategiesReassemble(t *testing.T) {
 	hello := ClientHelloBuilder{}.BuildClientHello("real.example.com", nil, nil, nil, 517)
 	if len(hello) < 100 {
@@ -94,13 +110,13 @@ func TestEngineEndToEndFragment(t *testing.T) {
 		FakeSNIMethod:    "prefix_fake",
 		Monitor:          true,
 	}
-	if err := engine.Start(cfg); err != nil {
+	if err := mustFinish(t, "Start", func() error { return engine.Start(cfg) }); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	if got := engine.State(); got != StateRunning {
 		t.Fatalf("state = %v, want RUNNING", got)
 	}
-	if err := engine.Start(cfg); err == nil {
+	if err := mustFinish(t, "second Start", func() error { return engine.Start(cfg) }); err == nil {
 		t.Fatal("second Start while running must fail")
 	}
 
@@ -133,17 +149,17 @@ func TestEngineEndToEndFragment(t *testing.T) {
 		t.Fatalf("Metrics().TotalConns = %d, want >= 1", m.TotalConns)
 	}
 
-	if err := engine.Stop(); err != nil {
+	if err := mustFinish(t, "Stop", func() error { return engine.Stop() }); err != nil {
 		t.Fatalf("Stop: %v", err)
 	}
 	if got := engine.State(); got != StateStopped {
 		t.Fatalf("state after Stop = %v, want STOPPED", got)
 	}
 	// Restart must work (Settings screen relies on it).
-	if err := engine.Start(cfg); err != nil {
+	if err := mustFinish(t, "restart Start", func() error { return engine.Start(cfg) }); err != nil {
 		t.Fatalf("restart: %v", err)
 	}
-	if err := engine.Stop(); err != nil {
+	if err := mustFinish(t, "restart Stop", func() error { return engine.Stop() }); err != nil {
 		t.Fatalf("restart Stop: %v", err)
 	}
 }

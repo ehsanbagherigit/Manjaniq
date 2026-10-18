@@ -276,18 +276,29 @@ func NewEngine() *Engine { return &Engine{state: StateStopped} }
 // failure is returned as an error, never fake success), then runs
 // the genuine proxy in the background.
 func (e *Engine) Start(cfg Config) error {
+	// Claim STARTING, then release the lock: hostname resolution and
+	// the bind below are blocking operations and must never run
+	// under e.mu (a stalled lookup would otherwise wedge State,
+	// Metrics and Stop behind it for its whole duration).
 	e.mu.Lock()
-	defer e.mu.Unlock()
-
 	if e.state == StateRunning || e.state == StateStarting || e.state == StateStopping {
-		return fmt.Errorf("engine is already %s", strings.ToLower(string(e.state)))
+		state := e.state
+		e.mu.Unlock()
+		return fmt.Errorf("engine is already %s", strings.ToLower(string(state)))
 	}
 	e.state = StateStarting
+	e.mu.Unlock()
+
+	fail := func(err error) error {
+		e.mu.Lock()
+		e.state = StateError
+		e.mu.Unlock()
+		sinkAppend(LevelError, err.Error())
+		return err
+	}
 
 	if err := validateConfig(cfg); err != nil {
-		e.state = StateError
-		sinkAppend(LevelError, "Invalid configuration: "+err.Error())
-		return err
+		return fail(fmt.Errorf("invalid configuration: %w", err))
 	}
 
 	listenHost := cfg.ListenHost
@@ -311,18 +322,25 @@ func (e *Engine) Start(cfg Config) error {
 		cfg.ConnectPort, cfg.FakeSNI, strategy, "")
 
 	if err := server.Listen(); err != nil {
-		e.state = StateError
-		sinkAppend(LevelError, fmt.Sprintf("Failed to listen on %s:%d: %v", listenHost, cfg.ListenPort, err))
-		return fmt.Errorf("listen %s:%d: %w", listenHost, cfg.ListenPort, err)
+		return fail(fmt.Errorf("listen %s:%d: %w", listenHost, cfg.ListenPort, err))
 	}
 
 	done := make(chan struct{})
+	e.mu.Lock()
+	if e.state != StateStarting {
+		// Stop() raced this start and won; do not come up.
+		e.mu.Unlock()
+		server.Stop()
+		return errors.New("start aborted")
+	}
 	e.server = server
 	e.mon = mon
 	e.cfg = cfg
 	e.startedAt = time.Now()
 	e.serveDone = done
 	e.state = StateRunning
+	e.mu.Unlock()
+
 	go func() {
 		err := server.Serve()
 		e.mu.Lock()

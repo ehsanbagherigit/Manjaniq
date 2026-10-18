@@ -74,9 +74,20 @@ jobs:
           # Module mode (go.mod at the repo root declares "module
           # manjaniq"); validates that the engine package imported by
           # native/bridge.go resolves and passes its tests on the host
-          # before the Android cross-compile below.
+          # before the Android cross-compile below. -count=3 keeps an
+          # intermittent lifecycle deadlock detectable; the failure
+          # dump is mirrored into annotations because raw run logs
+          # are not always downloadable.
           export GO111MODULE=on
-          go test ./engine/...
+          if ! go test -count=3 -timeout 240s -v ./engine/... 2>&1 | tee /tmp/gotest.log; then
+            echo "::error title=Go tests failed::go test ./engine/... failed; context lines follow as annotations"
+            awk '/panic: test timed out|--- FAIL|did not finish/{f=1} f&&c++<48{print}' /tmp/gotest.log > /tmp/gotest.ctx
+            if [ ! -s /tmp/gotest.ctx ]; then tail -n 48 /tmp/gotest.log > /tmp/gotest.ctx; fi
+            while IFS= read -r line; do
+              printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g')"
+            done < /tmp/gotest.ctx
+            exit 1
+          fi
 
       - name: Build Native Library (arm64-v8a)
         run: |
