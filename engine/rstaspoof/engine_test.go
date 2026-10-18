@@ -218,6 +218,38 @@ func TestEngineEndToEndFragment(t *testing.T) {
 	}
 }
 
+// TestRapidStartStop is a regression test for a resurrection race
+// found via CI goroutine dumps: if Stop ran before the Serve
+// goroutine was first scheduled, Serve used to observe the
+// just-cleared listener, bind a fresh one, and accept forever —
+// Stop then waited eternally and the engine could never be
+// stopped. Hammering start→immediate-stop exercises that window.
+func TestRapidStartStop(t *testing.T) {
+	engine := NewEngine()
+	diagEngine = engine
+	cfg := Config{
+		ListenHost:       "127.0.0.1",
+		ListenPort:       0,
+		ConnectIP:        "127.0.0.1",
+		ConnectPort:      443,
+		FakeSNI:          "cdnjs.cloudflare.com",
+		BypassMethod:     "fragment",
+		FragmentStrategy: "sni_split",
+		Monitor:          true,
+	}
+	for i := 0; i < 10; i++ {
+		if err := mustFinish(t, "rapid Start", func() error { return engine.Start(cfg) }); err != nil {
+			t.Fatalf("iteration %d Start: %v", i, err)
+		}
+		if err := mustFinish(t, "rapid Stop", func() error { return engine.Stop() }); err != nil {
+			t.Fatalf("iteration %d Stop: %v", i, err)
+		}
+		if got := engine.State(); got != StateStopped {
+			t.Fatalf("iteration %d state = %v, want STOPPED", i, got)
+		}
+	}
+}
+
 func TestEngineRejectsBadConfig(t *testing.T) {
 	engine := NewEngine()
 	cfg := Config{ConnectPort: 0, FakeSNI: "x", BypassMethod: "fragment"}

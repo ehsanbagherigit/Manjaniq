@@ -1193,16 +1193,31 @@ func (ps *ProxyServer) Addr() string {
 }
 
 // Serve accepts connections until Stop closes the listener, then
-// returns nil. [Manjaniq integration] The original loop continued
-// on every Accept error, so closing the listener would have spun
+// returns nil. Listen must have been called first (Start does
+// both). [Manjaniq integration] The original loop continued on
+// every Accept error, so closing the listener would have spun
 // forever; a closed-listener error now ends the loop.
+//
+// Serve must NEVER create a listener itself: a previous version
+// did (when ps.ln was nil), which raced with Stop — if Stop ran
+// before this goroutine was first scheduled, it closed and
+// cleared ps.ln, whereupon Serve "helpfully" re-listened on a
+// fresh socket, reset the closed flag and accepted forever while
+// Engine.Stop waited for it to exit (an engine that resurrects
+// itself and can never be stopped; found by CI goroutine dumps).
 func (ps *ProxyServer) Serve() error {
-	if ps.ln == nil {
-		if err := ps.Listen(); err != nil {
-			return err
-		}
+	if ps.closed.Load() {
+		return nil // Stop beat us to it; nothing to serve
 	}
+	ps.mu.Lock()
 	ln := ps.ln // capture: Stop() clears ps.ln from another goroutine
+	ps.mu.Unlock()
+	if ln == nil {
+		if ps.closed.Load() {
+			return nil
+		}
+		return errors.New("rstaspoof: Serve called before Listen")
+	}
 	defer ln.Close()
 	for {
 		conn, err := ln.Accept()
