@@ -307,18 +307,25 @@ jobs:
             cat $GITHUB_WORKSPACE/logcat_final.txt | tail -n 200 || true
             echo "=== All checks passed ==="
 
-      - name: Dump connected log on failure (visible in job log without blob)
+      - name: Dump connected log on failure (visible via annotations without blob)
         if: failure()
         run: |
           echo "===== connected.log (last 400 lines) ====="
           tail -n 400 connected.log 2>&1 | head -n 400 || echo "no connected.log"
           echo "===== logcat_connected.txt tail ====="
           tail -n 200 logcat_connected.txt 2>&1 | head -n 200 || echo "no logcat_connected"
-          echo "===== Searching for failure patterns ====="
-          grep -i -E "FAILURE|FAILED|Exception|AndroidRuntime|FATAL" connected.log | tail -n 100 || true
-          # Also create explicit annotations for CI log
-          if grep -q "FAIL" connected.log; then
-            echo "::error::connectedDebugAndroidTest contains FAIL - see above log"
+          echo "===== Surfacing last 80 log lines as annotations (blob logs are blocked) ====="
+          tail -n 400 connected.log 2>&1 | grep -i -E "FAIL|BUILD|error|Exception|AndroidRuntime|FATAL|manjaniq|Expected|Assertion" | tail -n 80 > /tmp/diag.txt || tail -n 80 connected.log > /tmp/diag.txt
+          if [ -s /tmp/diag.txt ]; then
+            while IFS= read -r line; do
+              printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-900)"
+            done < /tmp/diag.txt
+          else
+            echo "::error::connectedDebugAndroidTest failed but no diag pattern matched - dumping raw tail"
+            tail -n 80 connected.log > /tmp/raw.txt || true
+            while IFS= read -r line; do
+              printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-900)"
+            done < /tmp/raw.txt
           fi
 
       - name: Publish failure excerpt as PR comment (if PR)
