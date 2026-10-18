@@ -261,7 +261,15 @@ jobs:
           path: tested-apk
 
       - name: Build instrumentation APK before boot
-        run: ./gradlew :app:assembleDebugAndroidTest --stacktrace
+        run: |
+          mkdir -p diagnostics
+          if ! ./gradlew :app:assembleDebugAndroidTest --stacktrace > diagnostics/instrumentation-build.txt 2>&1; then
+            tail -100 diagnostics/instrumentation-build.txt
+            grep -E '^e:|What went wrong|Could not|Execution failed|error:|requires' diagnostics/instrumentation-build.txt | head -30 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            exit 1
+          fi
 
       - name: Free disk space for emulator
         run: |
