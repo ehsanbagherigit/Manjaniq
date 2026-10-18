@@ -299,7 +299,7 @@ fun RstaSettingsForm(
                         value = importText,
                         onValueChange = { importText = it },
                         modifier = Modifier.fillMaxWidth().height(180.dp),
-                        textStyle = LocalTextStyle.current.copy(
+                        textStyle = androidx.compose.ui.text.TextStyle(
                             fontFamily = FontFamily.Monospace, fontSize = 12.sp
                         )
                     )
