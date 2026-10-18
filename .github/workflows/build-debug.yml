@@ -310,26 +310,27 @@ jobs:
       - name: Dump connected log on failure (visible via annotations without blob)
         if: failure()
         run: |
-          echo "===== connected.log (last 400 lines) ====="
-          tail -n 400 connected.log 2>&1 | head -n 400 || echo "no connected.log"
+          echo "===== connected.log (full 600 lines) ====="
+          wc -l connected.log || echo "no wc"
+          tail -n 600 connected.log 2>&1 | cat -n | tail -n 600 || echo "no connected.log"
           echo "===== logcat_connected.txt tail ====="
           tail -n 200 logcat_connected.txt 2>&1 | head -n 200 || echo "no logcat_connected"
-          echo "===== Surfacing full connected.log tail as annotations ====="
-          # Always dump last 80 raw lines as errors so root cause is visible even if grep misses
-          tail -n 80 connected.log > /tmp/raw_tail.txt || true
-          echo "--- RAW TAIL (80) ---"
-          cat /tmp/raw_tail.txt || true
+          echo "===== Extracting FAILURE context ====="
+          grep -n -i -E "FAILURE|FAILED|What went wrong|Caused by|Exception|BUILD FAILED|Task :app" connected.log | tail -n 100 > /tmp/failure_ctx.txt || true
+          cat /tmp/failure_ctx.txt || echo "no failure ctx"
+          # Also grab 20 lines after each FAILURE match for context
+          grep -n "FAILURE" connected.log | cut -d: -f1 | while read n; do echo "--- CONTEXT around line $n ---"; sed -n "$((n-5)),$((n+20))p" connected.log; done > /tmp/failure_detail.txt 2>&1 || true
+          cat /tmp/failure_detail.txt | head -n 200 || true
+          echo "===== Surfacing as annotations ====="
+          # Surface raw tail + failure context as annotations (max 50)
+          cat /tmp/failure_ctx.txt /tmp/failure_detail.txt 2>/dev/null | head -n 50 > /tmp/ann.txt || tail -n 50 connected.log > /tmp/ann.txt
           while IFS= read -r line; do
             [ -z "$line" ] && continue
-            printf '::error::[raw tail] %s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-900)"
-          done < /tmp/raw_tail.txt
-          echo "--- FILTERED DIAG ---"
-          tail -n 400 connected.log 2>&1 | grep -i -E "FAIL|BUILD|error|Exception|AndroidRuntime|FATAL|manjaniq|Expected|Assertion|What went wrong|Try:" | tail -n 80 > /tmp/diag.txt || true
-          if [ -s /tmp/diag.txt ]; then
-            while IFS= read -r line; do
-              printf '::error::[diag] %s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-900)"
-            done < /tmp/diag.txt
-          fi
+            printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-900)"
+          done < /tmp/ann.txt
+          # Also dump raw tail as warning so it appears in log view even if annotations truncated
+          echo "::warning::Last 80 lines of connected.log:"
+          tail -n 80 connected.log | while IFS= read -r line; do echo "::warning::$line"; done || true
 
       - name: Publish failure excerpt as PR comment (if PR)
         if: failure() && github.event_name == 'pull_request'
