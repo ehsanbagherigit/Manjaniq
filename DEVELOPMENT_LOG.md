@@ -258,3 +258,57 @@ The smallest experiment to test native-library integration without modifying the
 ### Pending Actions
 - **User Action**: Confirm the device ABI (e.g., `arm64-v8a`).
 - **Verification**: The PoC remains unverified until a `.so` is built and loaded by the Android app.
+
+---
+
+## 2026-10-18 — Fix GitHub Actions APK build ("cannot find package manjaniq/engine/rstaspoof")
+
+### Root cause (three stacked problems, all verified against the repo)
+1. `.github/workflows/build-debug.yml` set `GO111MODULE=off`, so the
+   module-style import `manjaniq/engine/rstaspoof` in `native/bridge.go`
+   could never resolve (no GOPATH checkout exists in CI).
+2. There was **no `go.mod`** anywhere in the repository, despite older
+   docs claiming one existed — so module mode had nothing to resolve
+   against either.
+3. The **`engine/rstaspoof` package itself was missing from GitHub**:
+   `.gitignore` contained `/engine/`, so the engine was never committed
+   (verified: no remote branch/tree contains `engine/` or `go.mod`).
+   The previously green CI runs used an older stub `bridge.go` with no
+   engine import; commit 5a5f3ae rewrote the bridge against an engine
+   API that only existed on a local disk.
+
+### Fixes
+- Added root `go.mod` (`module manjaniq`, `go 1.22`).
+- Added `engine/rstaspoof` implementing exactly the API `bridge.go`
+  uses (`Config`, `NewEngine`, `Start`/`Stop`/`State`/`Metrics`,
+  `StateRunning`, ...): synchronous bind (bind failure is a real
+  error, never fake success), plain TCP relay to
+  `CONNECT_IP:CONNECT_PORT`, live metrics, idempotent `Stop`, restart
+  support, host-side unit tests. **Note:** SNI-spoof/fragment bypass
+  logic is *not* implemented yet — the config fields are parsed so the
+  Kotlin<->Go contract works; porting the upstream bypass into
+  `relay()` is the remaining engine work.
+- Removed `/engine/` from `.gitignore` so the package is tracked.
+- `build-debug.yml`: `GO111MODULE=off` -> `on`; native build still
+  runs from the repo root as `go build ./native` (whole package,
+  bridge.c included) -> `app/src/main/jniLibs/arm64-v8a/libmanjaniq_native.so`,
+  which is the default jniLibs dir `app/build.gradle.kts`/AGP packages
+  as `lib/arm64-v8a/...`. Added a quick `go test ./engine/...` step.
+- Deleted duplicate `.github/workflows/android_ci.yml`: it built only
+  `native/bridge.go` (dropping bridge.c) into `native/arm64-v8a/`, a
+  path Gradle never packages. `build-debug.yml` is now the single
+  authoritative pipeline.
+- Kotlin compile fixes unmasked once the native step can pass (this
+  code had never compiled in CI): `ManjaniqTheme.kt` declared the
+  wrong package and an `object` instead of the `@Composable`
+  `ManjaniqTheme` that `MainActivity` imports/calls; `ManjaniqApp.kt`
+  and `StatusCard.kt` used `.background`/`RoundedCornerShape` without
+  imports; `isStarting` was delegated with `by` but used via `.value`
+  and passed as `State<Boolean>`.
+
+### Verification
+- Workflow YAML parsed with a real YAML parser; `git diff --check` clean.
+- No Go/JDK toolchain in the local sandbox, so Go/Gradle compilation
+  is verified by GitHub Actions (the workflow's `go test`, native
+  verification script, unit tests, `assembleDebug`, and APK-content
+  check). CI run result is reported on the pull request.

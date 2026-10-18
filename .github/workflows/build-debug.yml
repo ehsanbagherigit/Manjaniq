@@ -58,6 +58,16 @@ jobs:
           test -x "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
           echo "Android NDK and ARM64 compiler are ready."
 
+      - name: Test Go engine package
+        run: |
+          set -euo pipefail
+          # Module mode (go.mod at the repo root declares "module
+          # manjaniq"); validates that the engine package imported by
+          # native/bridge.go resolves and passes its tests on the host
+          # before the Android cross-compile below.
+          export GO111MODULE=on
+          go test ./engine/...
+
       - name: Build Native Library (arm64-v8a)
         run: |
           set -euo pipefail
@@ -66,7 +76,12 @@ jobs:
           export GOOS=android
           export GOARCH=arm64
           export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
-          export GO111MODULE=off
+          # Module mode is required: bridge.go imports
+          # "manjaniq/engine/rstaspoof". GO111MODULE=off broke that
+          # import ("cannot find package") because there is no GOPATH
+          # checkout. Run from the repo root so ./native resolves
+          # against the root go.mod.
+          export GO111MODULE=on
           # Build the whole ./native package (bridge.go + bridge.c).
           # Building only ./native/bridge.go silently drops the C wrapper and
           # leaves NewStringUTF_wrapper undefined, which makes dlopen fail on

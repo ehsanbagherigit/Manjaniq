@@ -15,8 +15,10 @@ local.properties
 # OS
 .DS_Store
 
-# Engine
-/engine/
+# Engine: engine/rstaspoof is tracked in this repository (it is
+# imported by native/bridge.go as manjaniq/engine/rstaspoof).
+# Do NOT re-add "/engine/" here: excluding it is what made the
+# package vanish from GitHub and broke every CI build.
 
 # Native / engine build artifacts
 *.apk

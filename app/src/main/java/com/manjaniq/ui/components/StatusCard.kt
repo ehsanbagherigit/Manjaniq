@@ -1,7 +1,9 @@
 // Package com.manjaniq.ui.components provides UI composable functions.
 package com.manjaniq.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment

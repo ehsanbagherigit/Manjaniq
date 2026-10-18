@@ -18,7 +18,9 @@ import com.manjaniq.core.models.EngineState
 @Composable
 fun ManjaniqApp() {
     var engineState by remember { mutableStateOf(EngineState.STOPPED) }
-    var isStarting by remember { mutableStateOf(false) }
+    // Not delegated with `by`: the State object itself is passed to
+    // EngineControlSection (State<Boolean>) and mutated via `.value`.
+    val isStarting = remember { mutableStateOf(false) }
     var bridgeResult by remember { mutableStateOf("Not run yet") }
     var isError by remember { mutableStateOf(false) }
     var currentConfig by remember { mutableStateOf<RSTAConfig?>(RSTAConfig.DEFAULT) }
