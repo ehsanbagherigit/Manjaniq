@@ -476,3 +476,27 @@ not an executable).
   unsigned debug build; arm64-v8a only.
 - Settings draft edits are discarded if you switch tabs without
   saving. Config changes while running require the offered restart.
+
+### Follow-up (same day): engine "resurrection" race — found by CI, fixed
+- Run 39088287350 hung the full 10-minute Go test timeout on a
+  docs-only commit. Instrumented CI (named 20s per-call guards,
+  one-line goroutine dumps + engine-internal state mirrored into
+  check annotations, `-count=3`) reproduced it reliably and
+  identified the wedge: `Stop` after a restart.
+- Root cause (real product bug, not test noise): `Start` spawns
+  the `Serve` goroutine; a fast `Stop` could run before that
+  goroutine was first scheduled, closing and clearing the
+  listener — `Serve` then saw a nil listener, bound a *fresh*
+  socket, reset the closed flag and accepted forever while
+  `Stop` waited for it to exit. On a phone (Start, then quickly
+  Stop) the engine would have been unstoppable.
+- Fixes: `Serve` never creates a listener (serves only what
+  `Listen()` made; exits immediately if already closed);
+  `Engine.Start` does blocking work (DNS/bind) outside its mutex;
+  accept loop also keys off an explicit closed flag.
+  `TestRapidStartStop` (10 start→immediate-stop cycles per run)
+  guards the regression. Failing runs for the record:
+  39088287350, 39089231697, 39089475739, 39089899015;
+  fixed and green: 39090141043 (3 consecutive failures pre-fix
+  under identical `-count=3` conditions, pass after; the final
+  docs commit re-verifies HEAD once more).
