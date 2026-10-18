@@ -21,9 +21,15 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun attachBaseContext(newBase: Context) {
-        val prefs = AppPreferences(newBase)
-        val lang = prefs.currentLanguage()
-        super.attachBaseContext(LocaleHelper.wrapContext(newBase, lang))
+        val wrapped = try {
+            val prefs = AppPreferences(newBase)
+            val lang = prefs.currentLanguage()
+            LocaleHelper.wrapContext(newBase, lang)
+        } catch (e: Exception) {
+            // Never crash during attachBaseContext — fallback to system locale
+            newBase
+        }
+        super.attachBaseContext(wrapped)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
