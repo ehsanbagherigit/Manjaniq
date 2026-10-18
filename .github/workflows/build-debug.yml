@@ -307,6 +307,32 @@ jobs:
             cat $GITHUB_WORKSPACE/logcat_final.txt | tail -n 200 || true
             echo "=== All checks passed ==="
 
+      - name: Dump connected log on failure (visible in job log without blob)
+        if: failure()
+        run: |
+          echo "===== connected.log (last 400 lines) ====="
+          tail -n 400 connected.log 2>&1 | head -n 400 || echo "no connected.log"
+          echo "===== logcat_connected.txt tail ====="
+          tail -n 200 logcat_connected.txt 2>&1 | head -n 200 || echo "no logcat_connected"
+          echo "===== Searching for failure patterns ====="
+          grep -i -E "FAILURE|FAILED|Exception|AndroidRuntime|FATAL" connected.log | tail -n 100 || true
+          # Also create explicit annotations for CI log
+          if grep -q "FAIL" connected.log; then
+            echo "::error::connectedDebugAndroidTest contains FAIL - see above log"
+          fi
+
+      - name: Publish failure excerpt as PR comment (if PR)
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let log = '';
+            try { log = fs.readFileSync('connected.log', 'utf8'); } catch(e) { log = 'no connected.log: ' + e; }
+            const tail = log.split('\n').slice(-300).join('\n').slice(0, 60000);
+            const body = `### ❌ Emulator smoke test failed @ \`${context.sha.slice(0,7)}\`\n\n<details><summary>connected.log tail</summary>\n\n\`\`\`\n${tail}\n\`\`\`\n\n</details>`;
+            github.rest.issues.createComment({owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body});
+
       - name: Upload diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
