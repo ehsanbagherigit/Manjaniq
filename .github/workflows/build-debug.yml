@@ -305,6 +305,21 @@ jobs:
           df -h > diagnostics/disk.txt
           free -h > diagnostics/memory.txt
 
+      - name: Surface launch diagnostics through GitHub annotations
+        if: always()
+        run: |
+          for file in diagnostics/launch.txt diagnostics/instrumentation.txt diagnostics/activity-start.txt; do
+            if [ -f "$file" ]; then
+              tail -45 "$file" | while IFS= read -r line; do
+                line="${line//'%'/'%25'}"
+                echo "::notice title=$file::$line"
+              done
+            fi
+          done
+          grep -E 'FATAL EXCEPTION|AndroidRuntime|UnsatisfiedLinkError|Unable to start activity|Caused by:' diagnostics/test-logcat.txt | tail -35 | while IFS= read -r line; do
+            echo "::notice title=logcat::$line"
+          done || true
+
       - name: Upload emulator evidence
         if: always()
         uses: actions/upload-artifact@v4
