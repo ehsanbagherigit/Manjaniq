@@ -389,3 +389,90 @@ On the machine that has `engine/rstaspoof/`:
 - GitHub Actions on this commit is **expected to fail** at
   "Test Go engine package" with the explicit missing-source error:
   the genuine engine is not committed yet, so no APK is claimed.
+
+---
+
+## 2026-10-18 — Genuine RSTA engine integrated; full Android app (APK green)
+
+### What happened
+The owner uploaded the genuine upstream source to `rsta-source/` on
+`master` (`rstaspoof.go` 1,973 lines, `config.json`, `README.md`).
+Merged into this branch (`3955cbf`); the upload had accidentally
+renamed away the project `README.md` (restored) and left a 2-byte
+placeholder at `rsta-source/rstaspoof` (removed — it was `\r\n`,
+not an executable).
+
+### Genuine engine, as read from source (not docs)
+- Single-file `package main`, stdlib only. Fixed-destination TCP
+  proxy: parses the first TLS ClientHello, applies the chosen
+  bypass, then relays; "server replied" ⇒ bypass OK, silence ⇒
+  DPI-blocked event. Rich `PacketMonitor` (per-connection state +
+  total/OK/blocked/byte counters) printing colourised events.
+- Methods: `fragment`, `fake_sni`, `combined`. Strategies:
+  `sni_split`, `half`, `multi` (24B chunks), `tls_record_frag`.
+- **Honest findings:** in this source the "TTL trick" does NOT set
+  IP TTL and there is no raw-socket injection (`-no-raw` is parsed
+  and ignored; `FAKE_SNI_INJECT` print code is unreachable).
+  `fake_sni` = fake-ClientHello probe on a side connection +
+  SNI-split; `FAKE_SNI_METHOD`/`FAKE_SNI_FRAGMENT_REAL` are parsed
+  and stored but do not change behaviour. The UI says exactly this.
+- Embedding blockers: CLI `main()`, `os.Exit` paths, stdout-only
+  output, and `ProxyServer.Start()` `continue`d on Accept errors
+  (could never shut down, no connection tracking).
+
+### Integration (smallest adaptation; protocol logic untouched)
+- `engine/rstaspoof/rstaspoof.go` = the genuine file with marked
+  `[Manjaniq integration]` changes only: `package rstaspoof`,
+  `main()`+CLI imports removed, `fmt.Print*` routed to a leveled
+  log ring, `Listen()`/`Serve()` split (synchronous bind errors),
+  closed-listener ends the accept loop, connection tracking +
+  `Stop()`. `rsta-source/` keeps the pristine copy to diff against.
+- `engine/rstaspoof/engine.go` (new): Config (genuine JSON keys),
+  Engine Start/Stop/State, Metrics from the genuine monitor
+  counters, log access. Start mirrors the original `main()` wiring
+  (resolve target host, monitor mode, StrategyFactory); one
+  documented change: no pinned source-interface IP (breaks on
+  Android network switching). Bind happens synchronously, so the
+  UI can never show RUNNING for a failed start; Stop closes the
+  listener and in-flight connections and reports STOPPED only
+  after the serve loop exits (session stats go to the log).
+- JNI: `GetLogs`/`ClearLogs` added on both sides; Kotlin config
+  JSON now also sends `FAKE_SNI_METHOD`/`FAKE_SNI_FRAGMENT_REAL`
+  (previously dropped silently).
+- Android: foreground `EngineService` (`specialUse`, notification
+  with Stop action, engine stopped on service destroy);
+  `EngineRepository` polls real state/metrics/logs at 1s (no
+  fabricated values); `ConfigStore` persists genuine-format JSON
+  in SharedPreferences; Material 3 tabs — Dashboard (state, actual
+  listen address, genuine stats, recent log, local-proxy
+  explanation), Settings (all genuine keys, validated inputs,
+  honest per-method/strategy descriptions, apply/restart/reset
+  with confirmations, JSON import = paste-filled form only,
+  export = view/copy), Logs (timestamps, levels, pause/resume,
+  copy, clear with confirmation, empty state). `arm64-v8a`
+  abiFilter; permissions limited to INTERNET /
+  ACCESS_NETWORK_STATE / foreground-service / notifications.
+
+### Verification (real, in GitHub Actions)
+- `engine_test.go` on the CI host: fragment reassembly for all 4
+  strategies, built-ClientHello SNI parse round-trip, **full
+  proxy pass** of a built ClientHello through the running genuine
+  engine (fragment/sni_split) to an echo upstream, byte-identical;
+  double-start rejected; restart works; bad configs rejected.
+- Run 39087574786 (engine slice): all steps green.
+- Run 39087908963 (full app): **all steps green** — Go tests,
+  arm64 native build, JNI/ELF verification, unit tests,
+  `assembleDebug`, APK contains `lib/arm64-v8a/libmanjaniq_native.so`,
+  artifact `manjaniq-debug-apk` uploaded (11,314,818 bytes).
+- NOT verified (impossible in this sandbox): on-device launch,
+  Start/Stop against a live network, and whether any bypass method
+  defeats a real DPI middlebox. Compilation + localhost proxying
+  do not prove censorship evasion — device testing is next.
+
+### Known limitations
+- Traffic counters advance in 256KB steps (genuine monitor design).
+- English UI only (Persian localization deferred to protect the
+  working integration); default system launcher icon;
+  unsigned debug build; arm64-v8a only.
+- Settings draft edits are discarded if you switch tabs without
+  saving. Config changes while running require the offered restart.

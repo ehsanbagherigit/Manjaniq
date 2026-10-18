@@ -1,15 +1,18 @@
 # Manjaniq
 
-Modular network utility application for Android. The initial feature is a native
-UI for controlling the existing RSTA SNI Spoof Go engine
-(`engine/rstaspoof/`, a separate repository kept unmodified).
+Modular network utility application for Android. Its feature is a native
+UI controlling the genuine RSTA SNI Spoof Go engine, integrated as an
+embeddable JNI library at `engine/rstaspoof/` (the pristine upstream file
+is kept, for reference/diffing, at `rsta-source/rstaspoof.go`). The app is a
+local proxy controller: point other apps at the configured listen address;
+it does not redirect all device traffic and needs no root.
 
-- Kotlin + Jetpack Compose
+- Kotlin + Jetpack Compose, Go/cgo JNI bridge (`native/`), foreground service
 - Application ID / namespace: `com.manjaniq`
-- minSdk 26, targetSdk/compileSdk 35
-- Core models and interfaces live in `core/models/` and `core/interfaces/`
-  and are compiled into the `:app` module via Gradle source-set configuration
-  (no files were moved).
+- minSdk 26, targetSdk/compileSdk 35, ABI: arm64-v8a
+- App models live under `app/src/main/java/com/manjaniq/core/`
+  (the project-root `core/` directory holds reference copies that are
+  deliberately not compiled — see `app/build.gradle.kts`).
 
 See `ARCHITECTURE.md`, `ROADMAP.md`, `UI_DESIGN_GUIDE.md`, and `report.md`
 for the design and progress documentation.
@@ -19,8 +22,9 @@ for the design and progress documentation.
 Debug APKs are built automatically by the workflow at
 `.github/workflows/build-debug.yml` on every push and pull request:
 
-1. Push this repository to GitHub (the nested `engine/rstaspoof/.git` directory
-   is not required by the build).
+1. Push this repository to GitHub. The workflow builds the Go engine
+   (`engine/rstaspoof`) into `libmanjaniq_native.so` (arm64-v8a) with the
+   NDK and packages it into the APK automatically.
 2. Open the repository's **Actions** tab and wait for the **Build Debug APK**
    workflow.
 3. Download the `manjaniq-debug-apk` artifact, which contains
@@ -74,8 +78,9 @@ Manjaniq/
 │   ├── models/                   # EngineState, RSTAConfig, OperationResult
 │   ├── interfaces/               # EngineController, EngineStatusProvider, Logger
 │   └── common/                   # Reserved (empty)
-├── feature-rsta/                 # Reserved for the RSTA feature module (empty)
-├── engine/rstaspoof/             # Existing Go engine (separate git repo, unmodified)
+├── engine/rstaspoof/             # Genuine RSTA engine (embeddable Go package)
+├── native/                       # JNI bridge (bridge.go + bridge.c) and verifier
+├── rsta-source/                  # Pristine upstream RSTA source (reference only)
 ├── .github/workflows/            # CI build
 └── *.md                          # Architecture, roadmap, UI guide, report
 ```
