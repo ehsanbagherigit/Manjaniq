@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"io"
 	"net"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -15,7 +17,10 @@ import (
 
 // mustFinish runs a lifecycle call and fails the test, naming the
 // call, instead of letting a wedged lifecycle hang the whole test
-// binary until the go test timeout (observed once in CI).
+// binary until the go test timeout (observed once in CI, where
+// "restart Stop" wedged intermittently). On timeout it first logs
+// the goroutine stacks that involve engine code, so CI annotations
+// show exactly where every party is stuck.
 func mustFinish(t *testing.T, name string, fn func() error) error {
 	t.Helper()
 	done := make(chan error, 1)
@@ -24,6 +29,14 @@ func mustFinish(t *testing.T, name string, fn func() error) error {
 	case err := <-done:
 		return err
 	case <-time.After(20 * time.Second):
+		buf := make([]byte, 1<<20)
+		n := runtime.Stack(buf, true)
+		for _, block := range strings.Split(string(buf[:n]), "\n\n") {
+			if strings.Contains(block, "rstaspoof.") ||
+				strings.Contains(block, "testing.tRunner") {
+				t.Logf("STUCK GOROUTINE:\n%s", block)
+			}
+		}
 		t.Fatalf("%s did not finish within 20s (possible deadlock)", name)
 		return nil // unreachable
 	}

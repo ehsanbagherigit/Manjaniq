@@ -81,8 +81,8 @@ jobs:
           export GO111MODULE=on
           if ! go test -count=3 -timeout 240s -v ./engine/... 2>&1 | tee /tmp/gotest.log; then
             echo "::error title=Go tests failed::go test ./engine/... failed; context lines follow as annotations"
-            awk '/panic: test timed out|--- FAIL|did not finish/{f=1} f&&c++<48{print}' /tmp/gotest.log > /tmp/gotest.ctx
-            if [ ! -s /tmp/gotest.ctx ]; then tail -n 48 /tmp/gotest.log > /tmp/gotest.ctx; fi
+            awk '/STUCK GOROUTINE|panic: test timed out|--- FAIL|did not finish/{f=1} f&&c++<120{print}' /tmp/gotest.log > /tmp/gotest.ctx
+            if [ ! -s /tmp/gotest.ctx ]; then tail -n 60 /tmp/gotest.log > /tmp/gotest.ctx; fi
             while IFS= read -r line; do
               printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g')"
             done < /tmp/gotest.ctx
