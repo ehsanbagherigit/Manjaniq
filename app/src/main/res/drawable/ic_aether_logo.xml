@@ -1,0 +1,33 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="32dp"
+    android:height="32dp"
+    android:viewportWidth="32"
+    android:viewportHeight="32">
+    <!-- Aether cyan/blue logo: orbital / atom -->
+    <path
+        android:fillColor="#0F1B1E"
+        android:pathData="M4,4 L28,4 A4,4 0 0 1 32,8 L32,24 A4,4 0 0 1 28,28 L4,28 A4,4 0 0 1 0,24 L0,8 A4,4 0 0 1 4,4 Z"
+        android:strokeColor="#3DD4E6"
+        android:strokeWidth="1.2" />
+    <!-- Outer orbit -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M16,7 A9,9 0 1 1 16,25 A9,9 0 0 1 16,7"
+        android:strokeColor="#2A8FE6"
+        android:strokeWidth="1" />
+    <!-- Inner core -->
+    <path
+        android:fillColor="#3DD4E6"
+        android:pathData="M16,11 A5,5 0 1 1 16,21 A5,5 0 0 1 16,11 Z" />
+    <!-- Highlight dot -->
+    <path
+        android:fillColor="#7EE8F5"
+        android:pathData="M18,13 A1.5,1.5 0 1 1 18,16 A1.5,1.5 0 0 1 18,13 Z" />
+    <!-- Small orbit dot -->
+    <path
+        android:fillColor="#3DD4E6"
+        android:pathData="M24,9 A2,2 0 1 1 24,13 A2,2 0 0 1 24,9 Z" />
+    <!-- Integration point: replace with real blue Aether logo asset from owner.
+         Expected: cyan/blue #3DD4E6 / #2A8FE6 palette, orbital/tech motif.
+         File: ic_aether_logo.xml — preserve aspect ratio. -->
+</vector>

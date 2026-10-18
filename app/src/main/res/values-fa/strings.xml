@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">منجنیق</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">خانه</string>
+    <string name="nav_settings">تنظیمات</string>
+    <string name="nav_logs">گزارش‌ها</string>
+    <string name="nav_about">درباره</string>
+    <string name="nav_open">باز کردن منوی پیمایش</string>
+    <string name="nav_close">بستن منوی پیمایش</string>
+
+    <!-- Top Bar -->
+    <string name="app_subtitle">پروکسی محلی RSTA — کنترل SNI</string>
+
+    <!-- Core Selector -->
+    <string name="select_core">انتخاب هسته</string>
+    <string name="rsta_name">RSTA</string>
+    <string name="rsta_description">پروکسی جعل SNI و تکه‌تکه‌سازی. موتور Go آزمایش‌شده.</string>
+    <string name="aether_name">ایثر</string>
+    <string name="aether_description">پروتکل نسل بعدی. یکپارچه‌سازی در آینده.</string>
+    <string name="badge_available">در دسترس</string>
+    <string name="badge_ready">آماده</string>
+    <string name="badge_coming_soon">به‌زودی</string>
+    <string name="aether_coming_soon_title">ایثر — به‌زودی</string>
+    <string name="aether_coming_soon_body">ایثر یک موتور نسل جدید برای منجنیق است. رابط کاربری آماده است اما موتور هنوز یکپارچه نشده است. هیچ قابلیتی در این نسخه وجود ندارد. به‌روزرسانی‌های پروژه را دنبال کنید.</string>
+    <string name="aether_not_available">موتور در این نسخه موجود نیست</string>
+    <string name="aether_learn_more">بیشتر بدانید</string>
+
+    <!-- Connection Status -->
+    <string name="connection_status">وضعیت اتصال</string>
+    <string name="engine_status">وضعیت موتور</string>
+    <string name="status_running">در حال اجرا</string>
+    <string name="status_stopped">متوقف</string>
+    <string name="status_starting">در حال شروع</string>
+    <string name="status_stopping">در حال توقف</string>
+    <string name="status_error">خطا</string>
+    <string name="listen_address">شنود</string>
+    <string name="target_address">مقصد</string>
+    <string name="status_method">روش</string>
+    <string name="status_active">اتصالات فعال</string>
+    <string name="status_uptime">مدت کارکرد</string>
+
+    <!-- Start/Stop -->
+    <string name="start_engine">روشن کردن موتور</string>
+    <string name="stop_engine">خاموش کردن موتور</string>
+    <string name="starting">در حال شروع…</string>
+    <string name="stopping">در حال توقف…</string>
+    <string name="engine_error">خطای موتور</string>
+    <string name="view_logs">مشاهده گزارش‌ها</string>
+    <string name="dismiss">بستن</string>
+
+    <!-- RSTA Settings -->
+    <string name="rsta_settings">پیکربندی RSTA</string>
+    <string name="connection">اتصال</string>
+    <string name="bypass_method">روش دور زدن</string>
+    <string name="fragmentation">تکه‌تکه‌سازی</string>
+    <string name="output">خروجی</string>
+    <string name="advanced">پیشرفته</string>
+    <string name="listen_host">هاست شنود</string>
+    <string name="listen_host_hint">0.0.0.0 روی همه رابط‌هاست؛ 127.0.0.1 فقط همین دستگاه</string>
+    <string name="listen_port">پورت شنود</string>
+    <string name="target_host">هاست یا IP مقصد</string>
+    <string name="target_host_hint">هر اتصال پروکسی به اینجا هدایت می‌شود</string>
+    <string name="target_port">پورت مقصد</string>
+    <string name="fake_sni">نام دامنه SNI جعلی</string>
+    <string name="fake_sni_hint">نامی که DPI باید ببیند</string>
+    <string name="ttl_trick">ترفند TTL / کاوش hello جعلی</string>
+    <string name="ttl_trick_desc">برای fake_sni و combined استفاده می‌شود</string>
+    <string name="fragment_strategy">راهبرد تکه‌تکه‌سازی</string>
+    <string name="fragment_delay">تاخیر بین تکه‌ها (ثانیه، ۰ تا ۵)</string>
+    <string name="monitor_enabled">نظارت بر اتصال</string>
+    <string name="monitor_enabled_desc">جمع‌آوری آمار و نمایش رویدادها در گزارش‌ها</string>
+    <string name="quiet_mode">حالت بی‌صدا</string>
+    <string name="quiet_mode_desc">گزارش رویدادها خاموش (شمارنده‌ها فعال)</string>
+    <string name="save_settings">ذخیره تنظیمات</string>
+    <string name="export_json">خروجی JSON</string>
+    <string name="import_json">ورودی JSON</string>
+    <string name="reset_defaults">بازنشانی به پیش‌فرض</string>
+    <string name="restart_engine_title">موتور را دوباره راه‌اندازی کنیم؟</string>
+    <string name="restart_engine_msg">موتور در حال اجراست. این تنظیمات ذخیره و موتور دوباره راه‌اندازی شود؟ اتصالات فعال قطع می‌شوند.</string>
+    <string name="save_and_restart">ذخیره و راه‌اندازی مجدد</string>
+    <string name="save_only">فقط ذخیره</string>
+    <string name="reset_title">بازنشانی تنظیمات؟</string>
+    <string name="reset_msg">پیکربندی ذخیره‌شده با مقادیر پیش‌فرض جایگزین شود؟ قابل بازگشت نیست.</string>
+    <string name="reset">بازنشانی</string>
+    <string name="cancel">لغو</string>
+    <string name="config_json_title">پیکربندی JSON</string>
+    <string name="copy">کپی</string>
+    <string name="close">بستن</string>
+    <string name="import_config_title">ورود پیکربندی</string>
+    <string name="import_config_msg">یک فایل config.json معتبر را جای‌گذاری کنید. فقط فرم پر می‌شود — تا ذخیره نزنید چیزی ثبت نمی‌شود.</string>
+    <string name="import">وارد کردن</string>
+
+    <!-- General Settings -->
+    <string name="settings_title">تنظیمات</string>
+    <string name="settings_subtitle">ترجیحات برنامه و پیکربندی</string>
+    <string name="language">زبان</string>
+    <string name="language_desc">زبان نمایش را انتخاب کنید</string>
+    <string name="english">English</string>
+    <string name="persian">فارسی</string>
+    <string name="appearance">ظاهر</string>
+    <string name="theme">پوسته</string>
+    <string name="theme_dark">تیره</string>
+    <string name="theme_dark_desc">حالت تیره حرفه‌ای (پیش‌فرض)</string>
+    <string name="general">عمومی</string>
+    <string name="config_management">مدیریت پیکربندی</string>
+    <string name="config_management_desc">پیکربندی RSTA را وارد، صادر یا بازنشانی کنید</string>
+    <string name="settings_saved">تنظیمات ذخیره شد. در شروع بعدی اعمال می‌شود.</string>
+    <string name="settings_saved_restart">تنظیمات ذخیره و موتور در حال راه‌اندازی مجدد.</string>
+    <string name="settings_saved_next">تنظیمات ذخیره شد؛ در شروع دستی بعدی اعمال می‌شود.</string>
+    <string name="defaults_restored">مقادیر پیش‌فرض بازیابی شد.</string>
+    <string name="config_copied">پیکربندی کپی شد.</string>
+    <string name="imported_review">وارد شد. مقادیر را بررسی و سپس ذخیره کنید.</string>
+
+    <!-- Logs -->
+    <string name="logs_title">گزارش‌ها</string>
+    <string name="logs_subtitle">رویدادهای زنده موتور و عیب‌یابی</string>
+    <string name="pause">توقف نمایش</string>
+    <string name="resume">ادامه</string>
+    <string name="copy_logs">کپی</string>
+    <string name="clear_logs">پاک کردن</string>
+    <string name="clear_logs_title">پاک کردن گزارش‌ها؟</string>
+    <string name="clear_logs_msg">همه گزارش‌های بافر شده پاک شوند؟</string>
+    <string name="clear">پاک کردن</string>
+    <string name="logs_empty">هنوز گزارشی نیست.\n\nموتور را روشن کنید (نظارت روشن، حالت بی‌صدا خاموش)، سپس کلاینت را به پروکسی محلی وصل کنید.</string>
+    <string name="logs_paused">نمایش متوقف — موتور همچنان گزارش می‌دهد.</string>
+    <string name="filter_all">همه</string>
+    <string name="filter_rsta">RSTA</string>
+    <string name="filter_info">اطلاع</string>
+    <string name="filter_warn">هشدار</string>
+    <string name="filter_error">خطا</string>
+
+    <!-- About -->
+    <string name="about_title">درباره</string>
+    <string name="about_subtitle">اطلاعات برنامه منجنیق</string>
+    <string name="about_description">منجنیق یک برنامه ماژولار اندروید برای ابزارهای شبکه است. قابلیت اولیه آن کنترل موتور واقعی RSTA به‌صورت پروکسی محلی است. برنامه‌های سازگار را به آدرس شنود تنظیم کنید — بدون نیاز به روت و بدون VPN سراسری.</string>
+    <string name="version">نسخه</string>
+    <string name="engine">موتور</string>
+    <string name="engine_rsta_version">RSTA SNI Spoof</string>
+    <string name="repository">مخزن</string>
+    <string name="license">مجوز</string>
+    <string name="acknowledgements">قدردانی</string>
+    <string name="ack_text">ساخته‌شده با Kotlin، Compose و موتور متن‌باز RSTA. با سپاس از تیم RSTA و مشارکت‌کنندگان.</string>
+
+    <!-- Connection Details Expanded -->
+    <string name="live_statistics">آمار زنده</string>
+    <string name="uptime">مدت کارکرد</string>
+    <string name="active_connections">اتصالات فعال</string>
+    <string name="total_connections">کل اتصالات</string>
+    <string name="bypass_confirmed">دور زدن موفق</string>
+    <string name="blocked_no_reply">مسدود / بدون پاسخ</string>
+    <string name="traffic_up">ترافیک ارسالی</string>
+    <string name="traffic_down">ترافیک دریافتی</string>
+    <string name="how_it_works">چگونه کار می‌کند</string>
+    <string name="how_it_works_body">منجنیق موتور اصلی RSTA را به‌صورت پروکسی محلی اجرا می‌کند. برنامه یا مرورگر موردنظر را به آدرس شنود (%1$s) هدایت کنید. ترافیک کل دستگاه را تغییر نمی‌دهد و به روت نیاز ندارد.</string>
+    <string name="recent_log">گزارش اخیر</string>
+    <string name="open_full_logs">مشاهده کامل گزارش‌ها</string>
+
+    <!-- Accessibility -->
+    <string name="cd_manjaniq_logo">لوگوی منجنیق</string>
+    <string name="cd_rsta_logo">لوگوی RSTA</string>
+    <string name="cd_aether_logo">لوگوی ایثر</string>
+    <string name="cd_status_indicator">نشانگر وضعیت</string>
+
+    <!-- Errors -->
+    <string name="validation_error">خطای اعتبارسنجی</string>
+    <string name="listen_port_number">پورت شنود باید عدد باشد</string>
+    <string name="target_port_number">پورت مقصد باید عدد باشد</string>
+    <string name="fragment_delay_number">تاخیر تکه‌تکه‌سازی باید عدد باشد</string>
+    <string name="invalid_json">فرمت JSON نامعتبر است</string>
+    <string name="imported_config_error">پیکربندی واردشده: %1$s</string>
+
+    <!-- Empty states -->
+    <string name="no_events">هنوز رویدادی نیست. موتور را روشن کنید.</string>
+</resources>

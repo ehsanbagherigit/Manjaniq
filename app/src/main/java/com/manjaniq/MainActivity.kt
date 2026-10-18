@@ -1,25 +1,36 @@
-// Package com.manjaniq provides the main Android application entry point.
 package com.manjaniq
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import com.manjaniq.ui.theme.ManjaniqTheme
+import androidx.core.view.WindowCompat
+import com.manjaniq.core.AppPreferences
+import com.manjaniq.core.LocaleHelper
 import com.manjaniq.ui.components.ManjaniqApp
+import com.manjaniq.ui.theme.ManjaniqTheme
 
 class MainActivity : ComponentActivity() {
 
-    // Notifications show the foreground-service status; the engine
-    // still runs without the permission, just less visibly.
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+    override fun attachBaseContext(newBase: Context) {
+        val prefs = AppPreferences(newBase)
+        val lang = prefs.currentLanguage()
+        super.attachBaseContext(LocaleHelper.wrapContext(newBase, lang))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
