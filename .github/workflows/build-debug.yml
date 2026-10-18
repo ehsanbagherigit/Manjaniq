@@ -200,13 +200,24 @@ jobs:
   # Startup smoke test on real Android framework — catches launch crashes that
   # unit tests cannot (e.g., LocaleHelper mutating shared Configuration caused
   # immediate exit after install but left build+unit tests green).
+  # NOTE: Previous failure was "Timeout waiting for emulator to boot" — caused by
+  # installing system-images manually with `default` target + oversized RAM (4096M)
+  # and missing GPU/KVM options. Fixed below to let runner manage AVD with google_apis.
   emulator-smoke:
     runs-on: ubuntu-latest
     needs: build
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Enable KVM (hardware acceleration)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -lh /dev/kvm || echo "KVM not available - emulator will be slow"
+          egrep -c '(vmx|svm)' /proc/cpuinfo || echo "No VMX/SVM"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -232,7 +243,7 @@ jobs:
 
       - name: Install Android SDK Components and NDK
         run: |
-          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0" "ndk;25.2.9519653" "emulator" "platform-tools" "system-images;android-30;default;x86_64"
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0" "ndk;25.2.9519653"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> "$GITHUB_ENV"
 
       - name: Build native libs for emulator (arm64 + x86_64)
@@ -245,31 +256,59 @@ jobs:
           export GOARCH=amd64 CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang"
           go build -buildmode=c-shared -o app/src/main/jniLibs/x86_64/libmanjaniq_native.so ./native
 
+      - name: Free disk space for emulator
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost 2>/dev/null || true
+          df -h
+
       - name: Run instrumented smoke test on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
-          target: default
+          api-level: 29
+          target: google_apis
           arch: x86_64
           cores: 2
-          ram-size: 4096M
-          heap-size: 1024M
-          emulator-options: -no-window -no-snapshot -no-audio -no-boot-anim
+          avd-name: manjaniq-avd
+          force-avd-creation: true
+          emulator-boot-timeout: 900
+          ram-size: 2048M
+          heap-size: 512M
+          disk-size: 4096M
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           script: |
+            set -euo pipefail
             chmod +x gradlew
-            ./gradlew connectedDebugAndroidTest --stacktrace
-            # Also dump logcat around crash window for diagnostics
-            adb logcat -d | tail -n 200 > /tmp/logcat.txt || true
-            cat /tmp/logcat.txt
-            # Quick manual launch check (install + start, ensure process stays up)
-            ./gradlew assembleDebug
+            echo "=== ADB devices before test ==="
+            adb devices
+            echo "=== Running connectedDebugAndroidTest ==="
+            ./gradlew connectedDebugAndroidTest --stacktrace --info 2>&1 | tee /tmp/connected.log
+            echo "=== Test log tail ==="
+            tail -n 200 /tmp/connected.log || true
+            adb logcat -d | tail -n 300 > /tmp/logcat_connected.txt || true
+            echo "=== Logcat after connected test (tail) ==="
+            tail -n 100 /tmp/logcat_connected.txt || true
+            echo "=== Manual launch verification ==="
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb shell am start -n com.manjaniq/.MainActivity
             sleep 5
-            adb shell pidof com.manjaniq && echo "App process still running — launch OK" || (echo "::error::App process not found after launch"; adb logcat -d | grep -i -E "AndroidRuntime|FATAL|manjaniq|LocaleHelper" | tail -n 100; exit 1)
+            adb shell pidof com.manjaniq && echo "App process still running — launch OK" || (echo "::error::App process not found after launch"; adb logcat -d | grep -i -E "AndroidRuntime|FATAL|manjaniq|LocaleHelper" | tail -n 200; exit 1)
+            adb logcat -d | tail -n 200 > /tmp/logcat_final.txt || true
+            cat /tmp/logcat_final.txt
 
-      - name: Upload logcat on failure
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-diagnostics
+          path: |
+            /tmp/connected.log
+            /tmp/logcat_connected.txt
+            /tmp/logcat_final.txt
+          if-no-files-found: warn
+
+      - name: Upload logcat on failure (legacy)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
