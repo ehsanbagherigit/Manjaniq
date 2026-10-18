@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout
@@ -200,11 +200,8 @@ jobs:
   # Startup smoke test on real Android framework — catches launch crashes that
   # unit tests cannot (e.g., LocaleHelper mutating shared Configuration caused
   # immediate exit after install but left build+unit tests green).
-  # NOTE: Previous failure was "Timeout waiting for emulator to boot" — caused by
-  # installing system-images manually with `default` target + oversized RAM (4096M)
-  # and missing GPU/KVM options. Fixed below to let runner manage AVD with google_apis.
   emulator-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: build
     timeout-minutes: 30
     steps:
@@ -216,7 +213,8 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-          ls -lh /dev/kvm || echo "KVM not available - emulator will be slow"
+          ls -lh /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
           egrep -c '(vmx|svm)' /proc/cpuinfo || echo "No VMX/SVM"
 
       - name: Set up JDK 17
@@ -256,6 +254,15 @@ jobs:
           export GOARCH=amd64 CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang"
           go build -buildmode=c-shared -o app/src/main/jniLibs/x86_64/libmanjaniq_native.so ./native
 
+      - name: Download exact build APK
+        uses: actions/download-artifact@v4
+        with:
+          name: manjaniq-debug-apk
+          path: tested-apk
+
+      - name: Build instrumentation APK before boot
+        run: ./gradlew :app:assembleDebugAndroidTest --stacktrace
+
       - name: Free disk space for emulator
         run: |
           df -h
@@ -275,53 +282,28 @@ jobs:
           ram-size: 2048M
           heap-size: 512M
           disk-size: 4096M
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -accel on -verbose -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
-          script: |
-            chmod +x gradlew
-            echo "=== ADB devices before test ==="
-            adb devices
-            echo "=== Running connectedDebugAndroidTest ==="
-            set +e
-            ./gradlew connectedDebugAndroidTest --stacktrace 2>&1 | tee $GITHUB_WORKSPACE/connected.log
-            TEST_EXIT=${PIPESTATUS[0]}
-            echo "=== Graduated with exit $TEST_EXIT ==="
-            echo "=== Test log tail (last 500 lines) ==="
-            tail -n 500 $GITHUB_WORKSPACE/connected.log || true
-            echo "=== Logcat after test ==="
-            adb logcat -d > $GITHUB_WORKSPACE/logcat_connected.txt 2>&1 || true
-            tail -n 300 $GITHUB_WORKSPACE/logcat_connected.txt || true
-            if [ "$TEST_EXIT" -ne 0 ]; then
-              echo "::error::connectedDebugAndroidTest failed with $TEST_EXIT"
-              echo "=== Failure diagnostics ==="
-              grep -i -E "FAIL|error|Exception|AndroidRuntime|FATAL|manjaniq" $GITHUB_WORKSPACE/connected.log | tail -n 100 || true
-              grep -i -E "AndroidRuntime|FATAL|manjaniq|LocaleHelper" $GITHUB_WORKSPACE/logcat_connected.txt | tail -n 100 || true
-              exit $TEST_EXIT
-            fi
-            echo "=== Manual launch verification (after successful test) ==="
-            adb shell pm list packages | grep manjaniq || true
-            adb shell am start -n com.manjaniq/.MainActivity
-            sleep 5
-            adb shell pidof com.manjaniq && echo "App process still running — launch OK" || (echo "::error::App process not found after launch"; adb logcat -d | grep -i -E "AndroidRuntime|FATAL|manjaniq|LocaleHelper" | tail -n 200; exit 1)
-            adb logcat -d > $GITHUB_WORKSPACE/logcat_final.txt 2>&1 || true
-            cat $GITHUB_WORKSPACE/logcat_final.txt | tail -n 200 || true
-            echo "=== All checks passed ==="
+          script: bash .github/scripts/emulator-smoke.sh
 
-      - name: Upload diagnostics on failure
-        if: failure()
+      - name: Collect emulator diagnostics (including boot failures)
+        if: always()
+        run: |
+          mkdir -p diagnostics
+          adb devices -l > diagnostics/devices.txt 2>&1 || true
+          timeout 20 adb shell getprop > diagnostics/properties.txt 2>&1 || true
+          timeout 20 adb logcat -d > diagnostics/logcat.txt 2>&1 || true
+          cp ~/.android/avd/manjaniq-avd.avd/config.ini diagnostics/avd-config.ini || true
+          df -h > diagnostics/disk.txt
+          free -h > diagnostics/memory.txt
+
+      - name: Upload emulator evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: emulator-diagnostics
+          name: emulator-evidence-${{ github.sha }}
           path: |
-            connected.log
-            logcat_connected.txt
-            logcat_final.txt
-          if-no-files-found: warn
-
-      - name: Upload logcat on failure (legacy)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: emulator-logcat
-          path: /tmp/logcat.txt
-          if-no-files-found: warn
+            diagnostics/
+            app/build/outputs/androidTest-results/
+            app/build/reports/androidTests/
+          if-no-files-found: error
