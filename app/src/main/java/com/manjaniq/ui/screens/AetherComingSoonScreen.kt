@@ -4,7 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.HourglassTop
+import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -47,7 +47,7 @@ fun AetherComingSoonContent(
                     modifier = Modifier.size(48.dp)
                 )
                 Icon(
-                    imageVector = Icons.Filled.HourglassTop,
+                    imageVector = Icons.Filled.HourglassEmpty,
                     contentDescription = null,
                     tint = AetherCyan,
                     modifier = Modifier.size(28.dp)

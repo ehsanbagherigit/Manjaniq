@@ -5,7 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Article
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Settings
@@ -74,7 +74,7 @@ fun AppDrawerContent(
             val icon = when (dest.route) {
                 "home" -> Icons.Filled.Home
                 "settings" -> Icons.Filled.Settings
-                "logs" -> Icons.Filled.Article
+                "logs" -> Icons.Filled.Description
                 "about" -> Icons.Filled.Info
                 else -> Icons.Filled.Home
             }
@@ -138,7 +138,7 @@ fun AppDrawerContent(
 fun DrawerIconForRoute(route: String): ImageVector = when (route) {
     "home" -> Icons.Filled.Home
     "settings" -> Icons.Filled.Settings
-    "logs" -> Icons.Filled.Article
+    "logs" -> Icons.Filled.Description
     "about" -> Icons.Filled.Info
     else -> Icons.Filled.Home
 }
