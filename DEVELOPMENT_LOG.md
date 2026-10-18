@@ -309,6 +309,12 @@ The smallest experiment to test native-library integration without modifying the
 ### Verification
 - Workflow YAML parsed with a real YAML parser; `git diff --check` clean.
 - No Go/JDK toolchain in the local sandbox, so Go/Gradle compilation
-  is verified by GitHub Actions (the workflow's `go test`, native
-  verification script, unit tests, `assembleDebug`, and APK-content
-  check). CI run result is reported on the pull request.
+  is verified by GitHub Actions. Run 39083707635: Go engine tests,
+  native build and native verification passed; `testDebugUnitTest`
+  failed because `ManjaniqApp.kt` was still missing the Compose
+  imports fixed above. After adding them, run **39084006065 passed
+  every step** (Go tests, arm64-v8a native build + verification,
+  unit tests, `assembleDebug`, APK-content check for
+  `lib/arm64-v8a/libmanjaniq_native.so`, artifact upload).
+  Artifact `manjaniq-debug-apk` (11,100,830 bytes) is attached to
+  that run: https://github.com/ehsanbagherigit/Manjaniq/actions/runs/39084006065
