@@ -320,7 +320,7 @@ fun RstaSettingsForm(
                         }
                     }
                     importVisible = false
-                }) { Text(stringResource(R.string.import)) }
+                }) { Text(stringResource(R.string.import_action)) }
             },
             dismissButton = {
                 TextButton(onClick = { importVisible = false }) { Text(stringResource(R.string.cancel)) }

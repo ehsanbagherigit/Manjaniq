@@ -90,7 +90,7 @@
     <string name="close">Close</string>
     <string name="import_config_title">Import configuration</string>
     <string name="import_config_msg">Paste a genuine RSTA config.json (for example the supplied rsta-source/config.json). It fills this form only — nothing is saved until you tap Save.</string>
-    <string name="import">Import</string>
+    <string name="import_action">Import</string>
 
     <!-- General Settings -->
     <string name="settings_title">Settings</string>

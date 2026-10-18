@@ -90,7 +90,7 @@
     <string name="close">بستن</string>
     <string name="import_config_title">ورود پیکربندی</string>
     <string name="import_config_msg">یک فایل config.json معتبر را جای‌گذاری کنید. فقط فرم پر می‌شود — تا ذخیره نزنید چیزی ثبت نمی‌شود.</string>
-    <string name="import">وارد کردن</string>
+    <string name="import_action">وارد کردن</string>
 
     <!-- General Settings -->
     <string name="settings_title">تنظیمات</string>
