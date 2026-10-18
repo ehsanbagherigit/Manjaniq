@@ -278,24 +278,34 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           script: |
-            set -euo pipefail
             chmod +x gradlew
             echo "=== ADB devices before test ==="
             adb devices
             echo "=== Running connectedDebugAndroidTest ==="
-            ./gradlew connectedDebugAndroidTest --stacktrace --info 2>&1 | tee /tmp/connected.log
-            echo "=== Test log tail ==="
-            tail -n 200 /tmp/connected.log || true
-            adb logcat -d | tail -n 300 > /tmp/logcat_connected.txt || true
-            echo "=== Logcat after connected test (tail) ==="
-            tail -n 100 /tmp/logcat_connected.txt || true
-            echo "=== Manual launch verification ==="
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            set +e
+            ./gradlew connectedDebugAndroidTest --stacktrace 2>&1 | tee $GITHUB_WORKSPACE/connected.log
+            TEST_EXIT=${PIPESTATUS[0]}
+            echo "=== Graduated with exit $TEST_EXIT ==="
+            echo "=== Test log tail (last 500 lines) ==="
+            tail -n 500 $GITHUB_WORKSPACE/connected.log || true
+            echo "=== Logcat after test ==="
+            adb logcat -d > $GITHUB_WORKSPACE/logcat_connected.txt 2>&1 || true
+            tail -n 300 $GITHUB_WORKSPACE/logcat_connected.txt || true
+            if [ "$TEST_EXIT" -ne 0 ]; then
+              echo "::error::connectedDebugAndroidTest failed with $TEST_EXIT"
+              echo "=== Failure diagnostics ==="
+              grep -i -E "FAIL|error|Exception|AndroidRuntime|FATAL|manjaniq" $GITHUB_WORKSPACE/connected.log | tail -n 100 || true
+              grep -i -E "AndroidRuntime|FATAL|manjaniq|LocaleHelper" $GITHUB_WORKSPACE/logcat_connected.txt | tail -n 100 || true
+              exit $TEST_EXIT
+            fi
+            echo "=== Manual launch verification (after successful test) ==="
+            adb shell pm list packages | grep manjaniq || true
             adb shell am start -n com.manjaniq/.MainActivity
             sleep 5
             adb shell pidof com.manjaniq && echo "App process still running — launch OK" || (echo "::error::App process not found after launch"; adb logcat -d | grep -i -E "AndroidRuntime|FATAL|manjaniq|LocaleHelper" | tail -n 200; exit 1)
-            adb logcat -d | tail -n 200 > /tmp/logcat_final.txt || true
-            cat /tmp/logcat_final.txt
+            adb logcat -d > $GITHUB_WORKSPACE/logcat_final.txt 2>&1 || true
+            cat $GITHUB_WORKSPACE/logcat_final.txt | tail -n 200 || true
+            echo "=== All checks passed ==="
 
       - name: Upload diagnostics on failure
         if: failure()
@@ -303,9 +313,9 @@ jobs:
         with:
           name: emulator-diagnostics
           path: |
-            /tmp/connected.log
-            /tmp/logcat_connected.txt
-            /tmp/logcat_final.txt
+            connected.log
+            logcat_connected.txt
+            logcat_final.txt
           if-no-files-found: warn
 
       - name: Upload logcat on failure (legacy)
