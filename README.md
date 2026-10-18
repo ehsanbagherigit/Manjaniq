@@ -1,81 +1,128 @@
-# Manjaniq
+دوستان این پروژه به لطف پترنیهای عزیز پا برجاست.ایشون رو حمایت کنید.
+اینم نسخه اپن سورس اندروید:
+https://github.com/rstagit/rstang
 
-Modular network utility application for Android. The initial feature is a native
-UI for controlling the existing RSTA SNI Spoof Go engine
-(`engine/rstaspoof/`, a separate repository kept unmodified).
+گروه پروژه داخل تلگرام:
+https://t.me/rstasnispoof
 
-- Kotlin + Jetpack Compose
-- Application ID / namespace: `com.manjaniq`
-- minSdk 26, targetSdk/compileSdk 35
-- Core models and interfaces live in `core/models/` and `core/interfaces/`
-  and are compiled into the `:app` module via Gradle source-set configuration
-  (no files were moved).
 
-See `ARCHITECTURE.md`, `ROADMAP.md`, `UI_DESIGN_GUIDE.md`, and `report.md`
-for the design and progress documentation.
 
-## Build (GitHub Actions — recommended)
+# RSTA SNI Spoof 
 
-Debug APKs are built automatically by the workflow at
-`.github/workflows/build-debug.yml` on every push and pull request:
+ابزار دور زدن فیلترینگ با روش جعل SNI و فرگمنتیشن TLS  
+نوشته شده به زبان Go — بدون نیاز به روت — قابل اجرا روی Termux/Android/Linux
 
-1. Push this repository to GitHub (the nested `engine/rstaspoof/.git` directory
-   is not required by the build).
-2. Open the repository's **Actions** tab and wait for the **Build Debug APK**
-   workflow.
-3. Download the `manjaniq-debug-apk` artifact, which contains
-   `app-debug.apk`.
+---
 
-No signing, publishing, or secrets are configured; the workflow only produces
-an unsigned debug APK.
+## ویژگی‌ها
 
-## Build (local)
+- جعل SNI برای فریب سیستم‌های DPI
+- فرگمنتیشن TLS ClientHello با روش‌های مختلف
+- ترفند TTL برای گیج کردن فایروال
+- مانیتور real-time اتصال‌ها
+- بدون نیاز به روت
+- پشتیبانی از Termux / Android / Linux / macOS
 
-Requires JDK 17. The Android SDK is not required to be installed manually when
-building through GitHub Actions; for local builds the Android Gradle Plugin
-will download SDK components only if an SDK is installed (for example via
-Android Studio, or by setting `ANDROID_HOME` and installing
-`platforms;android-35` and `build-tools;35.0.0`).
+---
+
+## نصب و اجرا روی Termux
 
 ```bash
-./gradlew assembleDebug
-# Output: app/build/outputs/apk/debug/app-debug.apk
+pkg install golang git
+git clone https://github.com/rstagit/rstaspoof.git
+cd rstaspoof
+go run rstaspoof.go -tddd
 ```
 
-Useful commands:
+---
+
+## روش‌های استفاده
+
+**حالت سریع (پیش‌فرض):**
+```bash
+go run rstaspoof.go -tddd
+```
+
+**حالت دستی=> در صورتی که پیش فرض کار نداد:**
+آی پی تمیز کلود فلرو اسکن کنین جایگزین کنین.
+```bash
+go run rstaspoof.go -listen :40443 -connect IP:443 -sni www.hcaptcha.com -method combined
+```
+
+**کامپایل و اجرا:**
+```bash
+go build -o rstaspoof rstaspoof.go
+./rstaspoof -tddd
+```
+
+---
+
+## آرگومان‌ها
+
+| آرگومان | توضیح | پیش‌فرض |
+|--------|-------|---------|
+| `-listen` | آدرس و پورت پروکسی محلی | `0.0.0.0:40443` |
+| `-connect` | سرور مقصد | `104.18.38.202:443` |
+| `-sni` | دامنه جعلی برای SNI | `cdnjs.cloudflare.com` |
+| `-method` | روش bypass | `fragment` |
+| `-fragment-strategy` | استراتژی فرگمنت | `sni_split` |
+| `-fragment-delay` | تأخیر بین فرگمنت‌ها (ثانیه) | `0.1` |
+| `-ttl-trick` | فعال‌سازی ترفند TTL | - |
+| `-config` | بارگذاری تنظیمات از فایل JSON | - |
+| `-quiet` | حذف خروجی غیرضروری | - |
+| `-no-monitor` | غیرفعال کردن مانیتور | - |
+| `-info` | نمایش قابلیت‌های سیستم | - |
+| `-generate-config` | ساخت فایل تنظیمات پیش‌فرض | - |
+
+---
+
+## روش‌های Bypass
+
+| روش | توضیح |
+|-----|-------|
+| `fragment` | تقسیم ClientHello در محل SNI. بدون نیاز به روت |
+| `fake_sni` | ارسال SNI جعلی با ترفند TTL |
+| `combined` | ترکیب هر دو روش — بهترین نتیجه |
+
+---
+
+## استراتژی‌های فرگمنت
+
+| استراتژی | توضیح |
+|---------|-------|
+| `sni_split` | تقسیم دقیق در محل مقدار SNI *(پیشنهادی)* |
+| `half` | تقسیم به دو نیم |
+| `multi` | تقسیم به تکه‌های ۲۴ بایتی |
+| `tls_record_frag` | فرگمنتیشن در سطح TLS record |
+
+---
+
+## فایل تنظیمات (JSON)
 
 ```bash
-./gradlew --version     # Verify wrapper and Gradle version (8.9)
-./gradlew help          # Sanity-check project configuration
-./gradlew lint          # Run Android lint
+go run rstaspoof.go -generate-config config.json
+go run rstaspoof.go -config config.json
 ```
 
-## Toolchain versions
+---
 
-| Component | Version |
-|---|---|
-| Gradle (wrapper) | 8.9 |
-| Android Gradle Plugin | 8.7.2 |
-| Kotlin | 2.0.21 |
-| Compose Compiler | Kotlin Compose plugin 2.0.21 |
-| Compose BOM | 2024.09.03 |
-| JDK | 17 |
+## تنظیم برنامه
 
-## Project layout
+بعد از اجرا، پروکسی روی `127.0.0.1:40443` فعال می‌شه.  
+در برنامه‌ای که می‌خوای از پروکسی استفاده کنه، آدرس پروکسی رو روی:
 
 ```
-Manjaniq/
-├── app/                          # Android application module
-│   └── src/main/
-│       ├── java/com/manjaniq/    # MainActivity + Compose UI
-│       ├── res/                  # Strings, theme
-│       └── AndroidManifest.xml
-├── core/
-│   ├── models/                   # EngineState, RSTAConfig, OperationResult
-│   ├── interfaces/               # EngineController, EngineStatusProvider, Logger
-│   └── common/                   # Reserved (empty)
-├── feature-rsta/                 # Reserved for the RSTA feature module (empty)
-├── engine/rstaspoof/             # Existing Go engine (separate git repo, unmodified)
-├── .github/workflows/            # CI build
-└── *.md                          # Architecture, roadmap, UI guide, report
+127.0.0.1:40443
 ```
+
+تنظیم کن.
+
+---
+
+## گروه تلگرام
+
+برای پشتیبانی، سوال و به‌روزرسانی‌ها عضو گروه تلگرام بشید:
+
+**[@rstasnispoof](https://t.me/rstasnispoof)**
+
+---

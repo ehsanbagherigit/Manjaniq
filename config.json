@@ -1,0 +1,13 @@
+{
+  "BYPASS_METHOD": "fragment",
+  "CONNECT_IP": "104.18.38.202",
+  "CONNECT_PORT": 443,
+  "FAKE_SNI": "cdnjs.cloudflare.com",
+  "FAKE_SNI_METHOD": "prefix_fake",
+  "FRAGMENT_DELAY": 0.1,
+  "FRAGMENT_STRATEGY": "sni_split",
+  "LISTEN_HOST": "0.0.0.0",
+  "LISTEN_PORT": 40443,
+  "MONITOR": true,
+  "USE_TTL_TRICK": false
+}
