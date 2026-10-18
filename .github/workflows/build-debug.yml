@@ -133,6 +133,32 @@ jobs:
           path: /tmp/gradle_test.log
           if-no-files-found: warn
 
+      - name: Comment Gradle failure on PR
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let log = '';
+            try { log = fs.readFileSync('/tmp/gradle_test.log', 'utf8'); } catch(e) { log = 'Could not read /tmp/gradle_test.log: ' + e; }
+            // Trim to fit GitHub comment limit (max 65536), take last 400 lines + first 200
+            const lines = log.split('\n');
+            let excerpt;
+            if (lines.length > 600) {
+              excerpt = lines.slice(0, 200).join('\n') + '\n...[truncated]...\n' + lines.slice(-400).join('\n');
+            } else {
+              excerpt = log;
+            }
+            // Escape for markdown
+            excerpt = excerpt.slice(0, 60000);
+            const body = `### ❌ Gradle unit tests failed in \`${process.env.GITHUB_WORKFLOW}\` @ \`${context.sha.slice(0,7)}\`\n\n<details><summary>Gradle log (last run)</summary>\n\n\`\`\`\n${excerpt}\n\`\`\`\n\n</details>\n\nPlease fix compilation/test errors and push again.`;
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
+
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
 
