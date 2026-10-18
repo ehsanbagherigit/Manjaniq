@@ -258,3 +258,245 @@ The smallest experiment to test native-library integration without modifying the
 ### Pending Actions
 - **User Action**: Confirm the device ABI (e.g., `arm64-v8a`).
 - **Verification**: The PoC remains unverified until a `.so` is built and loaded by the Android app.
+
+---
+
+## 2026-10-18 — Fix GitHub Actions APK build ("cannot find package manjaniq/engine/rstaspoof")
+
+### Root cause (three stacked problems, all verified against the repo)
+1. `.github/workflows/build-debug.yml` set `GO111MODULE=off`, so the
+   module-style import `manjaniq/engine/rstaspoof` in `native/bridge.go`
+   could never resolve (no GOPATH checkout exists in CI).
+2. There was **no `go.mod`** anywhere in the repository, despite older
+   docs claiming one existed — so module mode had nothing to resolve
+   against either.
+3. The **`engine/rstaspoof` package itself was missing from GitHub**:
+   `.gitignore` contained `/engine/`, so the engine was never committed
+   (verified: no remote branch/tree contains `engine/` or `go.mod`).
+   The previously green CI runs used an older stub `bridge.go` with no
+   engine import; commit 5a5f3ae rewrote the bridge against an engine
+   API that only existed on a local disk.
+
+### Fixes
+- Added root `go.mod` (`module manjaniq`, `go 1.22`).
+- Added `engine/rstaspoof` implementing exactly the API `bridge.go`
+  uses (`Config`, `NewEngine`, `Start`/`Stop`/`State`/`Metrics`,
+  `StateRunning`, ...): synchronous bind (bind failure is a real
+  error, never fake success), plain TCP relay to
+  `CONNECT_IP:CONNECT_PORT`, live metrics, idempotent `Stop`, restart
+  support, host-side unit tests. **Note:** SNI-spoof/fragment bypass
+  logic is *not* implemented yet — the config fields are parsed so the
+  Kotlin<->Go contract works; porting the upstream bypass into
+  `relay()` is the remaining engine work.
+- Removed `/engine/` from `.gitignore` so the package is tracked.
+- `build-debug.yml`: `GO111MODULE=off` -> `on`; native build still
+  runs from the repo root as `go build ./native` (whole package,
+  bridge.c included) -> `app/src/main/jniLibs/arm64-v8a/libmanjaniq_native.so`,
+  which is the default jniLibs dir `app/build.gradle.kts`/AGP packages
+  as `lib/arm64-v8a/...`. Added a quick `go test ./engine/...` step.
+- Deleted duplicate `.github/workflows/android_ci.yml`: it built only
+  `native/bridge.go` (dropping bridge.c) into `native/arm64-v8a/`, a
+  path Gradle never packages. `build-debug.yml` is now the single
+  authoritative pipeline.
+- Kotlin compile fixes unmasked once the native step can pass (this
+  code had never compiled in CI): `ManjaniqTheme.kt` declared the
+  wrong package and an `object` instead of the `@Composable`
+  `ManjaniqTheme` that `MainActivity` imports/calls; `ManjaniqApp.kt`
+  and `StatusCard.kt` used `.background`/`RoundedCornerShape` without
+  imports; `isStarting` was delegated with `by` but used via `.value`
+  and passed as `State<Boolean>`.
+
+### Verification
+- Workflow YAML parsed with a real YAML parser; `git diff --check` clean.
+- No Go/JDK toolchain in the local sandbox, so Go/Gradle compilation
+  is verified by GitHub Actions. Run 39083707635: Go engine tests,
+  native build and native verification passed; `testDebugUnitTest`
+  failed because `ManjaniqApp.kt` was still missing the Compose
+  imports fixed above. After adding them, run **39084006065 passed
+  every step** (Go tests, arm64-v8a native build + verification,
+  unit tests, `assembleDebug`, APK-content check for
+  `lib/arm64-v8a/libmanjaniq_native.so`, artifact upload).
+  Artifact `manjaniq-debug-apk` (11,100,830 bytes) is attached to
+  that run: https://github.com/ehsanbagherigit/Manjaniq/actions/runs/39084006065
+
+---
+
+## 2026-10-18 (later) — Replacement engine withdrawn; genuine RSTA source required
+
+### Correction to the previous entry
+The `engine/rstaspoof` package added earlier today was a newly
+written plain TCP relay, created because this sandbox only has the
+GitHub clone — where the genuine engine has never existed. The
+project owner rejected that substitution (correctly: it silently
+dropped the real RSTA/SNI-spoofing behaviour). **The replacement
+`rstaspoof.go`/`rstaspoof_test.go` have been removed.** The green
+runs 39084006065/39084364166 therefore proved the *pipeline*
+(workflow, module resolution, JNI packaging, Kotlin compilation,
+APK verification), **not** the genuine engine. No APK from those
+runs should be treated as the real RSTA build.
+
+### Verified facts (re-checked this session)
+- The genuine engine sources (`engine.go`, `config.go`, `proxy.go`,
+  `tls.go`, `bypass.go`, ...) are **not** in this workspace and
+  **not** on any GitHub branch (`master` has no `engine/` at all).
+  They exist only on the owner's machine, excluded by the old
+  `/engine/` ignore rule. The agent cannot fetch or recreate them
+  and will not substitute the upstream single-file program either.
+- What is ready and kept from the previous fix: root `go.mod`
+  (`module manjaniq`, `go 1.22`, stdlib-only until the genuine
+  imports say otherwise); `GO111MODULE=on` with
+  `go build -buildmode=c-shared ./native` from the repo root
+  (includes `bridge.c`); `.so` written to
+  `app/src/main/jniLibs/arm64-v8a/` where Gradle packages it;
+  duplicate `android_ci.yml` deleted; Kotlin compile fixes;
+  `/engine/` removed from `.gitignore`.
+- `.gitignore` now also ignores the prebuilt `engine/rstaspoof/rstaspoof`
+  binary and `*.test` files, with a note that a nested `engine/rstaspoof/.git`
+  must never be committed (it would become a gitlink, not source).
+- The workflow now fails fast with an explicit
+  "Genuine engine source missing" error if `engine/rstaspoof/*.go`
+  is absent, instead of a bare "cannot find package".
+
+### API contract the genuine package must satisfy (from native/bridge.go)
+- `type Config` — JSON-unmarshalled from Kotlin keys `LISTEN_HOST`,
+  `LISTEN_PORT`, `CONNECT_IP`, `CONNECT_PORT`, `FAKE_SNI`,
+  `BYPASS_METHOD`, `FRAGMENT_STRATEGY`, `FRAGMENT_DELAY`,
+  `USE_TTL_TRICK`, `MONITOR`, `quiet`.
+- `func NewEngine() *Engine`, `(*Engine).Start(Config) error`,
+  `(*Engine).Stop() error`.
+- `(*Engine).State()` comparable to `rstaspoof.StateRunning` and
+  convertible with `string(...)` (values must match the Kotlin
+  `EngineState` enum: STOPPED/STARTING/RUNNING/STOPPING/ERROR).
+- `(*Engine).Metrics()` returning a JSON-marshalable value.
+
+### Owner action required (only place the genuine source exists)
+On the machine that has `engine/rstaspoof/`:
+1. Fetch this branch, copy the genuine `*.go` files into
+   `engine/rstaspoof/` **without** the nested `.git` and without
+   binaries (keep your local `.git` backup elsewhere if needed).
+2. `go build ./...` locally; fix only genuine import/API mismatches
+   against the contract above, and run `go mod tidy` only if the
+   genuine imports require external dependencies.
+3. `git add engine go.mod go.sum` (go.sum only if created),
+   commit, push to this branch (`arena/b76a9257-manjaniq`).
+4. The existing workflow then builds and uploads `manjaniq-debug-apk`;
+   merge PR #1 into `master` once that run is green.
+
+### Verification this session
+- Workflow YAML re-parsed OK; ignore semantics checked with
+  `git check-ignore` (engine *.go NOT ignored, prebuilt binary ignored);
+  `git diff --check` clean.
+- GitHub Actions on this commit is **expected to fail** at
+  "Test Go engine package" with the explicit missing-source error:
+  the genuine engine is not committed yet, so no APK is claimed.
+
+---
+
+## 2026-10-18 — Genuine RSTA engine integrated; full Android app (APK green)
+
+### What happened
+The owner uploaded the genuine upstream source to `rsta-source/` on
+`master` (`rstaspoof.go` 1,973 lines, `config.json`, `README.md`).
+Merged into this branch (`3955cbf`); the upload had accidentally
+renamed away the project `README.md` (restored) and left a 2-byte
+placeholder at `rsta-source/rstaspoof` (removed — it was `\r\n`,
+not an executable).
+
+### Genuine engine, as read from source (not docs)
+- Single-file `package main`, stdlib only. Fixed-destination TCP
+  proxy: parses the first TLS ClientHello, applies the chosen
+  bypass, then relays; "server replied" ⇒ bypass OK, silence ⇒
+  DPI-blocked event. Rich `PacketMonitor` (per-connection state +
+  total/OK/blocked/byte counters) printing colourised events.
+- Methods: `fragment`, `fake_sni`, `combined`. Strategies:
+  `sni_split`, `half`, `multi` (24B chunks), `tls_record_frag`.
+- **Honest findings:** in this source the "TTL trick" does NOT set
+  IP TTL and there is no raw-socket injection (`-no-raw` is parsed
+  and ignored; `FAKE_SNI_INJECT` print code is unreachable).
+  `fake_sni` = fake-ClientHello probe on a side connection +
+  SNI-split; `FAKE_SNI_METHOD`/`FAKE_SNI_FRAGMENT_REAL` are parsed
+  and stored but do not change behaviour. The UI says exactly this.
+- Embedding blockers: CLI `main()`, `os.Exit` paths, stdout-only
+  output, and `ProxyServer.Start()` `continue`d on Accept errors
+  (could never shut down, no connection tracking).
+
+### Integration (smallest adaptation; protocol logic untouched)
+- `engine/rstaspoof/rstaspoof.go` = the genuine file with marked
+  `[Manjaniq integration]` changes only: `package rstaspoof`,
+  `main()`+CLI imports removed, `fmt.Print*` routed to a leveled
+  log ring, `Listen()`/`Serve()` split (synchronous bind errors),
+  closed-listener ends the accept loop, connection tracking +
+  `Stop()`. `rsta-source/` keeps the pristine copy to diff against.
+- `engine/rstaspoof/engine.go` (new): Config (genuine JSON keys),
+  Engine Start/Stop/State, Metrics from the genuine monitor
+  counters, log access. Start mirrors the original `main()` wiring
+  (resolve target host, monitor mode, StrategyFactory); one
+  documented change: no pinned source-interface IP (breaks on
+  Android network switching). Bind happens synchronously, so the
+  UI can never show RUNNING for a failed start; Stop closes the
+  listener and in-flight connections and reports STOPPED only
+  after the serve loop exits (session stats go to the log).
+- JNI: `GetLogs`/`ClearLogs` added on both sides; Kotlin config
+  JSON now also sends `FAKE_SNI_METHOD`/`FAKE_SNI_FRAGMENT_REAL`
+  (previously dropped silently).
+- Android: foreground `EngineService` (`specialUse`, notification
+  with Stop action, engine stopped on service destroy);
+  `EngineRepository` polls real state/metrics/logs at 1s (no
+  fabricated values); `ConfigStore` persists genuine-format JSON
+  in SharedPreferences; Material 3 tabs — Dashboard (state, actual
+  listen address, genuine stats, recent log, local-proxy
+  explanation), Settings (all genuine keys, validated inputs,
+  honest per-method/strategy descriptions, apply/restart/reset
+  with confirmations, JSON import = paste-filled form only,
+  export = view/copy), Logs (timestamps, levels, pause/resume,
+  copy, clear with confirmation, empty state). `arm64-v8a`
+  abiFilter; permissions limited to INTERNET /
+  ACCESS_NETWORK_STATE / foreground-service / notifications.
+
+### Verification (real, in GitHub Actions)
+- `engine_test.go` on the CI host: fragment reassembly for all 4
+  strategies, built-ClientHello SNI parse round-trip, **full
+  proxy pass** of a built ClientHello through the running genuine
+  engine (fragment/sni_split) to an echo upstream, byte-identical;
+  double-start rejected; restart works; bad configs rejected.
+- Run 39087574786 (engine slice): all steps green.
+- Run 39087908963 (full app): **all steps green** — Go tests,
+  arm64 native build, JNI/ELF verification, unit tests,
+  `assembleDebug`, APK contains `lib/arm64-v8a/libmanjaniq_native.so`,
+  artifact `manjaniq-debug-apk` uploaded (11,314,818 bytes).
+- NOT verified (impossible in this sandbox): on-device launch,
+  Start/Stop against a live network, and whether any bypass method
+  defeats a real DPI middlebox. Compilation + localhost proxying
+  do not prove censorship evasion — device testing is next.
+
+### Known limitations
+- Traffic counters advance in 256KB steps (genuine monitor design).
+- English UI only (Persian localization deferred to protect the
+  working integration); default system launcher icon;
+  unsigned debug build; arm64-v8a only.
+- Settings draft edits are discarded if you switch tabs without
+  saving. Config changes while running require the offered restart.
+
+### Follow-up (same day): engine "resurrection" race — found by CI, fixed
+- Run 39088287350 hung the full 10-minute Go test timeout on a
+  docs-only commit. Instrumented CI (named 20s per-call guards,
+  one-line goroutine dumps + engine-internal state mirrored into
+  check annotations, `-count=3`) reproduced it reliably and
+  identified the wedge: `Stop` after a restart.
+- Root cause (real product bug, not test noise): `Start` spawns
+  the `Serve` goroutine; a fast `Stop` could run before that
+  goroutine was first scheduled, closing and clearing the
+  listener — `Serve` then saw a nil listener, bound a *fresh*
+  socket, reset the closed flag and accepted forever while
+  `Stop` waited for it to exit. On a phone (Start, then quickly
+  Stop) the engine would have been unstoppable.
+- Fixes: `Serve` never creates a listener (serves only what
+  `Listen()` made; exits immediately if already closed);
+  `Engine.Start` does blocking work (DNS/bind) outside its mutex;
+  accept loop also keys off an explicit closed flag.
+  `TestRapidStartStop` (10 start→immediate-stop cycles per run)
+  guards the regression. Failing runs for the record:
+  39088287350, 39089231697, 39089475739, 39089899015;
+  fixed and green: 39090141043 (3 consecutive failures pre-fix
+  under identical `-count=3` conditions, pass after; the final
+  docs commit re-verifies HEAD once more).

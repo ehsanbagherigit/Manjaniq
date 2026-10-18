@@ -58,6 +58,37 @@ jobs:
           test -x "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
           echo "Android NDK and ARM64 compiler are ready."
 
+      - name: Test Go engine package
+        run: |
+          set -euo pipefail
+          # The genuine RSTA engine source must be tracked at
+          # engine/rstaspoof/ (package manjaniq/engine/rstaspoof,
+          # imported by native/bridge.go). It was missing from GitHub
+          # for a long time because .gitignore contained "/engine/".
+          # Fail with an actionable message instead of a bare
+          # "cannot find package" if it is absent again.
+          if [ ! -d engine/rstaspoof ] || ! ls engine/rstaspoof/*.go >/dev/null 2>&1; then
+            echo "::error title=Genuine engine source missing::engine/rstaspoof/*.go not found in this checkout. Commit the genuine RSTA engine sources (engine.go, config.go, proxy.go, tls.go, bypass.go, ...) to engine/rstaspoof/ -- source files only, without any nested .git directory or prebuilt binaries -- then re-run. See DEVELOPMENT_LOG.md (2026-10-18)."
+            exit 1
+          fi
+          # Module mode (go.mod at the repo root declares "module
+          # manjaniq"); validates that the engine package imported by
+          # native/bridge.go resolves and passes its tests on the host
+          # before the Android cross-compile below. -count=3 keeps an
+          # intermittent lifecycle deadlock detectable; the failure
+          # dump is mirrored into annotations because raw run logs
+          # are not always downloadable.
+          export GO111MODULE=on
+          if ! go test -count=3 -timeout 240s -v ./engine/... 2>&1 | tee /tmp/gotest.log; then
+            echo "::error title=Go tests failed::go test ./engine/... failed; context lines follow as annotations"
+            grep -E "STUCK |DIAG |did not finish|--- FAIL:|panic:" /tmp/gotest.log | head -60 > /tmp/gotest.ctx || true
+            if [ ! -s /tmp/gotest.ctx ]; then tail -n 60 /tmp/gotest.log > /tmp/gotest.ctx; fi
+            while IFS= read -r line; do
+              printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g')"
+            done < /tmp/gotest.ctx
+            exit 1
+          fi
+
       - name: Build Native Library (arm64-v8a)
         run: |
           set -euo pipefail
@@ -66,7 +97,12 @@ jobs:
           export GOOS=android
           export GOARCH=arm64
           export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
-          export GO111MODULE=off
+          # Module mode is required: bridge.go imports
+          # "manjaniq/engine/rstaspoof". GO111MODULE=off broke that
+          # import ("cannot find package") because there is no GOPATH
+          # checkout. Run from the repo root so ./native resolves
+          # against the root go.mod.
+          export GO111MODULE=on
           # Build the whole ./native package (bridge.go + bridge.c).
           # Building only ./native/bridge.go silently drops the C wrapper and
           # leaves NewStringUTF_wrapper undefined, which makes dlopen fail on

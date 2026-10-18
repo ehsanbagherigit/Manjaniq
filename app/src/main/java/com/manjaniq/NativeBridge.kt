@@ -33,6 +33,8 @@ object NativeBridge {
     external fun IsEngineRunning(): Int
     external fun GetEngineState(): String?
     external fun GetMetrics(): String?
+    external fun GetLogs(): String?
+    external fun ClearLogs()
     external fun Cleanup()
 
     fun testBridge(): String {
@@ -109,9 +111,37 @@ object NativeBridge {
   "FRAGMENT_STRATEGY": "${config.fragmentStrategy}",
   "FRAGMENT_DELAY": ${config.fragmentDelay},
   "USE_TTL_TRICK": ${config.useTtlTrick},
+  "FAKE_SNI_METHOD": "${config.fakeSNIMethod}",
+  "FAKE_SNI_FRAGMENT_REAL": ${config.fakeSNIFragmentReal},
   "MONITOR": ${config.monitorEnabled},
   "quiet": ${config.quietMode}
 }"""
+    }
+
+    /** Raw JSON array of engine log entries, or null if native is unavailable. */
+    fun logsJson(): String? {
+        return try {
+            GetLogs()
+        } catch (t: Throwable) {
+            null
+        }
+    }
+
+    fun clearLogs() {
+        try {
+            ClearLogs()
+        } catch (t: Throwable) {
+            // Clearing logs must never crash the app.
+        }
+    }
+
+    /** Raw JSON metrics object, or null if native is unavailable. */
+    fun metricsJson(): String? {
+        return try {
+            GetMetrics()
+        } catch (t: Throwable) {
+            null
+        }
     }
 
     fun cleanup() {

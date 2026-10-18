@@ -120,6 +120,27 @@ func Java_com_manjaniq_NativeBridge_GetMetrics(env *C.JNIEnv, clazz C.jclass) C.
 	return stringToJString(env, string(data))
 }
 
+//export Java_com_manjaniq_NativeBridge_GetLogs
+func Java_com_manjaniq_NativeBridge_GetLogs(env *C.JNIEnv, clazz C.jclass) C.jstring {
+	mu.Lock()
+	defer mu.Unlock()
+
+	logs := rstaspoof.Logs()
+	data, err := json.Marshal(logs)
+	if err != nil {
+		return stringToJString(env, "[]")
+	}
+	return stringToJString(env, string(data))
+}
+
+//export Java_com_manjaniq_NativeBridge_ClearLogs
+func Java_com_manjaniq_NativeBridge_ClearLogs(env *C.JNIEnv, clazz C.jclass) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	rstaspoof.ClearLogs()
+}
+
 //export Java_com_manjaniq_NativeBridge_Cleanup
 func Java_com_manjaniq_NativeBridge_Cleanup(env *C.JNIEnv, clazz C.jclass) {
 	mu.Lock()
