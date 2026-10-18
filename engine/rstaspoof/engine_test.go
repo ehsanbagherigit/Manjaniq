@@ -29,13 +29,37 @@ func mustFinish(t *testing.T, name string, fn func() error) error {
 	case err := <-done:
 		return err
 	case <-time.After(20 * time.Second):
+		// One compact line per goroutine that touches engine code:
+		// "STUCK goroutine 12 [chan receive] :: top <- frames".
+		// Compact on purpose: CI mirrors these lines into check
+		// annotations, where multi-line dumps get mangled.
 		buf := make([]byte, 1<<20)
 		n := runtime.Stack(buf, true)
 		for _, block := range strings.Split(string(buf[:n]), "\n\n") {
-			if strings.Contains(block, "rstaspoof.") ||
-				strings.Contains(block, "testing.tRunner") {
-				t.Logf("STUCK GOROUTINE:\n%s", block)
+			if !strings.Contains(block, "rstaspoof.") {
+				continue
 			}
+			lines := strings.Split(block, "\n")
+			if len(lines) == 0 {
+				continue
+			}
+			var frames []string
+			for _, l := range lines[1:] {
+				l = strings.TrimSpace(l)
+				// Function lines have no leading tab in the raw dump;
+				// file:line lines start with a tab (now trimmed to a
+				// path) and contain ".go:". Keep the former.
+				if l == "" || strings.Contains(l, ".go:") ||
+					strings.HasPrefix(l, "created by") {
+					continue
+				}
+				frames = append(frames, l)
+				if len(frames) == 4 {
+					break
+				}
+			}
+			t.Logf("STUCK %s :: %s", strings.TrimSpace(lines[0]),
+				strings.Join(frames, " <- "))
 		}
 		t.Fatalf("%s did not finish within 20s (possible deadlock)", name)
 		return nil // unreachable
