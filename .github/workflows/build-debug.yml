@@ -310,27 +310,27 @@ jobs:
       - name: Dump connected log on failure (visible via annotations without blob)
         if: failure()
         run: |
-          echo "===== connected.log (full 600 lines) ====="
+          echo "===== connected.log line count ====="
           wc -l connected.log || echo "no wc"
-          tail -n 600 connected.log 2>&1 | cat -n | tail -n 600 || echo "no connected.log"
-          echo "===== logcat_connected.txt tail ====="
-          tail -n 200 logcat_connected.txt 2>&1 | head -n 200 || echo "no logcat_connected"
-          echo "===== Extracting FAILURE context ====="
-          grep -n -i -E "FAILURE|FAILED|What went wrong|Caused by|Exception|BUILD FAILED|Task :app" connected.log | tail -n 100 > /tmp/failure_ctx.txt || true
-          cat /tmp/failure_ctx.txt || echo "no failure ctx"
-          # Also grab 20 lines after each FAILURE match for context
-          grep -n "FAILURE" connected.log | cut -d: -f1 | while read n; do echo "--- CONTEXT around line $n ---"; sed -n "$((n-5)),$((n+20))p" connected.log; done > /tmp/failure_detail.txt 2>&1 || true
-          cat /tmp/failure_detail.txt | head -n 200 || true
+          echo "===== connected.log last 600 lines ====="
+          tail -n 600 connected.log 2>&1 | tail -n 600 || echo "no connected.log"
+          echo "===== FAILURE context ====="
+          grep -n -A 30 "What went wrong" connected.log | head -n 200 > /tmp/what.txt || true
+          cat /tmp/what.txt || echo "no What went wrong"
+          grep -n -A 30 "Caused by" connected.log | head -n 200 > /tmp/caused.txt || true
+          cat /tmp/caused.txt || echo "no Caused by"
+          grep -n "Manifest merger failed\|processDebugMainManifest\|error:" connected.log | head -n 100 > /tmp/manifest.txt || true
+          cat /tmp/manifest.txt || echo "no manifest error"
           echo "===== Surfacing as annotations ====="
-          # Surface raw tail + failure context as annotations (max 50)
-          cat /tmp/failure_ctx.txt /tmp/failure_detail.txt 2>/dev/null | head -n 50 > /tmp/ann.txt || tail -n 50 connected.log > /tmp/ann.txt
+          cat /tmp/what.txt /tmp/caused.txt /tmp/manifest.txt 2>/dev/null | head -n 100 > /tmp/ann.txt || tail -n 100 connected.log > /tmp/ann.txt
           while IFS= read -r line; do
             [ -z "$line" ] && continue
+            # Skip empty and huge lines
+            echo "$line" | grep -qE "^[[:space:]]*$" && continue
             printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-900)"
           done < /tmp/ann.txt
-          # Also dump raw tail as warning so it appears in log view even if annotations truncated
-          echo "::warning::Last 80 lines of connected.log:"
-          tail -n 80 connected.log | while IFS= read -r line; do echo "::warning::$line"; done || true
+          # Also dump last 80 as warnings for visibility
+          tail -n 80 connected.log | while IFS= read -r line; do echo "::warning::tail: $line"; done || true
 
       - name: Publish failure excerpt as PR comment (if PR)
         if: failure() && github.event_name == 'pull_request'
