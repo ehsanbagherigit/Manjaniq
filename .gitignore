@@ -19,6 +19,15 @@ local.properties
 # imported by native/bridge.go as manjaniq/engine/rstaspoof).
 # Do NOT re-add "/engine/" here: excluding it is what made the
 # package vanish from GitHub and broke every CI build.
+#
+# Nested-repo note: the genuine engine directory on the owner's
+# machine contains its own ".git". Keep that ".git" in place locally
+# if wanted, but never commit it: git will otherwise record
+# engine/rstaspoof as a gitlink (commit pointer) instead of source.
+# Copy only the *.go source files (or move the nested ".git" aside
+# before "git add"), and never commit the prebuilt engine binary:
+/engine/rstaspoof/rstaspoof
+*.test
 
 # Native / engine build artifacts
 *.apk

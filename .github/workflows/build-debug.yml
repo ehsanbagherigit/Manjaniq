@@ -61,6 +61,16 @@ jobs:
       - name: Test Go engine package
         run: |
           set -euo pipefail
+          # The genuine RSTA engine source must be tracked at
+          # engine/rstaspoof/ (package manjaniq/engine/rstaspoof,
+          # imported by native/bridge.go). It was missing from GitHub
+          # for a long time because .gitignore contained "/engine/".
+          # Fail with an actionable message instead of a bare
+          # "cannot find package" if it is absent again.
+          if [ ! -d engine/rstaspoof ] || ! ls engine/rstaspoof/*.go >/dev/null 2>&1; then
+            echo "::error title=Genuine engine source missing::engine/rstaspoof/*.go not found in this checkout. Commit the genuine RSTA engine sources (engine.go, config.go, proxy.go, tls.go, bypass.go, ...) to engine/rstaspoof/ -- source files only, without any nested .git directory or prebuilt binaries -- then re-run. See DEVELOPMENT_LOG.md (2026-10-18)."
+            exit 1
+          fi
           # Module mode (go.mod at the repo root declares "module
           # manjaniq"); validates that the engine package imported by
           # native/bridge.go resolves and passes its tests on the host

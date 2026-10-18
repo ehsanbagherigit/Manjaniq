@@ -318,3 +318,74 @@ The smallest experiment to test native-library integration without modifying the
   `lib/arm64-v8a/libmanjaniq_native.so`, artifact upload).
   Artifact `manjaniq-debug-apk` (11,100,830 bytes) is attached to
   that run: https://github.com/ehsanbagherigit/Manjaniq/actions/runs/39084006065
+
+---
+
+## 2026-10-18 (later) — Replacement engine withdrawn; genuine RSTA source required
+
+### Correction to the previous entry
+The `engine/rstaspoof` package added earlier today was a newly
+written plain TCP relay, created because this sandbox only has the
+GitHub clone — where the genuine engine has never existed. The
+project owner rejected that substitution (correctly: it silently
+dropped the real RSTA/SNI-spoofing behaviour). **The replacement
+`rstaspoof.go`/`rstaspoof_test.go` have been removed.** The green
+runs 39084006065/39084364166 therefore proved the *pipeline*
+(workflow, module resolution, JNI packaging, Kotlin compilation,
+APK verification), **not** the genuine engine. No APK from those
+runs should be treated as the real RSTA build.
+
+### Verified facts (re-checked this session)
+- The genuine engine sources (`engine.go`, `config.go`, `proxy.go`,
+  `tls.go`, `bypass.go`, ...) are **not** in this workspace and
+  **not** on any GitHub branch (`master` has no `engine/` at all).
+  They exist only on the owner's machine, excluded by the old
+  `/engine/` ignore rule. The agent cannot fetch or recreate them
+  and will not substitute the upstream single-file program either.
+- What is ready and kept from the previous fix: root `go.mod`
+  (`module manjaniq`, `go 1.22`, stdlib-only until the genuine
+  imports say otherwise); `GO111MODULE=on` with
+  `go build -buildmode=c-shared ./native` from the repo root
+  (includes `bridge.c`); `.so` written to
+  `app/src/main/jniLibs/arm64-v8a/` where Gradle packages it;
+  duplicate `android_ci.yml` deleted; Kotlin compile fixes;
+  `/engine/` removed from `.gitignore`.
+- `.gitignore` now also ignores the prebuilt `engine/rstaspoof/rstaspoof`
+  binary and `*.test` files, with a note that a nested `engine/rstaspoof/.git`
+  must never be committed (it would become a gitlink, not source).
+- The workflow now fails fast with an explicit
+  "Genuine engine source missing" error if `engine/rstaspoof/*.go`
+  is absent, instead of a bare "cannot find package".
+
+### API contract the genuine package must satisfy (from native/bridge.go)
+- `type Config` — JSON-unmarshalled from Kotlin keys `LISTEN_HOST`,
+  `LISTEN_PORT`, `CONNECT_IP`, `CONNECT_PORT`, `FAKE_SNI`,
+  `BYPASS_METHOD`, `FRAGMENT_STRATEGY`, `FRAGMENT_DELAY`,
+  `USE_TTL_TRICK`, `MONITOR`, `quiet`.
+- `func NewEngine() *Engine`, `(*Engine).Start(Config) error`,
+  `(*Engine).Stop() error`.
+- `(*Engine).State()` comparable to `rstaspoof.StateRunning` and
+  convertible with `string(...)` (values must match the Kotlin
+  `EngineState` enum: STOPPED/STARTING/RUNNING/STOPPING/ERROR).
+- `(*Engine).Metrics()` returning a JSON-marshalable value.
+
+### Owner action required (only place the genuine source exists)
+On the machine that has `engine/rstaspoof/`:
+1. Fetch this branch, copy the genuine `*.go` files into
+   `engine/rstaspoof/` **without** the nested `.git` and without
+   binaries (keep your local `.git` backup elsewhere if needed).
+2. `go build ./...` locally; fix only genuine import/API mismatches
+   against the contract above, and run `go mod tidy` only if the
+   genuine imports require external dependencies.
+3. `git add engine go.mod go.sum` (go.sum only if created),
+   commit, push to this branch (`arena/b76a9257-manjaniq`).
+4. The existing workflow then builds and uploads `manjaniq-debug-apk`;
+   merge PR #1 into `master` once that run is green.
+
+### Verification this session
+- Workflow YAML re-parsed OK; ignore semantics checked with
+  `git check-ignore` (engine *.go NOT ignored, prebuilt binary ignored);
+  `git diff --check` clean.
+- GitHub Actions on this commit is **expected to fail** at
+  "Test Go engine package" with the explicit missing-source error:
+  the genuine engine is not committed yet, so no APK is claimed.
