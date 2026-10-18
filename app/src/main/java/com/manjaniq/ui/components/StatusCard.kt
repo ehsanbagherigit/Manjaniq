@@ -3,6 +3,7 @@ package com.manjaniq.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -14,9 +15,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.manjaniq.core.models.EngineState
 
-// StatusCard displays the current engine status.
+/** Colour used for each real engine state. */
+fun stateColor(state: EngineState): Color = when (state) {
+    EngineState.RUNNING -> Color(0xFF4CAF50)
+    EngineState.STARTING, EngineState.STOPPING -> Color(0xFFFFB300)
+    EngineState.ERROR -> Color(0xFFE53935)
+    EngineState.STOPPED -> Color(0xFF8E8E93)
+}
+
+/** Card showing the engine's actual state (never a hardcoded value). */
 @Composable
-fun StatusCard(engineState: EngineState) {
+fun StatusCard(engineState: EngineState, subtitle: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -28,18 +37,34 @@ fun StatusCard(engineState: EngineState) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "STATUS",
+            text = "ENGINE STATUS",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
             letterSpacing = 2.sp
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = engineState.name,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(14.dp)
+                    .background(color = stateColor(engineState), shape = CircleShape)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = engineState.name,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 26.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        if (subtitle.isNotBlank()) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = subtitle,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp
+            )
+        }
     }
 }

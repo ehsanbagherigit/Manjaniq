@@ -14,6 +14,13 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+
+        // The native library is built for arm64-v8a only (see CI);
+        // declaring it avoids installing on devices that cannot
+        // load libmanjaniq_native.so.
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     buildTypes {
@@ -51,6 +58,7 @@ kotlin {
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.activity:activity-compose:1.9.3")
 
     val composeBom = platform("androidx.compose:compose-bom:2024.09.03")
