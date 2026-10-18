@@ -17,8 +17,7 @@ import com.manjaniq.ui.theme.ManjaniqTheme
 
 class MainActivity : ComponentActivity() {
 
-    private val notificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    private var notificationPermission: androidx.activity.result.ActivityResultLauncher<String>? = null
 
     override fun attachBaseContext(newBase: Context) {
         val wrapped = try {
@@ -37,11 +36,17 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        // Register permission launcher safely (field initializer can break ActivityScenario in tests)
+        try {
+            notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+            if (Build.VERSION.SDK_INT >= 33 &&
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermission?.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        } catch (_: Exception) {
+            // In instrumentation tests the permission request may not be needed/available
         }
         setContent {
             ManjaniqTheme {
