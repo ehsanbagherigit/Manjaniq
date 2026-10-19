@@ -71,17 +71,21 @@ class EngineService : Service() {
                 stopForegroundAndSelf()
                 return@launch
             }
+            if (NativeBridge.isEngineRunning()) {
+                // Repeated start request: the engine is already
+                // running. The native side rejects a second start
+                // ("engine is already running"), which must NOT
+                // be reported as a failure nor tear down the
+                // notification while the engine keeps running —
+                // treat it as an idempotent success.
+                EngineRepository.onEngineActionFinished(null)
+                goForeground(proxyStatus(config))
+                return@launch
+            }
             val result = NativeBridge.startEngine(config)
             if (result.isSuccess) {
                 EngineRepository.onEngineActionFinished(null)
-                goForeground(
-                    getString(
-                        R.string.notification_proxy_format,
-                        "${config.listenHost}:${config.listenPort}",
-                        "${config.connectIp}:${config.connectPort}",
-                        config.bypassMethod
-                    )
-                )
+                goForeground(proxyStatus(config))
             } else {
                 EngineRepository.onEngineActionFinished(
                     result.errorMessage ?: "Engine failed to start"
@@ -90,6 +94,14 @@ class EngineService : Service() {
             }
         }
     }
+
+    private fun proxyStatus(config: com.manjaniq.core.models.RSTAConfig): String =
+        getString(
+            R.string.notification_proxy_format,
+            "${config.listenHost}:${config.listenPort}",
+            "${config.connectIp}:${config.connectPort}",
+            config.bypassMethod
+        )
 
     private fun stopEngine() {
         scope.launch {
@@ -115,14 +127,7 @@ class EngineService : Service() {
             val result = NativeBridge.startEngine(config)
             if (result.isSuccess) {
                 EngineRepository.onEngineActionFinished(null)
-                goForeground(
-                    getString(
-                        R.string.notification_proxy_format,
-                        "${config.listenHost}:${config.listenPort}",
-                        "${config.connectIp}:${config.connectPort}",
-                        config.bypassMethod
-                    )
-                )
+                goForeground(proxyStatus(config))
             } else {
                 EngineRepository.onEngineActionFinished(
                     result.errorMessage ?: "Engine failed to restart"
@@ -183,6 +188,6 @@ class EngineService : Service() {
         const val ACTION_STOP = "com.manjaniq.action.STOP_ENGINE"
         const val ACTION_RESTART = "com.manjaniq.action.RESTART_ENGINE"
         private const val CHANNEL_ID = "rsta_engine"
-        private const val NOTIFICATION_ID = 40443
+        internal const val NOTIFICATION_ID = 40443
     }
 }

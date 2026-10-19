@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -62,14 +63,28 @@ fun SettingsScreen(
     var importVisible by remember { mutableStateOf(false) }
     var importText by remember { mutableStateOf("") }
     val clipboard = LocalClipboardManager.current
+    val appContext = LocalContext.current
+
+    // Resolved in composable scope; plain callbacks below
+    // must not call @Composable functions themselves.
+    val errPortNumber = stringResource(R.string.error_listen_port_number)
+    val errConnectPortNumber = stringResource(R.string.error_connect_port_number)
+    val errDelayNumber = stringResource(R.string.error_delay_number)
+    val savedNextStart = stringResource(R.string.saved_next_start)
+    val savedRestarting = stringResource(R.string.saved_restarting)
+    val savedSaveOnly = stringResource(R.string.saved_save_only)
+    val defaultsRestored = stringResource(R.string.defaults_restored)
+    val configCopied = stringResource(R.string.config_copied)
+    val errorInvalidJson = stringResource(R.string.error_invalid_json)
+    val importedReview = stringResource(R.string.imported_review)
 
     fun buildDraft(): RSTAConfig? {
         val lp = listenPortText.toIntOrNull()
         val cp = connectPortText.toIntOrNull()
         val delay = delayText.toDoubleOrNull()
-        if (lp == null) { errorText = stringResource(R.string.error_listen_port_number); return null }
-        if (cp == null) { errorText = stringResource(R.string.error_connect_port_number); return null }
-        if (delay == null) { errorText = stringResource(R.string.error_delay_number); return null }
+        if (lp == null) { errorText = errPortNumber; return null }
+        if (cp == null) { errorText = errConnectPortNumber; return null }
+        if (delay == null) { errorText = errDelayNumber; return null }
         val cfg = draft.copy(listenPort = lp, connectPort = cp, fragmentDelay = delay)
         val problem = cfg.validate()
         if (problem != null) { errorText = problem; return null }
@@ -102,7 +117,8 @@ fun SettingsScreen(
             ConfigTextField(
                 stringResource(R.string.settings_listen_host),
                 draft.listenHost,
-                stringResource(R.string.settings_listen_host_hint)
+                stringResource(R.string.settings_listen_host_hint),
+                tag = "field_listen_host"
             ) {
                 draft = draft.copy(listenHost = it)
             }
@@ -110,12 +126,14 @@ fun SettingsScreen(
                 stringResource(R.string.settings_listen_port),
                 listenPortText,
                 null,
-                KeyboardType.Number
+                KeyboardType.Number,
+                tag = "field_listen_port"
             ) { listenPortText = it }
             ConfigTextField(
                 stringResource(R.string.settings_connect_host),
                 draft.connectIp,
-                stringResource(R.string.settings_connect_host_hint)
+                stringResource(R.string.settings_connect_host_hint),
+                tag = "field_connect_host"
             ) {
                 draft = draft.copy(connectIp = it)
             }
@@ -123,12 +141,14 @@ fun SettingsScreen(
                 stringResource(R.string.settings_connect_port),
                 connectPortText,
                 null,
-                KeyboardType.Number
+                KeyboardType.Number,
+                tag = "field_connect_port"
             ) { connectPortText = it }
             ConfigTextField(
                 stringResource(R.string.settings_fake_sni),
                 draft.sniHostname,
-                stringResource(R.string.settings_fake_sni_hint)
+                stringResource(R.string.settings_fake_sni_hint),
+                tag = "field_fake_sni"
             ) {
                 draft = draft.copy(sniHostname = it)
             }
@@ -181,7 +201,8 @@ fun SettingsScreen(
                 stringResource(R.string.settings_fragment_delay),
                 delayText,
                 null,
-                KeyboardType.Decimal
+                KeyboardType.Decimal,
+                tag = "field_fragment_delay"
             ) { delayText = it }
         }
 
@@ -202,7 +223,8 @@ fun SettingsScreen(
             ConfigTextField(
                 stringResource(R.string.settings_fake_sni_method),
                 draft.fakeSNIMethod,
-                null
+                null,
+                tag = "field_fake_sni_method"
             ) {
                 draft = draft.copy(fakeSNIMethod = it)
             }
@@ -221,7 +243,7 @@ fun SettingsScreen(
                 } else {
                     onSave(cfg, false)
                     refreshTexts(cfg)
-                    infoText = stringResource(R.string.saved_next_start)
+                    infoText = savedNextStart
                 }
             },
             modifier = Modifier
@@ -266,7 +288,7 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     onSave(cfg, true)
                     refreshTexts(cfg)
-                    infoText = stringResource(R.string.saved_restarting)
+                    infoText = savedRestarting
                     showRestartConfirm = null
                 }) { Text(stringResource(R.string.save_and_restart)) }
             },
@@ -274,7 +296,7 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     onSave(cfg, false)
                     refreshTexts(cfg)
-                    infoText = stringResource(R.string.saved_save_only)
+                    infoText = savedSaveOnly
                     showRestartConfirm = null
                 }) { Text(stringResource(R.string.save_only)) }
             }
@@ -291,7 +313,7 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = {
                     refreshTexts(onResetDefaults())
-                    infoText = stringResource(R.string.defaults_restored)
+                    infoText = defaultsRestored
                     showResetConfirm = false
                 }) { Text(stringResource(R.string.reset)) }
             },
@@ -318,7 +340,7 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = {
                     clipboard.setText(AnnotatedString(exportText!!))
-                    infoText = stringResource(R.string.config_copied)
+                    infoText = configCopied
                     exportText = null
                 }) { Text(stringResource(R.string.copy)) }
             },
@@ -355,14 +377,17 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     val parsed = RSTAConfig.fromJson(importText)
                     if (parsed == null) {
-                        errorText = stringResource(R.string.error_invalid_json)
+                        errorText = errorInvalidJson
                     } else {
                         val problem = parsed.validate()
                         if (problem != null) {
-                            errorText = stringResource(R.string.error_imported_config, problem)
+                            errorText = appContext.getString(
+                                R.string.error_imported_config,
+                                problem
+                            )
                         } else {
                             refreshTexts(parsed)
-                            infoText = stringResource(R.string.imported_review)
+                            infoText = importedReview
                         }
                     }
                     importVisible = false
@@ -383,6 +408,7 @@ private fun ConfigTextField(
     value: String,
     hint: String?,
     keyboardType: KeyboardType = KeyboardType.Text,
+    tag: String? = null,
     onChange: (String) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -392,7 +418,9 @@ private fun ConfigTextField(
             label = { Text(label) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-            modifier = Modifier.fillMaxWidth()
+            modifier = tag
+                ?.let { Modifier.fillMaxWidth().testTag(it) }
+                ?: Modifier.fillMaxWidth()
         )
         if (hint != null) {
             Text(

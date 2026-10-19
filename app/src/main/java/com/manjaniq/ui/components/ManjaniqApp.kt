@@ -47,13 +47,19 @@ fun ManjaniqApp() {
     // and hides the Home screen from both the user and automated
     // launch checks.
     var startAfterPermission by remember { mutableStateOf(false) }
+    var notice by remember { mutableStateOf<String?>(null) }
     val notificationPermission =
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.RequestPermission()
-        ) {
+        ) { granted ->
             // The engine runs with or without the permission (the
             // foreground notification is suppressed if denied); the
             // pending start proceeds either way.
+            if (!granted) {
+                notice = appContext.getString(
+                    R.string.notification_permission_denied
+                )
+            }
             if (startAfterPermission) {
                 startAfterPermission = false
                 EngineRepository.requestStart(appContext)
@@ -66,6 +72,15 @@ fun ManjaniqApp() {
                 appContext, Manifest.permission.POST_NOTIFICATIONS
             ) != PackageManager.PERMISSION_GRANTED
         ) {
+            val activity = LocalContext.current as? android.app.Activity
+            if (activity?.shouldShowRequestPermissionRationale(
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == true
+            ) {
+                notice = appContext.getString(
+                    R.string.notification_permission_needed
+                )
+            }
             startAfterPermission = true
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
@@ -127,6 +142,8 @@ fun ManjaniqApp() {
                     ui = ui.copy(lastError = localError ?: ui.lastError),
                     config = config,
                     recentLogs = logs,
+                    notice = notice,
+                    onDismissNotice = { notice = null },
                     onStart = {
                         val problem = config.validate()
                         if (problem != null) {

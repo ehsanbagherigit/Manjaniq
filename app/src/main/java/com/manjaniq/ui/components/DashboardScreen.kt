@@ -1,6 +1,7 @@
 // Package com.manjaniq.ui.components provides the main UI composables for the application.
 package com.manjaniq.ui.components
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -12,6 +13,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -74,6 +77,8 @@ fun DashboardScreen(
     ui: EngineUiState,
     config: RSTAConfig,
     recentLogs: List<EngineLog>,
+    notice: String? = null,
+    onDismissNotice: () -> Unit = {},
     onStart: () -> Unit,
     onStop: () -> Unit,
     onDismissError: () -> Unit,
@@ -111,6 +116,33 @@ fun DashboardScreen(
                 else -> stringResource(R.string.status_not_running)
             }
         )
+
+        if (notice != null) {
+            // Non-blocking notice (for example the
+            // notification-permission rationale); it is
+            // not an engine error and is dismissible.
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("notice_card")
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        text = notice,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    TextButton(onClick = onDismissNotice) {
+                        Text(stringResource(R.string.dismiss))
+                    }
+                }
+            }
+        }
 
         if (ui.lastError != null) {
             Card(
@@ -314,6 +346,7 @@ fun EngineSelector(
             name = stringResource(R.string.engine_rsta),
             status = stringResource(R.string.engine_rsta_status_available),
             accent = RstaGold,
+            logo = painterResource(R.drawable.ic_rsta_logo),
             selected = selectedCore == EngineCore.RSTA,
             enabled = true,
             tag = DashboardTags.SELECTOR_RSTA,
@@ -323,6 +356,7 @@ fun EngineSelector(
             name = stringResource(R.string.engine_aether),
             status = stringResource(R.string.engine_aether_status_coming_soon),
             accent = AetherBlue,
+            logo = painterResource(R.drawable.ic_aether_logo),
             selected = false,
             enabled = false,
             tag = DashboardTags.SELECTOR_AETHER,
@@ -337,6 +371,7 @@ private fun CoreChip(
     name: String,
     status: String,
     accent: Color,
+    logo: Painter,
     selected: Boolean,
     enabled: Boolean,
     tag: String,
@@ -358,10 +393,11 @@ private fun CoreChip(
     ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .background(color = accent, shape = RoundedCornerShape(5.dp))
+                Image(
+                    painter = logo,
+                    contentDescription = name,
+                    modifier = Modifier.size(24.dp),
+                    contentScale = ContentScale.Fit
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(

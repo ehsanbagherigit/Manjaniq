@@ -5,10 +5,35 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+# ---------------------------------------------------------------------------
+# Pipeline contract (see AUDIT_CHECKLIST.md for the defects this workflow
+# is hardened against):
+#
+#  A. Compose test dependencies resolve through the BOM for EVERY source
+#     set that uses them (historical: "Could not find
+#     androidx.compose.ui:ui-test-junit4:.").
+#  B. App and instrumentation APKs are built and installed by the SAME
+#     Gradle invocation (connectedDebugAndroidTest) so both carry the
+#     same debug signature (historical: "package com.manjaniq.test does
+#     not have a signature matching the target com.manjaniq" — caused by
+#     installing an app APK from another job's artifact next to a
+#     freshly rebuilt test APK; each job generates a fresh debug key).
+#  C. Every step is either pure POSIX sh (no bashisms) or explicitly
+#     declares `shell: bash`. Exit codes are captured with the
+#     `cmd > log 2>&1 || code=$?` pattern, never with PIPESTATUS,
+#     which dash executes as "Bad substitution" (exit 2).
+#  D. The launch smoke test proves the process stays alive, MainActivity
+#     is RESUMED and the Home screen renders — "am start" returning ok
+#     is never treated as success.
+# ---------------------------------------------------------------------------
+
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,7 +57,7 @@ jobs:
         run: |
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager 2>/dev/null | head -n 1)"
           if [ -z "$SDKMANAGER" ]; then
-            echo "ERROR: Android SDK Manager was not found."
+            echo "::error title=Android SDK Manager not found::sdkmanager not found under $ANDROID_HOME/cmdline-tools"
             exit 1
           fi
           echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
@@ -40,8 +65,8 @@ jobs:
 
       - name: Accept Android SDK Licenses
         run: |
-          yes | "$SDKMANAGER" --licenses || {
-            echo "License acceptance failed."
+          yes | "$SDKMANAGER" --licenses > /dev/null || {
+            echo "::error::License acceptance failed."
             exit 1
           }
 
@@ -50,34 +75,58 @@ jobs:
           "$SDKMANAGER" --install \
             "platforms;android-35" \
             "build-tools;35.0.0" \
-            "ndk;25.2.9519653"
+            "ndk;25.2.9519653" > /dev/null
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> "$GITHUB_ENV"
 
       - name: Verify Android NDK
+        shell: bash
         run: |
+          set -euo pipefail
           test -x "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
           echo "Android NDK and ARM64 compiler are ready."
 
+      - name: Cache Gradle and Go builds
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: gradle-go-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties', '**/build.gradle.kts', 'go.mod', 'engine/rstaspoof/*.go', 'native/*.go') }}
+
+      - name: Gradle wrapper validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --version | tee /tmp/gradle-version.txt
+          grep -q "Gradle 8" /tmp/gradle-version.txt
+
+      - name: Verify JNI contract (Kotlin <-> Go exports)
+        run: python3 scripts/check_jni_contract.py
+
+      - name: Verify shell exit-code propagation (regression)
+        run: bash scripts/verify_exit_code_propagation.sh
+
       - name: Test Go engine package
+        shell: bash
         run: |
           set -euo pipefail
           # The genuine RSTA engine source must be tracked at
           # engine/rstaspoof/ (package manjaniq/engine/rstaspoof,
-          # imported by native/bridge.go). It was missing from GitHub
-          # for a long time because .gitignore contained "/engine/".
-          # Fail with an actionable message instead of a bare
-          # "cannot find package" if it is absent again.
+          # imported by native/bridge.go). Fail with an actionable
+          # message instead of a bare "cannot find package" if it
+          # is absent again.
           if [ ! -d engine/rstaspoof ] || ! ls engine/rstaspoof/*.go >/dev/null 2>&1; then
-            echo "::error title=Genuine engine source missing::engine/rstaspoof/*.go not found in this checkout. Commit the genuine RSTA engine sources (engine.go, config.go, proxy.go, tls.go, bypass.go, ...) to engine/rstaspoof/ -- source files only, without any nested .git directory or prebuilt binaries -- then re-run. See DEVELOPMENT_LOG.md (2026-10-18)."
+            echo "::error title=Genuine engine source missing::engine/rstaspoof/*.go not found in this checkout. Commit the genuine RSTA engine sources to engine/rstaspoof/ -- source files only, without any nested .git directory or prebuilt binaries. See DEVELOPMENT_LOG.md (2026-10-18)."
             exit 1
           fi
-          # Module mode (go.mod at the repo root declares "module
-          # manjaniq"); validates that the engine package imported by
-          # native/bridge.go resolves and passes its tests on the host
-          # before the Android cross-compile below. -count=3 keeps an
-          # intermittent lifecycle deadlock detectable; the failure
-          # dump is mirrored into annotations because raw run logs
-          # are not always downloadable.
+          # Module mode (root go.mod declares "module manjaniq").
+          # -count=3 keeps the intermittent lifecycle deadlock
+          # detectable; the failure dump is mirrored into
+          # annotations because raw run logs are not always
+          # downloadable from sandboxed viewers.
           export GO111MODULE=on
           if ! go test -count=3 -timeout 240s -v ./engine/... 2>&1 | tee /tmp/gotest.log; then
             echo "::error title=Go tests failed::go test ./engine/... failed; context lines follow as annotations"
@@ -89,60 +138,341 @@ jobs:
             exit 1
           fi
 
-      - name: Build Native Library (arm64-v8a)
+      - name: Build Native Libraries (arm64-v8a + x86_64)
+        shell: bash
         run: |
           set -euo pipefail
-          mkdir -p app/src/main/jniLibs/arm64-v8a
+          mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/jniLibs/x86_64
           export CGO_ENABLED=1
           export GOOS=android
+          export GO111MODULE=on
+          # arm64-v8a (real devices)
           export GOARCH=arm64
           export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
-          # Module mode is required: bridge.go imports
-          # "manjaniq/engine/rstaspoof". GO111MODULE=off broke that
-          # import ("cannot find package") because there is no GOPATH
-          # checkout. Run from the repo root so ./native resolves
-          # against the root go.mod.
-          export GO111MODULE=on
-          # Build the whole ./native package (bridge.go + bridge.c).
-          # Building only ./native/bridge.go silently drops the C wrapper and
-          # leaves NewStringUTF_wrapper undefined, which makes dlopen fail on
-          # Android with "cannot locate symbol".
-          go build \
-            -buildmode=c-shared \
-            -o app/src/main/jniLibs/arm64-v8a/libmanjaniq_native.so \
-            ./native
+          go build -buildmode=c-shared \
+            -o app/src/main/jniLibs/arm64-v8a/libmanjaniq_native.so ./native
+          # x86_64 (CI emulator)
+          export GOARCH=amd64
+          export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang"
+          go build -buildmode=c-shared \
+            -o app/src/main/jniLibs/x86_64/libmanjaniq_native.so ./native
+          ls -lh app/src/main/jniLibs/arm64-v8a/ app/src/main/jniLibs/x86_64/
 
-      - name: Verify native library
+      - name: Verify native libraries (both ABIs)
+        shell: bash
         run: |
           set -euo pipefail
-          bash native/verify_native_lib.sh
+          bash native/verify_native_lib.sh app/src/main/jniLibs/arm64-v8a/libmanjaniq_native.so
+          bash native/verify_native_lib.sh app/src/main/jniLibs/x86_64/libmanjaniq_native.so
 
-      - name: Make Gradle wrapper executable
-        run: chmod +x gradlew
+      - name: Resolve dependencies and fail on empty versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Regression guard for the empty-version defect:
+          # every Compose test coordinate must resolve to a
+          # real version through the BOM.
+          ./gradlew :app:dependencies --configuration debugAndroidTestRuntimeClasspath > /tmp/deps.log 2>&1 || {
+            tail -n 100 /tmp/deps.log
+            exit 1
+          }
+          if grep -E "ui-test-junit4: *$" /tmp/deps.log; then
+            echo "::error::androidx.compose.ui:ui-test-junit4 resolved with an EMPTY version — the Compose BOM is not applied to the androidTest configuration."
+            exit 1
+          fi
+          if ! grep -qE "ui-test-junit4.*([0-9]|->)" /tmp/deps.log; then
+            echo "::error::androidx.compose.ui:ui-test-junit4 did not resolve to a concrete version in debugAndroidTestRuntimeClasspath."
+            exit 1
+          fi
+          grep -E "ui-test-junit4" /tmp/deps.log | head -3
+          echo "Dependency resolution OK (no empty versions)."
 
       - name: Run unit tests
-        run: ./gradlew :app:testDebugUnitTest --stacktrace
-
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace
-
-      - name: Verify APK contents
+        shell: bash
         run: |
           set -euo pipefail
-          APK="$(ls app/build/outputs/apk/debug/*.apk)"
+          ./gradlew :app:testDebugUnitTest --stacktrace > /tmp/gradle_test.log 2>&1 || {
+            echo "::error title=Gradle unit tests failed::see annotations"
+            grep -E "^e:|error:|FAILED|Execution failed|BUILD FAILED" /tmp/gradle_test.log | head -80 | while IFS= read -r line; do
+              printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-800)"
+            done
+            exit 1
+          }
+          echo "Unit tests passed."
+          tail -n 20 /tmp/gradle_test.log
+
+      - name: Lint (debug)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:lintDebug > /tmp/lint.log 2>&1 || {
+            echo "::error title=Android Lint findings::lintDebug failed"
+            tail -n 100 /tmp/lint.log
+            exit 1
+          }
+          tail -n 10 /tmp/lint.log
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew assembleDebug --stacktrace > /tmp/assemble.log 2>&1 || {
+            tail -n 100 /tmp/assemble.log
+            exit 1
+          }
+
+      - name: Verify APK contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(ls app/build/outputs/apk/debug/*.apk | head -n 1)"
           test -n "$APK"
           echo "Checking $APK"
           unzip -l "$APK" > /tmp/apk_listing.txt
           grep -q "classes.dex" /tmp/apk_listing.txt
           grep -q "lib/arm64-v8a/libmanjaniq_native.so" /tmp/apk_listing.txt
+          grep -q "lib/x86_64/libmanjaniq_native.so" /tmp/apk_listing.txt
+          # Launcher icon must be packaged (regression for the
+          # missing-icon defect).
+          grep -q "res/mipmap" /tmp/apk_listing.txt
           rm -rf /tmp/apkcheck
-          mkdir -p /tmp/apkcheck
-          unzip -o -q "$APK" "lib/arm64-v8a/*" -d /tmp/apkcheck
-          bash native/verify_native_lib.sh /tmp/apkcheck/lib/arm64-v8a/libmanjaniq_native.so
+          mkdir -p /tmp/apkcheck/arm64 /tmp/apkcheck/x86_64
+          unzip -o -q "$APK" "lib/arm64-v8a/*" -d /tmp/apkcheck/arm64
+          unzip -o -q "$APK" "lib/x86_64/*" -d /tmp/apkcheck/x86_64
+          bash native/verify_native_lib.sh /tmp/apkcheck/arm64/lib/arm64-v8a/libmanjaniq_native.so
+          bash native/verify_native_lib.sh /tmp/apkcheck/x86_64/lib/x86_64/libmanjaniq_native.so
+          SHA="$(sha256sum "$APK" | cut -d' ' -f1)"
+          echo "APK_SHA256=$SHA" >> "$GITHUB_ENV"
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: manjaniq-debug-apk
+          name: manjaniq-debug-apk-${{ github.sha }}
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # On-device validation. The app and the instrumentation APK are built by the
+  # SAME Gradle invocation in THIS job, so both APKs are signed with this
+  # job's debug key — the supported setup that eliminates the historical
+  # signature-mismatch Permission Denial. Rebuilding here (instead of
+  # downloading the build job's artifact) is deliberate: a debug keystore is
+  # generated per job, so cross-job APK mixing is exactly the defect pattern.
+  # ---------------------------------------------------------------------------
+  emulator-smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Configure Android SDK
+        run: |
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+
+      - name: Locate Android SDK Manager
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager 2>/dev/null | head -n 1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error title=Android SDK Manager not found::sdkmanager not found under $ANDROID_HOME/cmdline-tools"
+            exit 1
+          fi
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+
+      - name: Accept Android SDK Licenses
+        run: |
+          yes | "$SDKMANAGER" --licenses > /dev/null || {
+            echo "::error::License acceptance failed."
+            exit 1
+          }
+
+      - name: Install Android SDK Components and NDK
+        run: |
+          "$SDKMANAGER" --install \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;25.2.9519653" \
+            "system-images;android-34;google_apis;x86_64" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> "$GITHUB_ENV"
+
+      - name: Build native libraries (both ABIs)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/jniLibs/x86_64
+          export CGO_ENABLED=1
+          export GOOS=android
+          export GO111MODULE=on
+          export GOARCH=arm64
+          export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+          go build -buildmode=c-shared \
+            -o app/src/main/jniLibs/arm64-v8a/libmanjaniq_native.so ./native
+          export GOARCH=amd64
+          export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang"
+          go build -buildmode=c-shared \
+            -o app/src/main/jniLibs/x86_64/libmanjaniq_native.so ./native
+
+      - name: Free disk space for the emulator
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost 2>/dev/null || true
+          df -h
+
+      - name: Run instrumentation tests and launch smoke test on emulator
+        uses: android-actions/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          cores: 2
+          # 2048M: oversized AVD RAM (4096M) caused boot
+          # timeouts in earlier runs on shared runners.
+          ram-size: 2048M
+          heap-size: 512M
+          disk-size: 12288M
+          avd-name: manjaniq-avd
+          force-avd-creation: true
+          emulator-boot-timeout: 1500
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          # NOTE: this script is executed by sh (dash), NOT bash.
+          # It must stay POSIX: no PIPESTATUS, no pipefail, no
+          # arrays, no ${var//} substitutions. Exit codes are
+          # captured with `cmd > log 2>&1 || code=$?`.
+          script: |
+            set -eu
+            chmod +x gradlew
+            mkdir -p diagnostics
+            SHA="$(git rev-parse HEAD)"
+            echo "Testing commit $SHA"
+
+            echo "=== Instrumentation: connectedDebugAndroidTest ==="
+            code=0
+            ./gradlew connectedDebugAndroidTest --stacktrace > diagnostics/connected.log 2>&1 || code=$?
+            tail -n 300 diagnostics/connected.log
+
+            # Report the number of tests run and their result,
+            # parsed from the XML the runner wrote.
+            python3 - <<'PYEOF'
+            import glob, xml.etree.ElementTree as ET
+            total = failed = errors = 0
+            for f in glob.glob("app/build/outputs/androidTest-results/connected/debug/*.xml"):
+                for ts in ET.parse(f).getroot().iter("testsuite"):
+                    total += int(ts.get("tests", 0))
+                    failed += int(ts.get("failures", 0))
+                    errors += int(ts.get("errors", 0))
+            print(f"INSTRUMENTATION_RESULT tests={total} failures={failed} errors={errors}")
+            if total == 0:
+                raise SystemExit("No instrumentation tests were executed — the runner silently skipped everything.")
+            if failed or errors:
+                raise SystemExit(f"{failed} failing / {errors} erroring instrumentation tests")
+            PYEOF
+
+            if [ "$code" -ne 0 ]; then
+              echo "::error::connectedDebugAndroidTest failed with exit code $code"
+              exit "$code"
+            fi
+            echo "=== Instrumentation tests passed ==="
+
+            echo "=== Installed package signatures (evidence both APKs share one key) ==="
+            adb shell dumpsys package com.manjaniq | grep -iE "signatures|cert" | head -4 || true
+            adb shell dumpsys package com.manjaniq.test | grep -iE "signatures|cert" | head -4 || true
+
+            echo "=== Manual launch verification (spec 2.D procedure) ==="
+            # Clear stale logs so evidence is attributable to this run.
+            adb logcat -c
+            # Explicit, valid test procedure for the runtime permission:
+            # grant POST_NOTIFICATIONS up front so no permission dialog
+            # can intercept the launch (a dialog is NOT a successful
+            # Home screen launch).
+            adb shell pm grant com.manjaniq android.permission.POST_NOTIFICATIONS || true
+
+            adb shell am start -W -n com.manjaniq/.MainActivity > diagnostics/launch.txt 2>&1 || true
+            cat diagnostics/launch.txt
+            sleep 5
+
+            # Process must remain alive after launch.
+            if ! adb shell pidof com.manjaniq > diagnostics/pid.txt 2>&1; then
+              echo "::error title=APPLICATION FAILURE::app process com.manjaniq not found after launch (pidof failed)"
+              adb logcat -d > diagnostics/logcat-after-launch.txt 2>&1 || true
+              adb shell screencap -p /sdcard/screen.png
+              adb pull /sdcard/screen.png diagnostics/screen-after-launch.png || true
+              exit 1
+            fi
+            echo "App process alive, pid: $(cat diagnostics/pid.txt | tr -d '\r')"
+
+            # MainActivity must be the resumed activity.
+            adb shell dumpsys activity activities > diagnostics/activities.txt 2>&1 || true
+            if ! grep -E "mResumedActivity|topResumedActivity" diagnostics/activities.txt | grep -q "com.manjaniq/.MainActivity"; then
+              echo "::error title=APPLICATION FAILURE::MainActivity is not the resumed activity"
+              grep -E "mResumedActivity|topResumedActivity" diagnostics/activities.txt || true
+              adb logcat -d > diagnostics/logcat-wrong-activity.txt 2>&1 || true
+              exit 1
+            fi
+            grep -E "mResumedActivity|topResumedActivity" diagnostics/activities.txt | head -2
+
+            # The Home screen must actually render: check the view
+            # hierarchy for the dashboard markers.
+            adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 || true
+            adb pull /sdcard/ui.xml diagnostics/ui.xml > /dev/null 2>&1 || true
+            if ! grep -q "START ENGINE" diagnostics/ui.xml 2>/dev/null; then
+              echo "::error title=APPLICATION FAILURE::Home screen marker (START ENGINE) not found in the view hierarchy"
+              head -c 2000 diagnostics/ui.xml 2>/dev/null || true
+              adb logcat -d > diagnostics/logcat-no-home.txt 2>&1 || true
+              exit 1
+            fi
+            echo "Home screen marker visible in the view hierarchy."
+
+            # No fatal exceptions or native crashes during the launch.
+            if adb logcat -d > diagnostics/logcat-launch.txt 2>&1; then
+              if grep -qE "FATAL EXCEPTION|CRASH|native crash" diagnostics/logcat-launch.txt; then
+                echo "::error title=APPLICATION FAILURE::fatal exception or native crash in launch logcat"
+                grep -E "FATAL EXCEPTION|CRASH|native crash" diagnostics/logcat-launch.txt | head -20
+                exit 1
+              fi
+            fi
+            echo "=== Launch verification passed ==="
+
+      - name: Dump diagnostics on failure
+        if: failure()
+        run: |
+          set -eu
+          mkdir -p diagnostics
+          adb devices || true
+          adb logcat -d > diagnostics/logcat-final.txt 2>&1 || true
+          adb shell dumpsys activity activities > diagnostics/activities-final.txt 2>&1 || true
+          tail -n 400 diagnostics/connected.log 2>/dev/null || true
+          echo "::warning::diagnostics captured in diagnostics/"
+
+      - name: Upload emulator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-diagnostics-${{ github.sha }}
+          path: |
+            diagnostics/connected.log
+            diagnostics/launch.txt
+            diagnostics/pid.txt
+            diagnostics/activities.txt
+            diagnostics/ui.xml
+            diagnostics/logcat-*.txt
+          if-no-files-found: warn
+
+      - name: Upload tested debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: manjaniq-debug-apk-${{ github.sha }}
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
