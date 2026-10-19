@@ -1,12 +1,12 @@
 {
   "manjaniq_logo": {
-    "original": "assets/logos/originals/manjaniq_logo_upload_a16b18e.jpg",
-    "original_format": "JPEG",
+    "original": "assets/logos/originals/manjaniq_logo_upload_c6b2faa.webp",
+    "original_format": "WEBP",
     "original_size": [
-      3464,
-      3464
+      4068,
+      4068
     ],
-    "original_sha256": "4f33d00bf09d29a726e40eb7bb511c8cf651eaa3a7a97223401bc168c2917241",
+    "original_sha256": "c7513e3d5c1785daa740b503daae1d43ade3fdc8007cd908a01e7228ad2f1a11",
     "assets_png": "assets/logos/manjaniq_logo.png",
     "drawable": "app/src/main/res/drawable/ic_manjaniq_logo.png",
     "drawable_size": [
@@ -14,10 +14,10 @@
       512
     ],
     "content_bbox": [
-      512,
-      883,
-      2626,
-      2538
+      282,
+      281,
+      3780,
+      3774
     ]
   },
   "rsta_logo": {

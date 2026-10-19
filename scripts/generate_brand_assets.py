@@ -37,7 +37,7 @@ RES = ROOT / "app" / "src" / "main" / "res"
 
 # name -> original upload file (kept untouched)
 SOURCES = {
-    "manjaniq_logo": ORIGINALS / "manjaniq_logo_upload_a16b18e.jpg",
+    "manjaniq_logo": ORIGINALS / "manjaniq_logo_upload_c6b2faa.webp",
     "rsta_logo": ORIGINALS / "rsta_logo_upload.jpg",
     "aether_logo": ORIGINALS / "aether_logo_upload.jpg",
 }
