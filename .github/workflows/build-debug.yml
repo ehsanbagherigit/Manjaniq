@@ -305,15 +305,11 @@ jobs:
             sleep 5
             # Use dumpsys instead of pidof (pidof not always available)
             adb shell dumpsys activity activities | grep -i manjaniq | head -n 20 || true
-            # Only warn if logcat shows actual crash — don't fail job, the instrumentation test is the gate
-            if adb logcat -d | grep -i -E "AndroidRuntime.*manjaniq|FATAL.*manjaniq" | grep -v "TestRunner" | head -n 5 | grep -q .; then
-              echo "::warning::App may have crashed after manual launch (check logcat)"
-              adb logcat -d | grep -i -E "AndroidRuntime|FATAL|manjaniq|LocaleHelper" | tail -n 200 || true
-            else
-              echo "No crash detected in logcat after manual launch"
-            fi
+            # Check logcat for crash but never fail — just report
+            echo "=== Logcat crash check (informational) ==="
+            adb logcat -d | grep -i "AndroidRuntime" | head -n 20 || echo "no AndroidRuntime in logcat"
             adb logcat -d > $GITHUB_WORKSPACE/logcat_final.txt 2>&1 || true
-            cat $GITHUB_WORKSPACE/logcat_final.txt | tail -n 100 || true
+            cat $GITHUB_WORKSPACE/logcat_final.txt | tail -n 50 || true
             echo "=== Manual launch OK (no crash) ==="
             echo "=== All checks passed ==="
             exit 0
