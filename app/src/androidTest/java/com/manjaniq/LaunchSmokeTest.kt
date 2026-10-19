@@ -96,10 +96,18 @@ class LaunchSmokeTest {
         val ctx = AppLaunch.context
         val appInfo = ctx.packageManager.getApplicationInfo(ctx.packageName, 0)
         assertNotEquals("android:icon must be set", 0, appInfo.icon)
-        // The icon resource must resolve to the adaptive icon drawable.
+        // The effective icon is one of our two adaptive launcher icons. On
+        // devices whose system config prefers round icons (the API 29
+        // emulator does) ApplicationInfo.icon is the android:roundIcon.
         val name = ctx.resources.getResourceEntryName(appInfo.icon)
-        assertEquals("ic_launcher", name)
+        assertTrue(
+            "launcher icon must be ic_launcher or ic_launcher_round, was $name",
+            name == "ic_launcher" || name == "ic_launcher_round"
+        )
         assertNotNull(ctx.resources.getDrawable(appInfo.icon, ctx.theme))
+        // Both declared launcher icons must resolve and decode on-device.
+        assertNotNull(ctx.resources.getDrawable(R.mipmap.ic_launcher, ctx.theme))
+        assertNotNull(ctx.resources.getDrawable(R.mipmap.ic_launcher_round, ctx.theme))
         // In-app brand resources must decode.
         assertNotNull(ctx.resources.getDrawable(R.drawable.ic_manjaniq_logo, ctx.theme))
         assertNotNull(ctx.resources.getDrawable(R.drawable.ic_rsta_logo, ctx.theme))
