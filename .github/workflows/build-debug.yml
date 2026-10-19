@@ -5,6 +5,24 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+# Gates (all required - no job is continue-on-error):
+#   build          : asset/format validation, Go engine tests (incl. the
+#                    ephemeral-port tests), native libs, Kotlin compile,
+#                    host unit tests (incl. Robolectric real-UI launch),
+#                    debug APK assembly + content verification, artifact.
+#   emulator-smoke : installs the exact APK artifact from `build`, launches
+#                    the real launcher activity, verifies RESUMED + process
+#                    liveness, then runs the on-device instrumentation
+#                    suite against the real redesigned UI.
+#
+# Every job prints the commit SHA it tests; emulator evidence is uploaded
+# as an artifact and includes that SHA.
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -12,6 +30,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Commit under test
+        run: |
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          echo "HEAD=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Set up Python (asset validation)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate brand assets and resources
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet Pillow
+          python3 scripts/check_assets.py
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -23,6 +58,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+          cache: false
 
       - name: Configure Android SDK
         run: |
@@ -61,23 +97,10 @@ jobs:
       - name: Test Go engine package
         run: |
           set -euo pipefail
-          # The genuine RSTA engine source must be tracked at
-          # engine/rstaspoof/ (package manjaniq/engine/rstaspoof,
-          # imported by native/bridge.go). It was missing from GitHub
-          # for a long time because .gitignore contained "/engine/".
-          # Fail with an actionable message instead of a bare
-          # "cannot find package" if it is absent again.
           if [ ! -d engine/rstaspoof ] || ! ls engine/rstaspoof/*.go >/dev/null 2>&1; then
-            echo "::error title=Genuine engine source missing::engine/rstaspoof/*.go not found in this checkout. Commit the genuine RSTA engine sources (engine.go, config.go, proxy.go, tls.go, bypass.go, ...) to engine/rstaspoof/ -- source files only, without any nested .git directory or prebuilt binaries -- then re-run. See DEVELOPMENT_LOG.md (2026-10-18)."
+            echo "::error title=Genuine engine source missing::engine/rstaspoof/*.go not found in this checkout. Commit the genuine RSTA engine sources to engine/rstaspoof/ (source files only, no nested .git or prebuilt binaries) and re-run."
             exit 1
           fi
-          # Module mode (go.mod at the repo root declares "module
-          # manjaniq"); validates that the engine package imported by
-          # native/bridge.go resolves and passes its tests on the host
-          # before the Android cross-compile below. -count=3 keeps an
-          # intermittent lifecycle deadlock detectable; the failure
-          # dump is mirrored into annotations because raw run logs
-          # are not always downloadable.
           export GO111MODULE=on
           if ! go test -count=3 -timeout 240s -v ./engine/... 2>&1 | tee /tmp/gotest.log; then
             echo "::error title=Go tests failed::go test ./engine/... failed; context lines follow as annotations"
@@ -88,29 +111,33 @@ jobs:
             done < /tmp/gotest.ctx
             exit 1
           fi
+          # The ephemeral-port tests are a required part of the gate.
+          grep -q -- "--- PASS: TestEngineEndToEndFragment" /tmp/gotest.log
+          grep -q -- "--- PASS: TestRapidStartStop" /tmp/gotest.log
+          echo "Ephemeral-port regression tests passed (TestEngineEndToEndFragment, TestRapidStartStop)."
 
-      - name: Build Native Library (arm64-v8a)
+      - name: Build Native Libraries (arm64-v8a + x86_64)
         run: |
           set -euo pipefail
-          mkdir -p app/src/main/jniLibs/arm64-v8a
+          mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/jniLibs/x86_64
           export CGO_ENABLED=1
           export GOOS=android
+          export GO111MODULE=on
+          # arm64-v8a
           export GOARCH=arm64
           export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
-          # Module mode is required: bridge.go imports
-          # "manjaniq/engine/rstaspoof". GO111MODULE=off broke that
-          # import ("cannot find package") because there is no GOPATH
-          # checkout. Run from the repo root so ./native resolves
-          # against the root go.mod.
-          export GO111MODULE=on
-          # Build the whole ./native package (bridge.go + bridge.c).
-          # Building only ./native/bridge.go silently drops the C wrapper and
-          # leaves NewStringUTF_wrapper undefined, which makes dlopen fail on
-          # Android with "cannot locate symbol".
           go build \
             -buildmode=c-shared \
             -o app/src/main/jniLibs/arm64-v8a/libmanjaniq_native.so \
             ./native
+          # x86_64 (for emulator smoke test)
+          export GOARCH=amd64
+          export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang"
+          go build \
+            -buildmode=c-shared \
+            -o app/src/main/jniLibs/x86_64/libmanjaniq_native.so \
+            ./native
+          ls -lh app/src/main/jniLibs/arm64-v8a/ app/src/main/jniLibs/x86_64/
 
       - name: Verify native library
         run: |
@@ -120,11 +147,53 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
+      - name: Compile Kotlin (debug + unit test + androidTest sources)
+        run: bash scripts/ci/gradle_step.sh /tmp/gradle_compile.log :app:compileDebugKotlin :app:compileDebugUnitTestKotlin :app:compileDebugAndroidTestKotlin --stacktrace
+
       - name: Run unit tests
-        run: ./gradlew :app:testDebugUnitTest --stacktrace
+        run: |
+          bash scripts/ci/gradle_step.sh /tmp/gradle_test.log :app:testDebugUnitTest --stacktrace
+          echo "Unit test results:"
+          find app/build/test-results -name 'TEST-*.xml' -print -exec grep -o '<testsuite[^>]*>' {} \;
+
+      - name: Upload Gradle logs and unit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-logs-and-unit-results
+          path: |
+            /tmp/gradle_compile.log
+            /tmp/gradle_test.log
+            /tmp/gradle_assemble.log
+            app/build/test-results/**/TEST-*.xml
+          if-no-files-found: warn
+
+      - name: Comment Gradle failure on PR
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let log = '';
+            try { log = fs.readFileSync('/tmp/gradle_test.log', 'utf8'); } catch(e) { try { log = fs.readFileSync('/tmp/gradle_compile.log', 'utf8'); } catch(e2) { log = 'No Gradle log available: ' + e2; } }
+            const lines = log.split('\n');
+            let excerpt;
+            if (lines.length > 600) {
+              excerpt = lines.slice(0, 200).join('\n') + '\n...[truncated]...\n' + lines.slice(-400).join('\n');
+            } else {
+              excerpt = log;
+            }
+            excerpt = excerpt.slice(0, 60000);
+            const body = `### ❌ Gradle build/tests failed in \`${process.env.GITHUB_WORKFLOW}\` @ \`${context.sha.slice(0,7)}\`\n\n<details><summary>Gradle log (last run)</summary>\n\n\`\`\`\n${excerpt}\n\`\`\`\n\n</details>`;
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: bash scripts/ci/gradle_step.sh /tmp/gradle_assemble.log assembleDebug --stacktrace
 
       - name: Verify APK contents
         run: |
@@ -132,12 +201,47 @@ jobs:
           APK="$(ls app/build/outputs/apk/debug/*.apk)"
           test -n "$APK"
           echo "Checking $APK"
+          sha256sum "$APK"
           unzip -l "$APK" > /tmp/apk_listing.txt
           grep -q "classes.dex" /tmp/apk_listing.txt
           grep -q "lib/arm64-v8a/libmanjaniq_native.so" /tmp/apk_listing.txt
-          rm -rf /tmp/apkcheck
-          mkdir -p /tmp/apkcheck
-          unzip -o -q "$APK" "lib/arm64-v8a/*" -d /tmp/apkcheck
+          grep -q "lib/x86_64/libmanjaniq_native.so" /tmp/apk_listing.txt
+          # Launcher + brand resources must be packaged (regression for missing icon / stale logo)
+          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            grep -q "res/mipmap-${d}-v4/ic_launcher.png\|res/mipmap-${d}/ic_launcher.png\|mipmap-${d}.*ic_launcher" /tmp/apk_listing.txt \
+              || { echo "::error::missing ic_launcher for density $d"; exit 1; }
+          done
+          grep -q "ic_launcher_foreground" /tmp/apk_listing.txt
+          grep -q "ic_manjaniq_logo" /tmp/apk_listing.txt
+          grep -q "ic_rsta_logo" /tmp/apk_listing.txt
+          grep -q "ic_aether_logo" /tmp/apk_listing.txt
+          # The packaged in-app logo must be the regenerated one (same bytes as the resource in this checkout;
+          # AGP does not re-encode PNGs in debug builds when cruncher is off, so compare via decode instead).
+          rm -rf /tmp/apkcheck && mkdir -p /tmp/apkcheck
+          unzip -o -q "$APK" "lib/arm64-v8a/*" "res/*" -d /tmp/apkcheck || true
+          python3 - <<'PY'
+          import glob, sys
+          from PIL import Image, ImageChops, ImageStat
+          src = Image.open('app/src/main/res/drawable/ic_manjaniq_logo.png').convert('RGB')
+          packed = glob.glob('/tmp/apkcheck/res/**/ic_manjaniq_logo*.png', recursive=True) + glob.glob('/tmp/apkcheck/res/*/*ic_manjaniq_logo*.png')
+          if not packed:
+              # aapt2 obfuscation is off for debug; still tolerate numbered names by scanning drawable dirs
+              packed = [p for p in glob.glob('/tmp/apkcheck/res/drawable*/*.png')]
+          best = None
+          for p in packed:
+              try:
+                  im = Image.open(p).convert('RGB')
+              except Exception:
+                  continue
+              a = src.resize((64, 64)); b = im.resize((64, 64))
+              score = sum(ImageStat.Stat(ImageChops.difference(a, b)).mean) / 3
+              if best is None or score < best[0]:
+                  best = (score, p)
+          print('closest packaged drawable to the official logo:', best)
+          if best is None or best[0] > 6.0:
+              print('::error::packaged APK does not contain the current official Manjaniq logo drawable')
+              sys.exit(1)
+          PY
           bash native/verify_native_lib.sh /tmp/apkcheck/lib/arm64-v8a/libmanjaniq_native.so
 
       - name: Upload debug APK
@@ -146,3 +250,119 @@ jobs:
           name: manjaniq-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+  emulator-smoke:
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Commit under test
+        run: |
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          echo "HEAD=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Download the exact APK built for this commit
+        uses: actions/download-artifact@v4
+        with:
+          name: manjaniq-debug-apk
+          path: tested-apk
+
+      - name: Enable KVM (hardware acceleration)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -lh /dev/kvm || echo "::warning::KVM not available - emulator will be slow"
+          egrep -c '(vmx|svm)' /proc/cpuinfo || echo "::warning::No VMX/SVM"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: false
+
+      - name: Configure Android SDK
+        run: echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+
+      - name: Locate Android SDK Manager
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager 2>/dev/null | head -n 1)"
+          test -n "$SDKMANAGER"
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+
+      - name: Accept Android SDK Licenses
+        run: yes | "$SDKMANAGER" --licenses
+
+      - name: Install Android SDK Components and NDK
+        run: |
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0" "ndk;25.2.9519653"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> "$GITHUB_ENV"
+
+      - name: Build native libs for the instrumentation build (arm64 + x86_64)
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/jniLibs/x86_64
+          export CGO_ENABLED=1 GOOS=android GO111MODULE=on
+          export GOARCH=arm64 CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+          go build -buildmode=c-shared -o app/src/main/jniLibs/arm64-v8a/libmanjaniq_native.so ./native
+          export GOARCH=amd64 CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang"
+          go build -buildmode=c-shared -o app/src/main/jniLibs/x86_64/libmanjaniq_native.so ./native
+
+      - name: Free disk space for emulator
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost 2>/dev/null || true
+          df -h
+
+      # The action runs every line of `script` in its own `sh -c`; all logic
+      # therefore lives in scripts/ci/emulator_smoke.sh (bash, strict mode)
+      # and is started with a single line.
+      - name: Run emulator gate (artifact launch + instrumentation on real UI)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          target: google_apis
+          arch: x86_64
+          cores: 2
+          avd-name: manjaniq-avd
+          force-avd-creation: true
+          emulator-boot-timeout: 900
+          ram-size: 2048M
+          heap-size: 512M
+          disk-size: 4096M
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          script: bash scripts/ci/emulator_smoke.sh
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          echo "commit: $(cat emulator-evidence/commit-sha.txt 2>/dev/null || echo unknown)"
+          echo "device: $(cat emulator-evidence/device.txt 2>/dev/null | tr '\n' ' ')"
+          echo "apk:    $(cat emulator-evidence/apk-sha256.txt 2>/dev/null || echo unknown)"
+          echo "--- summary.txt"; cat emulator-evidence/summary.txt 2>/dev/null || echo "(no summary written - gate did not reach the end)"
+          echo "--- androidTest XML"
+          for f in emulator-evidence/androidTest-results/TEST-*.xml; do
+            [ -f "$f" ] || continue
+            grep -o '<testsuite[^>]*>' "$f"
+            grep -o '<testcase[^>]*>' "$f" | sed 's/^/   /'
+            grep -o '<failure[^>]*>' "$f" | sed 's/^/   !! /' || true
+          done
+
+      - name: Upload emulator evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-evidence
+          path: emulator-evidence/
+          if-no-files-found: warn
