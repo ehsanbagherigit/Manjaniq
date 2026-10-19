@@ -43,13 +43,13 @@ fun RstaConfigurationSection(
                 letterSpacing = 1.2.sp
             )
             Text(
-                text = "Your RSTA engine configuration is ready. Adjust listen/target, SNI, method and fragmentation below.",
+                text = stringResource(R.string.rsta_config_intro),
                 color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 13.sp
             )
             // Quick info about where to edit — we keep full settings embedded below
             Text(
-                text = "Use the controls below to edit. Changes are validated and saved to your device.",
+                text = stringResource(R.string.rsta_config_intro_hint),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp
             )
@@ -88,7 +88,7 @@ fun RstaLiveStatsCard(
             StatRow(stringResource(R.string.traffic_up), formatBytes(metrics.bytesUp))
             StatRow(stringResource(R.string.traffic_down), formatBytes(metrics.bytesDown))
             Text(
-                text = "Counters come from the engine's own monitor; traffic totals advance in 256 KB steps, as in the original program.",
+                text = stringResource(R.string.stats_footnote),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 11.sp
             )

@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
@@ -17,6 +18,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.manjaniq.R
+import com.manjaniq.ui.TestTags
 import com.manjaniq.core.EngineMetrics
 import com.manjaniq.core.models.EngineState
 import com.manjaniq.ui.theme.ManjaniqBorder
@@ -49,7 +51,9 @@ fun CompactConnectionStatus(
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag(TestTags.CONNECTION_STATUS),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = androidx.compose.foundation.BorderStroke(1.dp, ManjaniqBorder)
@@ -123,7 +127,7 @@ fun CompactConnectionStatus(
 
             if (metrics.version.isNotBlank()) {
                 Text(
-                    text = "Engine v${metrics.version}",
+                    text = stringResource(R.string.engine_version_fmt, metrics.version),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp
                 )

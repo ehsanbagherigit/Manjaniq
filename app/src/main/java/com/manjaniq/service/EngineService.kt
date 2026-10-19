@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.manjaniq.MainActivity
 import com.manjaniq.NativeBridge
+import com.manjaniq.R
 import com.manjaniq.core.ConfigStore
 import com.manjaniq.core.EngineRepository
 import kotlinx.coroutines.CoroutineScope
@@ -62,7 +63,7 @@ class EngineService : Service() {
 
     private fun startEngine() {
         // Must go foreground promptly after startForegroundService.
-        goForeground("Starting RSTA engine…")
+        goForeground(getString(R.string.notification_starting))
         scope.launch {
             val config = ConfigStore(this@EngineService).load()
             val problem = config.validate()
@@ -74,10 +75,7 @@ class EngineService : Service() {
             val result = NativeBridge.startEngine(config)
             if (result.isSuccess) {
                 EngineRepository.onEngineActionFinished(null)
-                goForeground(
-                    "Proxy ${config.listenHost}:${config.listenPort} → " +
-                        "${config.connectIp}:${config.connectPort} (${config.bypassMethod})"
-                )
+                goForeground(proxyStatusText(config))
             } else {
                 EngineRepository.onEngineActionFinished(
                     result.errorMessage ?: "Engine failed to start"
@@ -98,7 +96,7 @@ class EngineService : Service() {
     }
 
     private fun restartEngine() {
-        goForeground("Restarting RSTA engine…")
+        goForeground(getString(R.string.notification_restarting))
         scope.launch {
             NativeBridge.stopEngine()
             val config = ConfigStore(this@EngineService).load()
@@ -111,10 +109,7 @@ class EngineService : Service() {
             val result = NativeBridge.startEngine(config)
             if (result.isSuccess) {
                 EngineRepository.onEngineActionFinished(null)
-                goForeground(
-                    "Proxy ${config.listenHost}:${config.listenPort} → " +
-                        "${config.connectIp}:${config.connectPort} (${config.bypassMethod})"
-                )
+                goForeground(proxyStatusText(config))
             } else {
                 EngineRepository.onEngineActionFinished(
                     result.errorMessage ?: "Engine failed to restart"
@@ -123,6 +118,14 @@ class EngineService : Service() {
             }
         }
     }
+
+    private fun proxyStatusText(config: com.manjaniq.core.models.RSTAConfig): String =
+        getString(
+            R.string.notification_proxy_fmt,
+            "${config.listenHost}:${config.listenPort}",
+            "${config.connectIp}:${config.connectPort}",
+            config.bypassMethod
+        )
 
     private fun stopForegroundAndSelf() {
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -143,11 +146,13 @@ class EngineService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
-            .setContentTitle("Manjaniq — RSTA engine")
+            // Monochrome relay glyph (status-bar safe); the previous
+            // stat_sys_data_bluetooth icon was unrelated to a TLS proxy.
+            .setSmallIcon(R.drawable.ic_stat_engine)
+            .setContentTitle(getString(R.string.notification_title))
             .setContentText(statusText)
             .setContentIntent(openApp)
-            .addAction(0, "Stop", stopAction)
+            .addAction(0, getString(R.string.notification_stop), stopAction)
             .setOngoing(true)
             .build()
         ServiceCompat.startForeground(
@@ -162,10 +167,10 @@ class EngineService : Service() {
         val manager = getSystemService(NotificationManager::class.java)
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "RSTA engine",
+            getString(R.string.notification_channel_name),
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Shown while the local RSTA proxy is running"
+            description = getString(R.string.notification_channel_desc)
         }
         manager.createNotificationChannel(channel)
     }

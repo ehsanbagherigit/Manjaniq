@@ -9,12 +9,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.manjaniq.R
+import com.manjaniq.ui.TestTags
 import com.manjaniq.core.SelectedCore
 import com.manjaniq.ui.theme.AetherCyan
 import com.manjaniq.ui.theme.ManjaniqBorder
@@ -28,7 +30,9 @@ fun CoreSelector(
     modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag(TestTags.CORE_SELECTOR),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text(
@@ -52,7 +56,9 @@ fun CoreSelector(
                 description = stringResource(R.string.rsta_description),
                 badgeText = stringResource(R.string.badge_available),
                 onClick = { onSelect(SelectedCore.RSTA) },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag(TestTags.CORE_CARD_RSTA)
             )
             CoreCard(
                 selected = selected == SelectedCore.AETHER,
@@ -64,7 +70,9 @@ fun CoreSelector(
                 badgeText = stringResource(R.string.badge_coming_soon),
                 isComingSoon = true,
                 onClick = { onSelect(SelectedCore.AETHER) },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag(TestTags.CORE_CARD_AETHER)
             )
         }
     }

@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
@@ -18,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.manjaniq.R
+import com.manjaniq.ui.TestTags
 import com.manjaniq.core.EngineLog
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -53,6 +55,7 @@ fun LogsScreenNew(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .testTag(TestTags.LOGS_SCREEN)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -102,7 +105,7 @@ fun LogsScreenNew(
             FilterChip(
                 selected = filter == "WARN",
                 onClick = { filter = "WARN" },
-                label = { Text("WARN", fontSize = 12.sp) }
+                label = { Text(stringResource(R.string.filter_warn), fontSize = 12.sp) }
             )
             FilterChip(
                 selected = filter == "ERROR",

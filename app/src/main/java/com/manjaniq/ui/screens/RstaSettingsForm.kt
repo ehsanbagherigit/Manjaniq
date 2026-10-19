@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -23,18 +24,20 @@ import com.manjaniq.R
 import com.manjaniq.core.models.EngineState
 import com.manjaniq.core.models.RSTAConfig
 
+@Composable
 private fun methodDescription(method: String): String = when (method) {
-    "fragment" -> "Splits the real TLS ClientHello into fragments so the SNI is never visible in one packet."
-    "fake_sni" -> "Sends a fake ClientHello probe with the Fake SNI on a side connection, then fragments the real hello."
-    "combined" -> "Fake-hello probe plus fragmentation — the original program's recommended method."
+    "fragment" -> stringResource(R.string.method_fragment_desc)
+    "fake_sni" -> stringResource(R.string.method_fake_sni_desc)
+    "combined" -> stringResource(R.string.method_combined_desc)
     else -> ""
 }
 
+@Composable
 private fun strategyDescription(strategy: String): String = when (strategy) {
-    "sni_split" -> "Split in the middle of the SNI value (recommended)."
-    "half" -> "Split the ClientHello record into two halves."
-    "multi" -> "Split into many small 24-byte chunks."
-    "tls_record_frag" -> "Re-wrap the handshake as two separate TLS records."
+    "sni_split" -> stringResource(R.string.strategy_sni_split_desc)
+    "half" -> stringResource(R.string.strategy_half_desc)
+    "multi" -> stringResource(R.string.strategy_multi_desc)
+    "tls_record_frag" -> stringResource(R.string.strategy_tls_record_frag_desc)
     else -> ""
 }
 
@@ -57,6 +60,7 @@ fun RstaSettingsForm(
     var importVisible by remember { mutableStateOf(false) }
     var importText by remember { mutableStateOf("") }
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
 
     // Pre-resolve strings for use in non-composable helpers
     val listenPortError = stringResource(R.string.listen_port_number)
@@ -180,7 +184,7 @@ fun RstaSettingsForm(
             }
             ToggleRow(
                 "FAKE_SNI_FRAGMENT_REAL",
-                "Stored and sent to the engine; the current engine build always fragments the real hello",
+                stringResource(R.string.fake_sni_fragment_real_desc),
                 draft.fakeSNIFragmentReal
             ) { draft = draft.copy(fakeSNIFragmentReal = it) }
         }
@@ -313,7 +317,7 @@ fun RstaSettingsForm(
                     } else {
                         val problem = parsed.validate()
                         if (problem != null) {
-                            errorText = "Imported config: $problem"
+                            errorText = context.getString(R.string.imported_config_error, problem)
                         } else {
                             refreshTexts(parsed)
                             infoText = importedReview

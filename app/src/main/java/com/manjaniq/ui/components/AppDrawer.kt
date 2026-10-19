@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -20,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.manjaniq.R
+import com.manjaniq.ui.TestTags
 import com.manjaniq.ui.navigation.AppDestination
 import com.manjaniq.ui.theme.ManjaniqBorder
 import com.manjaniq.ui.theme.ManjaniqPurple
@@ -32,6 +34,7 @@ fun AppDrawerContent(
     versionName: String
 ) {
     ModalDrawerSheet(
+        modifier = Modifier.testTag(TestTags.DRAWER),
         drawerContainerColor = MaterialTheme.colorScheme.surface,
         drawerContentColor = MaterialTheme.colorScheme.onSurface
     ) {
@@ -97,7 +100,9 @@ fun AppDrawerContent(
                     onNavigate(dest.route)
                     onClose()
                 },
-                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+                modifier = Modifier
+                    .padding(NavigationDrawerItemDefaults.ItemPadding)
+                    .testTag(TestTags.drawerItem(dest.route)),
                 colors = NavigationDrawerItemDefaults.colors(
                     selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                     selectedTextColor = ManjaniqPurple,

@@ -7,12 +7,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.manjaniq.R
+import com.manjaniq.ui.TestTags
 import com.manjaniq.core.EngineLog
 import com.manjaniq.core.EngineUiState
 import com.manjaniq.core.SelectedCore
@@ -42,6 +44,7 @@ fun HomeScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .testTag(TestTags.HOME_SCREEN)
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -95,7 +98,8 @@ fun HomeScreen(
                     enabled = !ui.busy && !transition,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp),
+                        .height(52.dp)
+                        .testTag(TestTags.ENGINE_TOGGLE),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (running) Color(0xFFB3261E)
@@ -198,7 +202,7 @@ fun HomeScreen(
                             fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                         )
                         Text(
-                            text = "Selecting Aether does not start or affect the RSTA engine. Switch back to RSTA to control the available proxy.",
+                            text = stringResource(R.string.aether_no_effect),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 12.sp
                         )
@@ -211,7 +215,8 @@ fun HomeScreen(
                     enabled = false,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp),
+                        .height(52.dp)
+                        .testTag(TestTags.AETHER_DISABLED_BUTTON),
                     shape = RoundedCornerShape(14.dp)
                 ) {
                     Text(

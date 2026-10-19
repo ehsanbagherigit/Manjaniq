@@ -17,12 +17,14 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.manjaniq.R
+import com.manjaniq.ui.TestTags
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,7 +52,10 @@ fun ManjaniqTopBar(
         },
         navigationIcon = {
             if (showMenu) {
-                IconButton(onClick = onMenuClick) {
+                IconButton(
+                    onClick = onMenuClick,
+                    modifier = Modifier.testTag(TestTags.TOP_BAR_MENU)
+                ) {
                     Icon(
                         imageVector = Icons.Filled.Menu,
                         contentDescription = stringResource(R.string.nav_open),

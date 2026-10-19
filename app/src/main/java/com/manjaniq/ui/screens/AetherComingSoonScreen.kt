@@ -88,9 +88,9 @@ fun AetherComingSoonContent(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                FeatureRow("•", "Pluggable transport architecture")
-                FeatureRow("•", "Advanced obfuscation pipeline")
-                FeatureRow("•", "Multi-core orchestration (planned)")
+                FeatureRow("•", stringResource(R.string.aether_feature_1))
+                FeatureRow("•", stringResource(R.string.aether_feature_2))
+                FeatureRow("•", stringResource(R.string.aether_feature_3))
             }
 
             Text(
