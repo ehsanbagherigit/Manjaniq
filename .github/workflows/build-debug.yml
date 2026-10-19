@@ -148,38 +148,11 @@ jobs:
         run: chmod +x gradlew
 
       - name: Compile Kotlin (debug + unit test + androidTest sources)
-        run: |
-          set -euo pipefail
-          ./gradlew :app:compileDebugKotlin :app:compileDebugUnitTestKotlin :app:compileDebugAndroidTestKotlin --stacktrace 2>&1 | tee /tmp/gradle_compile.log
-          EXIT_CODE=${PIPESTATUS[0]}
-          if [ "$EXIT_CODE" -ne 0 ]; then
-            echo "::error title=Kotlin compilation failed::exit code $EXIT_CODE"
-            grep -E "^e: |error:|FAILED|Execution failed" /tmp/gradle_compile.log | head -80 | while IFS= read -r line; do
-              printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-800)"
-            done
-            exit "$EXIT_CODE"
-          fi
+        run: bash scripts/ci/gradle_step.sh /tmp/gradle_compile.log :app:compileDebugKotlin :app:compileDebugUnitTestKotlin :app:compileDebugAndroidTestKotlin --stacktrace
 
       - name: Run unit tests
         run: |
-          set -o pipefail
-          ./gradlew :app:testDebugUnitTest --stacktrace 2>&1 | tee /tmp/gradle_test.log
-          EXIT_CODE=${PIPESTATUS[0]}
-          if [ $EXIT_CODE -ne 0 ]; then
-            echo "::error title=Gradle unit tests failed::exit code $EXIT_CODE — see artifact gradle-test-log"
-            grep -E "e:|error:|FAILED|Execution failed|Build failed" /tmp/gradle_test.log | head -80 > /tmp/gradle_err.txt || true
-            if [ -s /tmp/gradle_err.txt ]; then
-              while IFS= read -r line; do
-                printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-800)"
-              done < /tmp/gradle_err.txt
-            else
-              tail -n 80 /tmp/gradle_test.log > /tmp/gradle_tail.txt
-              while IFS= read -r line; do
-                printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-800)"
-              done < /tmp/gradle_tail.txt
-            fi
-            exit $EXIT_CODE
-          fi
+          bash scripts/ci/gradle_step.sh /tmp/gradle_test.log :app:testDebugUnitTest --stacktrace
           echo "Unit test results:"
           find app/build/test-results -name 'TEST-*.xml' -print -exec grep -o '<testsuite[^>]*>' {} \;
 
@@ -191,6 +164,7 @@ jobs:
           path: |
             /tmp/gradle_compile.log
             /tmp/gradle_test.log
+            /tmp/gradle_assemble.log
             app/build/test-results/**/TEST-*.xml
           if-no-files-found: warn
 
@@ -219,7 +193,7 @@ jobs:
             });
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: bash scripts/ci/gradle_step.sh /tmp/gradle_assemble.log assembleDebug --stacktrace
 
       - name: Verify APK contents
         run: |
