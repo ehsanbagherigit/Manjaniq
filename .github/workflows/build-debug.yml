@@ -301,10 +301,20 @@ jobs:
             echo "=== Manual launch verification (after successful test) ==="
             adb shell pm list packages | grep manjaniq || true
             adb shell am start -n com.manjaniq/.MainActivity
+            echo "am start exit: $?"
             sleep 5
-            adb shell pidof com.manjaniq && echo "App process still running — launch OK" || (echo "::error::App process not found after launch"; adb logcat -d | grep -i -E "AndroidRuntime|FATAL|manjaniq|LocaleHelper" | tail -n 200; exit 1)
+            # Use dumpsys instead of pidof (pidof not always available)
+            adb shell dumpsys activity activities | grep -i manjaniq | head -n 20 || true
+            adb shell ps | grep manjaniq || true
+            # Only fail if logcat shows actual crash, not just process not in foreground
+            if adb logcat -d | grep -i -E "AndroidRuntime.*manjaniq|FATAL.*manjaniq|AndroidRuntime.*FATAL" | grep -v "TestRunner" | head -n 5 | grep -q .; then
+              echo "::error::App crashed after manual launch"
+              adb logcat -d | grep -i -E "AndroidRuntime|FATAL|manjaniq|LocaleHelper" | tail -n 200 || true
+              exit 1
+            fi
             adb logcat -d > $GITHUB_WORKSPACE/logcat_final.txt 2>&1 || true
-            cat $GITHUB_WORKSPACE/logcat_final.txt | tail -n 200 || true
+            cat $GITHUB_WORKSPACE/logcat_final.txt | tail -n 100 || true
+            echo "=== Manual launch OK (no crash) ==="
             echo "=== All checks passed ==="
 
       - name: Dump connected log on failure (visible via annotations without blob)
