@@ -13,6 +13,7 @@ import com.manjaniq.MainActivity
 import com.manjaniq.NativeBridge
 import com.manjaniq.core.ConfigStore
 import com.manjaniq.core.EngineRepository
+import com.manjaniq.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -156,7 +157,11 @@ class EngineService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
+            // A sync-style icon: the engine relays data between
+            // the client and the target. (The previous
+            // stat_sys_data_bluetooth icon was misleading
+            // branding for a TLS proxy.)
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle(getString(R.string.notification_title))
             .setContentText(statusText)
             .setContentIntent(openApp)
