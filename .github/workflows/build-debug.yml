@@ -283,9 +283,12 @@ jobs:
             echo "=== ADB devices before test ==="
             adb devices
             echo "=== Running connectedDebugAndroidTest ==="
-            set +e
-            ./gradlew connectedDebugAndroidTest --stacktrace 2>&1 | tee $GITHUB_WORKSPACE/connected.log
-            TEST_EXIT=${PIPESTATUS[0]}
+            set -o pipefail
+            if ./gradlew connectedDebugAndroidTest --stacktrace 2>&1 | tee $GITHUB_WORKSPACE/connected.log; then
+              TEST_EXIT=0
+            else
+              TEST_EXIT=$?
+            fi
             echo "=== Graduated with exit $TEST_EXIT ==="
             echo "=== Test log tail (last 500 lines) ==="
             tail -n 500 $GITHUB_WORKSPACE/connected.log || true
