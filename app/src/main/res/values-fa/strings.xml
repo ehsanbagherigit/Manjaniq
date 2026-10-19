@@ -173,4 +173,32 @@
 
     <!-- Empty states -->
     <string name="no_events">هنوز رویدادی نیست. موتور را روشن کنید.</string>
+
+    <!-- Previously hardcoded in composables -->
+    <string name="aether_no_effect">انتخاب ایثر موتور RSTA را اجرا یا تغییر نمی‌دهد. برای کنترل پروکسی موجود به RSTA برگردید.</string>
+    <string name="aether_feature_1">معماری انتقال افزونه‌پذیر</string>
+    <string name="aether_feature_2">خط لولهٔ مبهم‌سازی پیشرفته</string>
+    <string name="aether_feature_3">هماهنگی چندهسته‌ای (برنامه‌ریزی‌شده)</string>
+    <string name="stats_footnote">شمارنده‌ها از مانیتور خود موتور می‌آیند؛ مجموع ترافیک مانند برنامهٔ اصلی در گام‌های ۲۵۶ کیلوبایتی افزایش می‌یابد.</string>
+    <string name="config_management_hint">برای ویرایش تنظیمات اتصال، روش دورزدن و تکه‌تکه‌سازی به خانه ← RSTA بروید. این تنظیمات جدا از زبان و پوستهٔ برنامه ذخیره می‌شوند.</string>
+    <string name="rsta_config_intro">پیکربندی موتور RSTA آماده است. شنود/مقصد، SNI، روش و تکه‌تکه‌سازی را در زیر تنظیم کنید.</string>
+    <string name="rsta_config_intro_hint">از کنترل‌های زیر برای ویرایش استفاده کنید. تغییرات اعتبارسنجی و روی دستگاه ذخیره می‌شوند.</string>
+    <string name="engine_version_fmt">موتور نسخهٔ %1$s</string>
+    <string name="method_fragment_desc">ClientHello واقعی TLS را تکه‌تکه می‌کند تا SNI هرگز در یک بسته دیده نشود.</string>
+    <string name="method_fake_sni_desc">یک ClientHello جعلی با Fake SNI روی اتصال جانبی می‌فرستد، سپس hello واقعی را تکه‌تکه می‌کند.</string>
+    <string name="method_combined_desc">کاوش hello جعلی به‌همراه تکه‌تکه‌سازی — روش پیشنهادی برنامهٔ اصلی.</string>
+    <string name="strategy_sni_split_desc">برش در میانهٔ مقدار SNI (پیشنهادی).</string>
+    <string name="strategy_half_desc">برش رکورد ClientHello به دو نیمه.</string>
+    <string name="strategy_multi_desc">برش به تکه‌های کوچک ۲۴ بایتی.</string>
+    <string name="strategy_tls_record_frag_desc">بسته‌بندی دوبارهٔ handshake به‌صورت دو رکورد جداگانهٔ TLS.</string>
+    <string name="fake_sni_fragment_real_desc">ذخیره و به موتور ارسال می‌شود؛ نسخهٔ فعلی موتور همیشه hello واقعی را تکه‌تکه می‌کند.</string>
+
+    <!-- Foreground service notification -->
+    <string name="notification_channel_name">موتور RSTA</string>
+    <string name="notification_channel_desc">هنگام اجرای پروکسی محلی RSTA نمایش داده می‌شود</string>
+    <string name="notification_title">منجنیق — موتور RSTA</string>
+    <string name="notification_starting">در حال راه‌اندازی موتور RSTA…</string>
+    <string name="notification_restarting">در حال راه‌اندازی مجدد موتور RSTA…</string>
+    <string name="notification_proxy_fmt">پروکسی %1$s ← %2$s (%3$s)</string>
+    <string name="notification_stop">توقف</string>
 </resources>

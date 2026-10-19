@@ -173,4 +173,32 @@
 
     <!-- Empty states -->
     <string name="no_events">No engine events yet. Start the engine and connection events will appear here.</string>
+
+    <!-- Previously hardcoded in composables -->
+    <string name="aether_no_effect">Selecting Aether does not start or affect the RSTA engine. Switch back to RSTA to control the available proxy.</string>
+    <string name="aether_feature_1">Pluggable transport architecture</string>
+    <string name="aether_feature_2">Advanced obfuscation pipeline</string>
+    <string name="aether_feature_3">Multi-core orchestration (planned)</string>
+    <string name="stats_footnote">Counters come from the engine\'s own monitor; traffic totals advance in 256 KB steps, as in the original program.</string>
+    <string name="config_management_hint">Switch to Home → RSTA to edit connection, bypass and fragmentation settings. They are persisted separately from app language and theme.</string>
+    <string name="rsta_config_intro">Your RSTA engine configuration is ready. Adjust listen/target, SNI, method and fragmentation below.</string>
+    <string name="rsta_config_intro_hint">Use the controls below to edit. Changes are validated and saved to your device.</string>
+    <string name="engine_version_fmt">Engine v%1$s</string>
+    <string name="method_fragment_desc">Splits the real TLS ClientHello into fragments so the SNI is never visible in one packet.</string>
+    <string name="method_fake_sni_desc">Sends a fake ClientHello probe with the Fake SNI on a side connection, then fragments the real hello.</string>
+    <string name="method_combined_desc">Fake-hello probe plus fragmentation — the original program\'s recommended method.</string>
+    <string name="strategy_sni_split_desc">Split in the middle of the SNI value (recommended).</string>
+    <string name="strategy_half_desc">Split the ClientHello record into two halves.</string>
+    <string name="strategy_multi_desc">Split into many small 24-byte chunks.</string>
+    <string name="strategy_tls_record_frag_desc">Re-wrap the handshake as two separate TLS records.</string>
+    <string name="fake_sni_fragment_real_desc">Stored and sent to the engine; the current engine build always fragments the real hello.</string>
+
+    <!-- Foreground service notification -->
+    <string name="notification_channel_name">RSTA engine</string>
+    <string name="notification_channel_desc">Shown while the local RSTA proxy is running</string>
+    <string name="notification_title">Manjaniq — RSTA engine</string>
+    <string name="notification_starting">Starting RSTA engine…</string>
+    <string name="notification_restarting">Restarting RSTA engine…</string>
+    <string name="notification_proxy_fmt">Proxy %1$s → %2$s (%3$s)</string>
+    <string name="notification_stop">Stop</string>
 </resources>
