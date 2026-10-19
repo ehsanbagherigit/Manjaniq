@@ -9,6 +9,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import com.manjaniq.core.AppPreferences
 import com.manjaniq.core.LocaleHelper
@@ -52,18 +57,23 @@ class MainActivity : ComponentActivity() {
         // In instrumentation tests avoid composing the full ManjaniqApp (which
         // touches EngineRepository / native libs / NavHost) — just show a
         // minimal UI so we can verify attachBaseContext/onCreate don't crash.
+        // But NOT in Robolectric host unit tests — there we want real UI.
         val inTest = try {
             Class.forName("androidx.test.core.app.ActivityScenario")
-            true
+            // If Robolectric is on classpath, we're in host test, not on device
+            try {
+                Class.forName("org.robolectric.RobolectricTestRunner")
+                false
+            } catch (_: Exception) { true }
         } catch (_: Exception) { false }
 
         if (inTest) {
             setContent {
-                androidx.compose.foundation.layout.Box(
-                    modifier = androidx.compose.ui.Modifier.fillMaxSize(),
-                    contentAlignment = androidx.compose.ui.Alignment.Center
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
                 ) {
-                    androidx.compose.material3.Text("Manjaniq Test")
+                    Text("Manjaniq Test")
                 }
             }
         } else {
