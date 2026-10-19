@@ -323,13 +323,15 @@ jobs:
           echo "===== Test reports ====="
           find app/build -name "*.xml" -path "*androidTest*" 2>/dev/null | head -20
           find app/build/reports -type f -name "*.html" 2>/dev/null | head -20
-          # Dump XML test results if any
-          find app/build -name "TEST-*.xml" 2>/dev/null | xargs -I {} sh -c 'echo "=== {} ==="; cat {} | head -n 200' 2>&1 | head -n 500 || echo "no TEST xml"
+          # Dump XML test results if any — handle spaces in path (emulator serial contains space)
+          find app/build -name "TEST-*.xml" -print0 2>/dev/null | xargs -0 -I {} sh -c 'echo "=== {} ==="; cat "{}" | head -n 400' 2>&1 | head -n 800 || echo "no TEST xml"
+          find app/build -type f -name "*.xml" 2>/dev/null | head -20
           # Dump HTML report snippet
           if [ -f app/build/reports/androidTests/connected/debug/index.html ]; then
             echo "=== HTML report snippet ==="
-            grep -A 5 -B 5 "failures\|LaunchSmokeTest\|mainActivity" app/build/reports/androidTests/connected/debug/index.html | head -n 100 || true
+            grep -A 5 -B 5 "failures\|LaunchSmokeTest\|mainActivity\|launcherIcon\|localeHelper" app/build/reports/androidTests/connected/debug/index.html | head -n 150 || true
           fi
+          find app/build/reports -name "index.html" 2>/dev/null | xargs -I {} sh -c 'echo "=== {} ==="; grep -n "failures\|LaunchSmokeTest" "{}" | head -n 100' 2>&1 | head -n 200 || true
           echo "===== Surfacing as annotations ====="
           cat /tmp/what.txt /tmp/fail_detail.txt 2>/dev/null | head -n 100 > /tmp/ann.txt || tail -n 100 connected.log > /tmp/ann.txt
           while IFS= read -r line; do
@@ -338,8 +340,9 @@ jobs:
             printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-900)"
           done < /tmp/ann.txt
           tail -n 80 connected.log | while IFS= read -r line; do echo "::warning::tail: $line"; done || true
-          # Also surface test XML as annotations
-          find app/build -name "TEST-*.xml" 2>/dev/null | xargs -I {} sh -c 'echo "=== {} ==="; grep -E "testcase|failure" {} | head -n 20' 2>&1 | while read l; do printf "::error::[test xml] %s\n" "$(printf "%s" "$l" | sed "s/%/%25/g; s/\r/%0D/g" | cut -c1-900)"; done || true
+          # Also surface test XML as annotations — handle spaces
+          find app/build -name "TEST-*.xml" -print0 2>/dev/null | xargs -0 -I {} sh -c 'echo "=== {} ==="; grep -E "testcase|failure|system-out|system-err" "{}" | head -n 40' 2>&1 | while read l; do printf "::error::[test xml] %s\n" "$(printf "%s" "$l" | sed "s/%/%25/g; s/\r/%0D/g" | cut -c1-900)"; done || true
+          grep -n -E "BUILD FAILED|There were failing|FAILURE|Exception|AssertionFailed" connected.log | head -n 30 | while IFS= read -r line; do printf '::error::[connected] %s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-900)"; done || true
 
       - name: Publish failure excerpt as PR comment (if PR)
         if: failure() && github.event_name == 'pull_request'

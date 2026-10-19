@@ -38,8 +38,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        WindowCompat.setDecorFitsSystemWindows(window, false)
+        try { enableEdgeToEdge() } catch (_: Exception) {}
+        try { WindowCompat.setDecorFitsSystemWindows(window, false) } catch (_: Exception) {}
 
         // Register permission launcher safely (field initializer can break ActivityScenario in tests)
         try {
