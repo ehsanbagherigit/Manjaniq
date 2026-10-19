@@ -75,20 +75,29 @@ diag "clear logcat" adb logcat -c
 log "Phase 1: install and launch the exact build artifact"
 [ -f "$APK" ] || fail "APK artifact not found at $APK"
 sha256sum "$APK" | tee "$OUT/apk-sha256.txt"
-if ! unzip -l "$APK" | grep -q "lib/$ABI/libmanjaniq_native.so"; then
-  fail "APK does not contain lib/$ABI/libmanjaniq_native.so for this emulator ABI"
-fi
-unzip -l "$APK" | grep -E 'mipmap.*ic_launcher|drawable/ic_manjaniq_logo' > "$OUT/apk-brand-entries.txt" || true
-[ -s "$OUT/apk-brand-entries.txt" ] || fail "APK is missing launcher/brand resources"
+# NOTE: under 'set -o pipefail' never pipe a producer into 'grep -q' /
+# 'head': the consumer exits early, the producer dies of SIGPIPE and the
+# pipeline is reported as failed even though the content was fine.
+# Producers are written to files first and grep'd afterwards.
+unzip -Z1 "$APK" > "$OUT/apk-listing.txt"
+grep -q "^lib/$ABI/libmanjaniq_native.so\$" "$OUT/apk-listing.txt" \
+  || fail "APK does not contain lib/$ABI/libmanjaniq_native.so for this emulator ABI"
+grep -E 'mipmap.*ic_launcher|drawable/ic_manjaniq_logo' "$OUT/apk-listing.txt" > "$OUT/apk-brand-entries.txt" \
+  || fail "APK is missing launcher/brand resources"
 cat "$OUT/apk-brand-entries.txt"
 
-if adb shell pm list packages | tr -d '\r' | grep -qx "package:$PKG"; then
+adb shell pm list packages | tr -d '\r' > "$OUT/.packages.txt"
+if grep -qx "package:$PKG" "$OUT/.packages.txt"; then
   echo "Removing pre-existing $PKG"
   adb uninstall "$PKG"
 fi
 adb install -r -t "$APK"
 
-INSTALLED_PATH="$(adb shell pm path "$PKG" | tr -d '\r' | sed -n 's/^package://p' | head -n1)"
+PM_PATH_OUT="$(adb shell pm path "$PKG" | tr -d '\r')"
+INSTALLED_PATH=""
+while IFS= read -r line; do
+  case "$line" in package:*) INSTALLED_PATH="${line#package:}"; break;; esac
+done <<< "$PM_PATH_OUT"
 [ -n "$INSTALLED_PATH" ] || fail "$PKG is not installed after adb install"
 adb pull "$INSTALLED_PATH" "$OUT/installed.apk" >/dev/null
 INSTALLED_SHA="$(sha256sum "$OUT/installed.apk" | cut -d' ' -f1)"
@@ -97,10 +106,14 @@ rm -f "$OUT/installed.apk"
 echo "installed sha256=$INSTALLED_SHA"
 [ "$INSTALLED_SHA" = "$ARTIFACT_SHA" ] || fail "installed APK ($INSTALLED_SHA) differs from artifact ($ARTIFACT_SHA)"
 
-adb shell dumpsys package "$PKG" | tr -d '\r' | grep -E 'versionCode|versionName' | head -n 2 | tee "$OUT/installed-version.txt"
+adb shell dumpsys package "$PKG" | tr -d '\r' > "$OUT/.dumpsys-package.txt"
+grep -E -m 2 'versionCode|versionName' "$OUT/.dumpsys-package.txt" > "$OUT/installed-version.txt" \
+  || fail "dumpsys package $PKG reports no version information"
+cat "$OUT/installed-version.txt"
 grep -q 'versionName=0.1.0' "$OUT/installed-version.txt" || fail "installed versionName is not 0.1.0"
 
-LAUNCHER="$(adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PKG" | tr -d '\r' | tail -n1)"
+RESOLVE_OUT="$(adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PKG" | tr -d '\r')"
+LAUNCHER="${RESOLVE_OUT##*$'\n'}"   # last line of the output
 echo "launcher resolves to: $LAUNCHER"
 [ "$LAUNCHER" = "$ACTIVITY" ] || fail "launcher intent resolves to '$LAUNCHER', expected $ACTIVITY"
 
@@ -108,7 +121,8 @@ adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.L
 grep -q 'Status: ok' "$OUT/am-start.txt" || fail "am start did not report Status: ok"
 
 is_resumed() {
-  adb shell dumpsys activity activities | tr -d '\r' | grep -E 'mResumedActivity|ResumedActivity' | grep -q "$ACTIVITY"
+  adb shell dumpsys activity activities | tr -d '\r' > "$OUT/.activities.txt"
+  grep -E -q "(mResumedActivity|ResumedActivity).*$ACTIVITY" "$OUT/.activities.txt"
 }
 log "Waiting (<= ${RESUME_TIMEOUT_S}s) for $ACTIVITY to be RESUMED"
 deadline=$(( $(date +%s) + RESUME_TIMEOUT_S ))
@@ -134,8 +148,13 @@ for _ in $(seq 1 "$STABILITY_WINDOW_S"); do
   is_resumed || fail "activity left RESUMED during stability window"
 done
 adb logcat -d > "$OUT/logcat-phase1.txt"
-if grep -E "FATAL EXCEPTION|Process $PKG .*has died|Force finishing activity $PKG" "$OUT/logcat-phase1.txt" | grep -q "$PKG"; then
-  grep -E -A 25 "FATAL EXCEPTION" "$OUT/logcat-phase1.txt" | head -n 80 || true
+# "FATAL EXCEPTION: main" is followed by "Process: <pkg>, PID: n" on the
+# next line, so the package must be looked for in the following line.
+# 'grep -c' always consumes its whole input (no early exit / SIGPIPE).
+if grep -E -A1 "FATAL EXCEPTION" "$OUT/logcat-phase1.txt" | grep -c "Process: $PKG" >/dev/null \
+   || grep -E -c "Process $PKG .*has died|Force finishing activity $PKG" "$OUT/logcat-phase1.txt" >/dev/null; then
+  grep -E -A 25 "FATAL EXCEPTION" "$OUT/logcat-phase1.txt" > "$OUT/crash-excerpt.txt" || true
+  head -n 80 "$OUT/crash-excerpt.txt"
   fail "fatal exception or process death logged during manual launch"
 fi
 # Evidence that the real app composed: EngineRepository polling is wired
