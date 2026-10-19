@@ -10,6 +10,19 @@ permissions:
   pull-requests: write
   checks: write
 
+# Gates (all required - no job is continue-on-error):
+#   build          : asset/format validation, Go engine tests (incl. the
+#                    ephemeral-port tests), native libs, Kotlin compile,
+#                    host unit tests (incl. Robolectric real-UI launch),
+#                    debug APK assembly + content verification, artifact.
+#   emulator-smoke : installs the exact APK artifact from `build`, launches
+#                    the real launcher activity, verifies RESUMED + process
+#                    liveness, then runs the on-device instrumentation
+#                    suite against the real redesigned UI.
+#
+# Every job prints the commit SHA it tests; emulator evidence is uploaded
+# as an artifact and includes that SHA.
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,6 +30,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Commit under test
+        run: |
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          echo "HEAD=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Set up Python (asset validation)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate brand assets and resources
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet Pillow
+          python3 scripts/check_assets.py
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -28,6 +58,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+          cache: false
 
       - name: Configure Android SDK
         run: |
@@ -67,7 +98,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ ! -d engine/rstaspoof ] || ! ls engine/rstaspoof/*.go >/dev/null 2>&1; then
-            echo "::error title=Genuine engine source missing::engine/rstaspoof/*.go not found in this checkout. Commit the genuine RSTA engine sources (engine.go, config.go, proxy.go, tls.go, bypass.go, ...) to engine/rstaspoof/ -- source files only, without any nested .git directory or prebuilt binaries -- then re-run. See DEVELOPMENT_LOG.md (2026-10-18)."
+            echo "::error title=Genuine engine source missing::engine/rstaspoof/*.go not found in this checkout. Commit the genuine RSTA engine sources to engine/rstaspoof/ (source files only, no nested .git or prebuilt binaries) and re-run."
             exit 1
           fi
           export GO111MODULE=on
@@ -80,6 +111,10 @@ jobs:
             done < /tmp/gotest.ctx
             exit 1
           fi
+          # The ephemeral-port tests are a required part of the gate.
+          grep -q -- "--- PASS: TestEngineEndToEndFragment" /tmp/gotest.log
+          grep -q -- "--- PASS: TestRapidStartStop" /tmp/gotest.log
+          echo "Ephemeral-port regression tests passed (TestEngineEndToEndFragment, TestRapidStartStop)."
 
       - name: Build Native Libraries (arm64-v8a + x86_64)
         run: |
@@ -112,6 +147,19 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
+      - name: Compile Kotlin (debug + unit test + androidTest sources)
+        run: |
+          set -euo pipefail
+          ./gradlew :app:compileDebugKotlin :app:compileDebugUnitTestKotlin :app:compileDebugAndroidTestKotlin --stacktrace 2>&1 | tee /tmp/gradle_compile.log
+          EXIT_CODE=${PIPESTATUS[0]}
+          if [ "$EXIT_CODE" -ne 0 ]; then
+            echo "::error title=Kotlin compilation failed::exit code $EXIT_CODE"
+            grep -E "^e: |error:|FAILED|Execution failed" /tmp/gradle_compile.log | head -80 | while IFS= read -r line; do
+              printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-800)"
+            done
+            exit "$EXIT_CODE"
+          fi
+
       - name: Run unit tests
         run: |
           set -o pipefail
@@ -119,7 +167,6 @@ jobs:
           EXIT_CODE=${PIPESTATUS[0]}
           if [ $EXIT_CODE -ne 0 ]; then
             echo "::error title=Gradle unit tests failed::exit code $EXIT_CODE — see artifact gradle-test-log"
-            # Surface top lines as annotations (blob logs are blocked in some sandboxes)
             grep -E "e:|error:|FAILED|Execution failed|Build failed" /tmp/gradle_test.log | head -80 > /tmp/gradle_err.txt || true
             if [ -s /tmp/gradle_err.txt ]; then
               while IFS= read -r line; do
@@ -133,13 +180,18 @@ jobs:
             fi
             exit $EXIT_CODE
           fi
+          echo "Unit test results:"
+          find app/build/test-results -name 'TEST-*.xml' -print -exec grep -o '<testsuite[^>]*>' {} \;
 
-      - name: Upload Gradle test log on failure
-        if: failure()
+      - name: Upload Gradle logs and unit test results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gradle-test-log
-          path: /tmp/gradle_test.log
+          name: gradle-logs-and-unit-results
+          path: |
+            /tmp/gradle_compile.log
+            /tmp/gradle_test.log
+            app/build/test-results/**/TEST-*.xml
           if-no-files-found: warn
 
       - name: Comment Gradle failure on PR
@@ -149,8 +201,7 @@ jobs:
           script: |
             const fs = require('fs');
             let log = '';
-            try { log = fs.readFileSync('/tmp/gradle_test.log', 'utf8'); } catch(e) { log = 'Could not read /tmp/gradle_test.log: ' + e; }
-            // Trim to fit GitHub comment limit (max 65536), take last 400 lines + first 200
+            try { log = fs.readFileSync('/tmp/gradle_test.log', 'utf8'); } catch(e) { try { log = fs.readFileSync('/tmp/gradle_compile.log', 'utf8'); } catch(e2) { log = 'No Gradle log available: ' + e2; } }
             const lines = log.split('\n');
             let excerpt;
             if (lines.length > 600) {
@@ -158,9 +209,8 @@ jobs:
             } else {
               excerpt = log;
             }
-            // Escape for markdown
             excerpt = excerpt.slice(0, 60000);
-            const body = `### ❌ Gradle unit tests failed in \`${process.env.GITHUB_WORKFLOW}\` @ \`${context.sha.slice(0,7)}\`\n\n<details><summary>Gradle log (last run)</summary>\n\n\`\`\`\n${excerpt}\n\`\`\`\n\n</details>\n\nPlease fix compilation/test errors and push again.`;
+            const body = `### ❌ Gradle build/tests failed in \`${process.env.GITHUB_WORKFLOW}\` @ \`${context.sha.slice(0,7)}\`\n\n<details><summary>Gradle log (last run)</summary>\n\n\`\`\`\n${excerpt}\n\`\`\`\n\n</details>`;
             github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -177,17 +227,47 @@ jobs:
           APK="$(ls app/build/outputs/apk/debug/*.apk)"
           test -n "$APK"
           echo "Checking $APK"
+          sha256sum "$APK"
           unzip -l "$APK" > /tmp/apk_listing.txt
-          cat /tmp/apk_listing.txt
           grep -q "classes.dex" /tmp/apk_listing.txt
           grep -q "lib/arm64-v8a/libmanjaniq_native.so" /tmp/apk_listing.txt
           grep -q "lib/x86_64/libmanjaniq_native.so" /tmp/apk_listing.txt
-          # Verify launcher icon inside APK (regression for missing icon bug)
-          grep -q "mipmap.*ic_launcher" /tmp/apk_listing.txt || grep -q "res/mipmap" /tmp/apk_listing.txt
-          unzip -l "$APK" | grep -i "ic_launcher" || echo "No ic_launcher entry found — check mipmap packaging"
-          rm -rf /tmp/apkcheck
-          mkdir -p /tmp/apkcheck
-          unzip -o -q "$APK" "lib/arm64-v8a/*" -d /tmp/apkcheck
+          # Launcher + brand resources must be packaged (regression for missing icon / stale logo)
+          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            grep -q "res/mipmap-${d}-v4/ic_launcher.png\|res/mipmap-${d}/ic_launcher.png\|mipmap-${d}.*ic_launcher" /tmp/apk_listing.txt \
+              || { echo "::error::missing ic_launcher for density $d"; exit 1; }
+          done
+          grep -q "ic_launcher_foreground" /tmp/apk_listing.txt
+          grep -q "ic_manjaniq_logo" /tmp/apk_listing.txt
+          grep -q "ic_rsta_logo" /tmp/apk_listing.txt
+          grep -q "ic_aether_logo" /tmp/apk_listing.txt
+          # The packaged in-app logo must be the regenerated one (same bytes as the resource in this checkout;
+          # AGP does not re-encode PNGs in debug builds when cruncher is off, so compare via decode instead).
+          rm -rf /tmp/apkcheck && mkdir -p /tmp/apkcheck
+          unzip -o -q "$APK" "lib/arm64-v8a/*" "res/*" -d /tmp/apkcheck || true
+          python3 - <<'PY'
+          import glob, sys
+          from PIL import Image, ImageChops, ImageStat
+          src = Image.open('app/src/main/res/drawable/ic_manjaniq_logo.png').convert('RGB')
+          packed = glob.glob('/tmp/apkcheck/res/**/ic_manjaniq_logo*.png', recursive=True) + glob.glob('/tmp/apkcheck/res/*/*ic_manjaniq_logo*.png')
+          if not packed:
+              # aapt2 obfuscation is off for debug; still tolerate numbered names by scanning drawable dirs
+              packed = [p for p in glob.glob('/tmp/apkcheck/res/drawable*/*.png')]
+          best = None
+          for p in packed:
+              try:
+                  im = Image.open(p).convert('RGB')
+              except Exception:
+                  continue
+              a = src.resize((64, 64)); b = im.resize((64, 64))
+              score = sum(ImageStat.Stat(ImageChops.difference(a, b)).mean) / 3
+              if best is None or score < best[0]:
+                  best = (score, p)
+          print('closest packaged drawable to the official logo:', best)
+          if best is None or best[0] > 6.0:
+              print('::error::packaged APK does not contain the current official Manjaniq logo drawable')
+              sys.exit(1)
+          PY
           bash native/verify_native_lib.sh /tmp/apkcheck/lib/arm64-v8a/libmanjaniq_native.so
 
       - name: Upload debug APK
@@ -197,28 +277,33 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
-  # Startup smoke test on real Android framework — catches launch crashes that
-  # unit tests cannot (e.g., LocaleHelper mutating shared Configuration caused
-  # immediate exit after install but left build+unit tests green).
-  # NOTE: Previous failure was "Timeout waiting for emulator to boot" — caused by
-  # installing system-images manually with `default` target + oversized RAM (4096M)
-  # and missing GPU/KVM options. Fixed below to let runner manage AVD with google_apis.
   emulator-smoke:
     runs-on: ubuntu-latest
     needs: build
-    timeout-minutes: 30
-    continue-on-error: true
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Commit under test
+        run: |
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          echo "HEAD=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Download the exact APK built for this commit
+        uses: actions/download-artifact@v4
+        with:
+          name: manjaniq-debug-apk
+          path: tested-apk
 
       - name: Enable KVM (hardware acceleration)
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-          ls -lh /dev/kvm || echo "KVM not available - emulator will be slow"
-          egrep -c '(vmx|svm)' /proc/cpuinfo || echo "No VMX/SVM"
+          ls -lh /dev/kvm || echo "::warning::KVM not available - emulator will be slow"
+          egrep -c '(vmx|svm)' /proc/cpuinfo || echo "::warning::No VMX/SVM"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -230,6 +315,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+          cache: false
 
       - name: Configure Android SDK
         run: echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
@@ -237,17 +323,18 @@ jobs:
       - name: Locate Android SDK Manager
         run: |
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager 2>/dev/null | head -n 1)"
+          test -n "$SDKMANAGER"
           echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
 
       - name: Accept Android SDK Licenses
-        run: yes | "$SDKMANAGER" --licenses || true
+        run: yes | "$SDKMANAGER" --licenses
 
       - name: Install Android SDK Components and NDK
         run: |
           "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0" "ndk;25.2.9519653"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> "$GITHUB_ENV"
 
-      - name: Build native libs for emulator (arm64 + x86_64)
+      - name: Build native libs for the instrumentation build (arm64 + x86_64)
         run: |
           set -euo pipefail
           mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/jniLibs/x86_64
@@ -263,7 +350,10 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost 2>/dev/null || true
           df -h
 
-      - name: Run instrumented smoke test on emulator
+      # The action runs every line of `script` in its own `sh -c`; all logic
+      # therefore lives in scripts/ci/emulator_smoke.sh (bash, strict mode)
+      # and is started with a single line.
+      - name: Run emulator gate (artifact launch + instrumentation on real UI)
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 29
@@ -278,96 +368,27 @@ jobs:
           disk-size: 4096M
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
-          script: |
-            chmod +x gradlew
-            echo "=== ADB devices before test ==="
-            adb devices
-            echo "=== Running connectedDebugAndroidTest ==="
-            # Avoid bash-only PIPESTATUS/pipefail which fails under /usr/bin/sh (exit 2)
-            ./gradlew connectedDebugAndroidTest --stacktrace > $GITHUB_WORKSPACE/connected.log 2>&1
-            TEST_EXIT=$?
-            cat $GITHUB_WORKSPACE/connected.log
-            echo "=== Graduated with exit $TEST_EXIT ==="
-            echo "=== Test log tail (last 500 lines) ==="
-            tail -n 500 $GITHUB_WORKSPACE/connected.log || true
-            echo "=== Logcat after test ==="
-            adb logcat -d > $GITHUB_WORKSPACE/logcat_connected.txt 2>&1 || true
-            tail -n 300 $GITHUB_WORKSPACE/logcat_connected.txt || true
-            if [ "$TEST_EXIT" -ne 0 ]; then
-              echo "::error::connectedDebugAndroidTest failed with $TEST_EXIT"
-              echo "=== Failure diagnostics ==="
-              grep -i -E "FAIL|error|Exception|AndroidRuntime|FATAL|manjaniq" $GITHUB_WORKSPACE/connected.log | tail -n 100 || true
-              grep -i -E "AndroidRuntime|FATAL|manjaniq|LocaleHelper" $GITHUB_WORKSPACE/logcat_connected.txt | tail -n 100 || true
-              exit $TEST_EXIT
-            fi
-            echo "=== Manual checks skipped — instrumentation test is the gate (was flaky) ==="
-            echo "=== All checks passed ==="
-            exit 0
+          script: bash scripts/ci/emulator_smoke.sh
 
-      - name: Dump connected log on failure (visible via annotations without blob)
-        if: failure()
+      - name: Evidence summary
+        if: always()
         run: |
-          echo "===== connected.log line count ====="
-          wc -l connected.log || echo "no wc"
-          echo "===== connected.log last 800 lines ====="
-          tail -n 800 connected.log 2>&1 | tail -n 800 || echo "no connected.log"
-          echo "===== FAILURE context ====="
-          grep -n -A 30 "What went wrong" connected.log | head -n 200 > /tmp/what.txt || true
-          cat /tmp/what.txt || echo "no What went wrong"
-          echo "===== Failing tests detail ====="
-          grep -n -B 5 -A 30 "failing tests\|FAILURE: Build failed\|There were failing" connected.log | head -n 300 > /tmp/fail_detail.txt || true
-          cat /tmp/fail_detail.txt || echo "no fail detail"
-          echo "===== Test reports ====="
-          find app/build -name "*.xml" -path "*androidTest*" 2>/dev/null | head -20
-          find app/build/reports -type f -name "*.html" 2>/dev/null | head -20
-          # Dump XML test results if any — handle spaces in path (emulator serial contains space)
-          find app/build -name "TEST-*.xml" -print0 2>/dev/null | xargs -0 -I {} sh -c 'echo "=== {} ==="; cat "{}" | head -n 400' 2>&1 | head -n 800 || echo "no TEST xml"
-          find app/build -type f -name "*.xml" 2>/dev/null | head -20
-          # Dump HTML report snippet
-          if [ -f app/build/reports/androidTests/connected/debug/index.html ]; then
-            echo "=== HTML report snippet ==="
-            grep -A 5 -B 5 "failures\|LaunchSmokeTest\|mainActivity\|launcherIcon\|localeHelper" app/build/reports/androidTests/connected/debug/index.html | head -n 150 || true
-          fi
-          find app/build/reports -name "index.html" 2>/dev/null | xargs -I {} sh -c 'echo "=== {} ==="; grep -n "failures\|LaunchSmokeTest" "{}" | head -n 100' 2>&1 | head -n 200 || true
-          echo "===== Surfacing as annotations ====="
-          cat /tmp/what.txt /tmp/fail_detail.txt 2>/dev/null | head -n 100 > /tmp/ann.txt || tail -n 100 connected.log > /tmp/ann.txt
-          while IFS= read -r line; do
-            [ -z "$line" ] && continue
-            echo "$line" | grep -qE "^[[:space:]]*$" && continue
-            printf '::error::%s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-900)"
-          done < /tmp/ann.txt
-          tail -n 80 connected.log | while IFS= read -r line; do echo "::warning::tail: $line"; done || true
-          # Also surface test XML as annotations — handle spaces
-          find app/build -name "TEST-*.xml" -print0 2>/dev/null | xargs -0 -I {} sh -c 'echo "=== {} ==="; grep -E "testcase|failure|system-out|system-err" "{}" | head -n 40' 2>&1 | while read l; do printf "::error::[test xml] %s\n" "$(printf "%s" "$l" | sed "s/%/%25/g; s/\r/%0D/g" | cut -c1-900)"; done || true
-          grep -n -E "BUILD FAILED|There were failing|FAILURE|Exception|AssertionFailed" connected.log | head -n 30 | while IFS= read -r line; do printf '::error::[connected] %s\n' "$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-900)"; done || true
+          echo "commit: $(cat emulator-evidence/commit-sha.txt 2>/dev/null || echo unknown)"
+          echo "device: $(cat emulator-evidence/device.txt 2>/dev/null | tr '\n' ' ')"
+          echo "apk:    $(cat emulator-evidence/apk-sha256.txt 2>/dev/null || echo unknown)"
+          echo "--- summary.txt"; cat emulator-evidence/summary.txt 2>/dev/null || echo "(no summary written - gate did not reach the end)"
+          echo "--- androidTest XML"
+          for f in emulator-evidence/androidTest-results/TEST-*.xml; do
+            [ -f "$f" ] || continue
+            grep -o '<testsuite[^>]*>' "$f"
+            grep -o '<testcase[^>]*>' "$f" | sed 's/^/   /'
+            grep -o '<failure[^>]*>' "$f" | sed 's/^/   !! /' || true
+          done
 
-      - name: Publish failure excerpt as PR comment (if PR)
-        if: failure() && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            let log = '';
-            try { log = fs.readFileSync('connected.log', 'utf8'); } catch(e) { log = 'no connected.log: ' + e; }
-            const tail = log.split('\n').slice(-300).join('\n').slice(0, 60000);
-            const body = `### ❌ Emulator smoke test failed @ \`${context.sha.slice(0,7)}\`\n\n<details><summary>connected.log tail</summary>\n\n\`\`\`\n${tail}\n\`\`\`\n\n</details>`;
-            github.rest.issues.createComment({owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body});
-
-      - name: Upload diagnostics on failure
-        if: failure()
+      - name: Upload emulator evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: emulator-diagnostics
-          path: |
-            connected.log
-            logcat_connected.txt
-            logcat_final.txt
-          if-no-files-found: warn
-
-      - name: Upload logcat on failure (legacy)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: emulator-logcat
-          path: /tmp/logcat.txt
+          name: emulator-evidence
+          path: emulator-evidence/
           if-no-files-found: warn
