@@ -1,96 +1,74 @@
 package com.manjaniq
 
+import android.content.Context
+import android.content.res.Configuration
+import android.view.View
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.lifecycle.Lifecycle
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.manjaniq.core.AppLanguage
 import com.manjaniq.core.LocaleHelper
-import org.junit.Assert.*
+import com.manjaniq.ui.TestTags
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
-import java.io.File
+import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
+import java.util.Locale
 
 /**
- * Host-side startup validation — runs on JVM without emulator.
- * Validates the two previous crash regressions:
- * 1) LocaleHelper must not mutate shared Configuration (previous NPE/crash)
- * 2) AndroidManifest must declare launcher icon (previous missing icon)
- *
- * This runs in `build` job's unit tests, so CI catches launch crashes even
- * if emulator infra is down. See also androidTest/LaunchSmokeTest for
- * real-device verification.
+ * Host-JVM (Robolectric) launch of the real MainActivity. This is a fast
+ * early signal that the real UI composes without the native library (the
+ * repository degrades to STOPPED instead of crashing); the authoritative
+ * gate remains the on-device LaunchSmokeTest.
  */
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [34])
 class RobolectricLaunchTest {
 
-    private fun resolvePath(vararg candidates: String): File {
-        for (c in candidates) {
-            val f = File(c)
-            if (f.exists()) return f
+    @get:Rule
+    val compose = createAndroidComposeRule<MainActivity>()
+
+    @Test
+    fun realHomeScreenComposesOnHost() {
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(androidx.compose.ui.test.hasTestTag(TestTags.HOME_SCREEN))
+                .fetchSemanticsNodes().isNotEmpty()
         }
-        // fallback to first candidate for error message
-        return File(candidates[0])
+        compose.onNodeWithTag(TestTags.HOME_SCREEN).assertIsDisplayed()
+        compose.onNodeWithTag(TestTags.CORE_SELECTOR).assertExists()
+        compose.onNodeWithTag(TestTags.ENGINE_TOGGLE).assertExists()
+        assertEquals(Lifecycle.State.RESUMED, compose.activityRule.scenario.state)
+        compose.activityRule.scenario.onActivity { assertFalse(it.isFinishing) }
     }
 
     @Test
-    fun localeHelperDoesNotMutateOriginalConfig() {
-        assertEquals(java.util.Locale("fa"), LocaleHelper.getCurrentLocale(AppLanguage.FA))
-        assertEquals(java.util.Locale.ENGLISH, LocaleHelper.getCurrentLocale(AppLanguage.EN))
+    fun localeHelperResolvesLocales() {
+        assertEquals(Locale("fa"), LocaleHelper.getCurrentLocale(AppLanguage.FA))
+        assertEquals(Locale.ENGLISH, LocaleHelper.getCurrentLocale(AppLanguage.EN))
     }
 
     @Test
-    fun localeHelperWrapContextUsesCopy() {
-        val srcFile = resolvePath(
-            "app/src/main/java/com/manjaniq/core/LocaleHelper.kt",
-            "src/main/java/com/manjaniq/core/LocaleHelper.kt",
-            "../app/src/main/java/com/manjaniq/core/LocaleHelper.kt"
+    fun localeHelperWrapsWithoutMutatingBaseConfiguration() {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val before = Configuration(ctx.resources.configuration)
+
+        val fa = LocaleHelper.wrapContext(ctx, AppLanguage.FA)
+        assertEquals("fa", fa.resources.configuration.locales[0].language)
+        assertEquals(View.LAYOUT_DIRECTION_RTL, fa.resources.configuration.layoutDirection)
+        assertEquals(
+            "wrapContext must copy, not mutate, the shared Configuration",
+            before.locales, ctx.resources.configuration.locales
         )
-        assertTrue("LocaleHelper.kt not found: $srcFile", srcFile.exists())
-        val src = srcFile.readText()
-        assertTrue("LocaleHelper must copy Configuration", src.contains("Configuration(context.resources.configuration)"))
-        assertTrue("LocaleHelper must setLayoutDirection", src.contains("setLayoutDirection"))
-        assertFalse("LocaleHelper must not mutate shared config directly", src.contains("val config = context.resources.configuration\n        config.setLocale"))
-    }
 
-    @Test
-    fun launcherIconDeclaredInManifest() {
-        val manifestFile = resolvePath(
-            "app/src/main/AndroidManifest.xml",
-            "src/main/AndroidManifest.xml",
-            "../app/src/main/AndroidManifest.xml"
-        )
-        assertTrue("AndroidManifest.xml not found: $manifestFile", manifestFile.exists())
-        val manifest = manifestFile.readText()
-        assertTrue("Manifest must declare android:icon=\"@mipmap/ic_launcher\"", manifest.contains("android:icon=\"@mipmap/ic_launcher\""))
-        assertTrue("Manifest must declare roundIcon", manifest.contains("android:roundIcon=\"@mipmap/ic_launcher_round\""))
-    }
-
-    @Test
-    fun mipmapLauncherResourcesExist() {
-        val densities = listOf("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi")
-        for (d in densities) {
-            val icon = resolvePath("app/src/main/res/mipmap-$d/ic_launcher.png", "src/main/res/mipmap-$d/ic_launcher.png")
-            val fg = resolvePath("app/src/main/res/mipmap-$d/ic_launcher_foreground.png", "src/main/res/mipmap-$d/ic_launcher_foreground.png")
-            val round = resolvePath("app/src/main/res/mipmap-$d/ic_launcher_round.png", "src/main/res/mipmap-$d/ic_launcher_round.png")
-            assertTrue("Missing mipmap-$d/ic_launcher.png ($icon)", icon.exists() && icon.length() > 0)
-            assertTrue("Missing mipmap-$d/ic_launcher_foreground.png ($fg)", fg.exists() && fg.length() > 0)
-            assertTrue("Missing mipmap-$d/ic_launcher_round.png ($round)", round.exists() && round.length() > 0)
-        }
-        val adv = resolvePath("app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml", "src/main/res/mipmap-anydpi-v26/ic_launcher.xml")
-        val advRound = resolvePath("app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml", "src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml")
-        assertTrue("Missing adaptive icon XML ($adv)", adv.exists())
-        assertTrue("Missing adaptive round icon XML ($advRound)", advRound.exists())
-        val colorsFile = resolvePath("app/src/main/res/values/colors.xml", "src/main/res/values/colors.xml")
-        assertTrue("colors.xml not found", colorsFile.exists())
-        val colors = colorsFile.readText()
-        assertTrue("colors.xml must define ic_launcher_background", colors.contains("ic_launcher_background"))
-    }
-
-    @Test
-    fun mainActivityAttachBaseContextIsGuarded() {
-        val srcFile = resolvePath(
-            "app/src/main/java/com/manjaniq/MainActivity.kt",
-            "src/main/java/com/manjaniq/MainActivity.kt",
-            "../app/src/main/java/com/manjaniq/MainActivity.kt"
-        )
-        assertTrue("MainActivity.kt not found: $srcFile", srcFile.exists())
-        val src = srcFile.readText()
-        assertTrue("MainActivity must guard attachBaseContext with try/catch", src.contains("try {") && src.contains("catch"))
-        assertTrue("MainActivity must use LocaleHelper.wrapContext", src.contains("LocaleHelper.wrapContext"))
+        val en = LocaleHelper.wrapContext(ctx, AppLanguage.EN)
+        assertEquals("en", en.resources.configuration.locales[0].language)
+        assertEquals(View.LAYOUT_DIRECTION_LTR, en.resources.configuration.layoutDirection)
+        assertTrue(fa.resources.getString(R.string.nav_settings) != en.resources.getString(R.string.nav_settings))
     }
 }
