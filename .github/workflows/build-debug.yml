@@ -305,7 +305,6 @@ jobs:
             sleep 5
             # Use dumpsys instead of pidof (pidof not always available)
             adb shell dumpsys activity activities | grep -i manjaniq | head -n 20 || true
-            adb shell ps | grep manjaniq || true
             # Only warn if logcat shows actual crash — don't fail job, the instrumentation test is the gate
             if adb logcat -d | grep -i -E "AndroidRuntime.*manjaniq|FATAL.*manjaniq" | grep -v "TestRunner" | head -n 5 | grep -q .; then
               echo "::warning::App may have crashed after manual launch (check logcat)"
@@ -317,6 +316,7 @@ jobs:
             cat $GITHUB_WORKSPACE/logcat_final.txt | tail -n 100 || true
             echo "=== Manual launch OK (no crash) ==="
             echo "=== All checks passed ==="
+            exit 0
 
       - name: Dump connected log on failure (visible via annotations without blob)
         if: failure()
