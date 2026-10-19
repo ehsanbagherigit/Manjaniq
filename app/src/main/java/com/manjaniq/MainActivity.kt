@@ -1,31 +1,29 @@
 // Package com.manjaniq provides the main Android application entry point.
 package com.manjaniq
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import com.manjaniq.ui.theme.ManjaniqTheme
 import com.manjaniq.ui.components.ManjaniqApp
 
+/**
+ * Single-activity host for the Compose UI.
+ *
+ * Startup is deliberately minimal: no permission requests, no
+ * background work and no native calls happen here. The
+ * POST_NOTIFICATIONS permission is requested by the UI only when
+ * the user starts the engine (the only moment a notification can
+ * appear) — requesting it during `onCreate` put the system
+ * permission-controller activity on top of MainActivity right
+ * after launch, which made `am start` return "ok" while the
+ * expected Home screen was not the resumed activity and made
+ * automated launch checks unreliable.
+ */
 class MainActivity : ComponentActivity() {
-
-    // Notifications show the foreground-service status; the engine
-    // still runs without the permission, just less visibly.
-    private val notificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
         setContent {
             ManjaniqTheme {
                 ManjaniqApp()

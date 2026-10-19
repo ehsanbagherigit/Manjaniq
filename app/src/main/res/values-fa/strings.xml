@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">منجنیق</string>
+
+    <!-- App shell -->
+    <string name="app_tagline">کنترل پراکسی محلی RSTA SNI Spoof</string>
+    <string name="tab_dashboard">داشبورد</string>
+    <string name="tab_settings">تنظیمات</string>
+    <string name="tab_logs">لاگ‌ها</string>
+    <string name="tab_about">درباره</string>
+
+    <!-- Engine selector -->
+    <string name="engine_selector_title">موتور</string>
+    <string name="engine_rsta">RSTA</string>
+    <string name="engine_rsta_status_available">در دسترس</string>
+    <string name="engine_aether">Aether</string>
+    <string name="engine_aether_status_coming_soon">به‌زودی</string>
+
+    <!-- Dashboard -->
+    <string name="engine_status">وضعیت موتور</string>
+    <string name="listening_on">در حال گوش دادن روی %1$s</string>
+    <string name="status_last_start_failed">راه‌اندازی آخر ناموفق بود — خطا را در پایین و لاگ‌ها ببینید</string>
+    <string name="status_not_running">پراکسی محلی RSTA در حال اجرا نیست</string>
+    <string name="engine_error">خطای موتور</string>
+    <string name="view_logs">مشاهده لاگ‌ها</string>
+    <string name="dismiss">رد کردن</string>
+    <string name="start_engine">راه‌اندازی موتور</string>
+    <string name="stop_engine">توقف موتور</string>
+    <string name="starting">در حال راه‌اندازی…</string>
+    <string name="stopping">در حال توقف…</string>
+    <string name="section_connection">اتصال</string>
+    <string name="section_statistics">آمار زنده</string>
+    <string name="section_recent_log">لاگ اخیر</string>
+    <string name="section_how_it_works">چگونه کار می‌کند</string>
+    <string name="label_listen">گوش دادن</string>
+    <string name="label_target">مقصد</string>
+    <string name="label_method">روش</string>
+    <string name="label_fragmentation">خردشدن</string>
+    <string name="label_fake_sni">SNI جعلی</string>
+    <string name="label_ttl_trick">رفع TTL</string>
+    <string name="label_engine">موتور</string>
+    <string name="engine_version">RSTA SNI Spoof نسخه %1$s</string>
+    <string name="on">روشن</string>
+    <string name="off">خاموش</string>
+    <string name="label_uptime">مدت اجرا</string>
+    <string name="label_active_connections">اتصال‌های فعال</string>
+    <string name="label_total_connections">کل اتصال‌ها</string>
+    <string name="label_bypass_confirmed">دور زدن تأیید شد</string>
+    <string name="label_blocked">مسدود / بدون پاسخ</string>
+    <string name="label_traffic_up">ترافیک رو به بالا (کلاینت → مقصد)</string>
+    <string name="label_traffic_down">ترافیک رو به پایین (مقصد ← کلاینت)</string>
+    <string name="stats_note">شمارنده‌ها از مانیتور خود موتور می‌آیند؛ مجموع ترافیک در گام‌های ۲۵۶ کیلوبایتی، همانند برنامه اصلی، افزایش می‌یابد.</string>
+    <string name="no_engine_events">هنوز رویدادی از موتور ثبت نشده است. موتور را راه‌اندازی کنید (مانیتورینگ روشن) تا رویدادهای اتصال اینجا نمایش داده شوند.</string>
+    <string name="open_full_logs">بازکردن لاگ‌های کامل</string>
+    <string name="how_it_works">منجنیق موتور اصلی RSTA را به‌صورت پراکسی محلی اجرا می‌کند. برنامه یا مرورگر مورد نظر خود را به آدرس گوش‌دادن بالا (برای این دستگاه: 127.0.0.1:%1$d) اشاره کنید. این برنامه ترافیک کل دستگاه را هدایت نمی‌کند و به روت نیاز ندارد.</string>
+    <string name="fragmentation_summary">%1$s · تأخیر %2$s ثانیه</string>
+
+    <!-- Settings -->
+    <string name="settings_listen_host">میزبان گوش‌دادن</string>
+    <string name="settings_listen_host_hint">0.0.0.0 روی همه رابط‌ها گوش می‌دهد؛ 127.0.0.1 فقط همین دستگاه</string>
+    <string name="settings_listen_port">درگاه گوش‌دادن</string>
+    <string name="settings_connect_host">میزبان یا IP مقصد</string>
+    <string name="settings_connect_host_hint">هر اتصال پراکسی‌شده به اینجا ارسال می‌شود</string>
+    <string name="settings_connect_port">درگاه مقصد</string>
+    <string name="settings_fake_sni">نام میزبان SNI جعلی</string>
+    <string name="settings_fake_sni_hint">نام مجازی‌ای که DPI باید ببیند</string>
+    <string name="section_bypass_method">روش دور زدن</string>
+    <string name="method_fragment_desc">TLS ClientHello واقعی را به قطعات (روش انتخابی در زیر) تقسیم می‌کند تا SNI هرگز در یک بسته دیده نشود. ترافیک جعلی ارسال نمی‌شود.</string>
+    <string name="method_fake_sni_desc">دقیقاً همانند موتور اصلی: یک بررسی ClientHello جعلی با SNI جعلی روی یک اتصال جانبی می‌فرستد، سپس hello واقعی را روی SNI تقسیم می‌کند. با روشن بودن کلید TTL، بررسی از مسیر TTL-trick موتور استفاده می‌کند. (این نسخه از سوکت‌های معمولی استفاده می‌کند — بدون تزریق بسته خام و بدون روت.)</string>
+    <string name="method_combined_desc">بررسی hello جعلی (وقتی رفع TTL روشن است) به‌علاوه خرد کردن ClientHello واقعی با روش و تأخیر شما. روش توصیه‌شده برنامه اصلی.</string>
+    <string name="settings_ttl_trick">رفع TTL / بررسی hello جعلی</string>
+    <string name="settings_ttl_trick_hint">توسط fake_sni و combined استفاده می‌شود، همانند پیاده‌سازی موتور اصلی</string>
+    <string name="section_fragmentation">خردشدن</string>
+    <string name="strategy_sni_split_desc">تقسیم در میانه مقدار SNI (توصیه‌شده).</string>
+    <string name="strategy_half_desc">تقسیم رکورد ClientHello به دو نیمه.</string>
+    <string name="strategy_multi_desc">تقسیم به قطعات ۲۴ بایتی بسیار کوچک.</string>
+    <string name="strategy_tls_record_frag_desc">بازپیچ کردن handshake به‌صورت دو رکورد TLS مجزا.</string>
+    <string name="settings_fragment_delay">تأخیر بین قطعات (ثانیه، ۰ تا ۵)</string>
+    <string name="section_output">خروجی</string>
+    <string name="settings_monitor">مانیتورینگ اتصال</string>
+    <string name="settings_monitor_hint">جمع‌آوری آمار و ارسال رویدادهای اتصال به لاگ‌ها</string>
+    <string name="settings_quiet">حالت ساکت</string>
+    <string name="settings_quiet_hint">لاگ‌گذاری رویدادها را سرکوب می‌کند (شمارنده‌های موتور همچنان به‌روز می‌شوند)</string>
+    <string name="section_advanced">پیشرفته (کلیدهای واقعی پیکربندی)</string>
+    <string name="settings_fake_sni_method">FAKE_SNI_METHOD</string>
+    <string name="settings_fake_sni_fragment_real">FAKE_SNI_FRAGMENT_REAL</string>
+    <string name="settings_fake_sni_fragment_real_hint">ذخیره و ارسال به موتور؛ نسخه فعلی موتور همیشه hello واقعی را خرد می‌کند</string>
+    <string name="save_settings">ذخیره تنظیمات</string>
+    <string name="export_json">خروجی JSON</string>
+    <string name="import_json">ورودی JSON</string>
+    <string name="reset_defaults">بازنشانی به مقادیر پیش‌فرض (مقادیر config.json ارائه‌شده)</string>
+    <string name="restart_confirm_title">ذخیره و راه‌اندازی مجدد؟</string>
+    <string name="restart_confirm_text">این تنظیمات را ذخیره و موتور را برای اعمال فوری راه‌اندازی مجدد کنم؟ اتصال‌های فعال قطع می‌شوند.</string>
+    <string name="save_and_restart">ذخیره و راه‌اندازی مجدد</string>
+    <string name="save_only">فقط ذخیره</string>
+    <string name="saved_next_start">تنظیمات ذخیره شد. در راه‌اندازی بعدی اعمال می‌شوند.</string>
+    <string name="saved_restarting">تنظیمات ذخیره شد؛ موتور در حال راه‌اندازی مجدد است.</string>
+    <string name="saved_save_only">تنظیمات ذخیره شد؛ در راه‌اندازی دستی بعدی اعمال می‌شوند.</string>
+    <string name="reset_confirm_title">بازنشانی تنظیمات؟</string>
+    <string name="reset_confirm_text">پیکربندی ذخیره‌شده شما را با مقادیر پیش‌فرض config.json ارائه‌شده جایگزین کنم؟ این کار قابل بازگردانی نیست.</string>
+    <string name="reset">بازنشانی</string>
+    <string name="cancel">لغو</string>
+    <string name="defaults_restored">مقادیر پیش‌فرض بازگردانده و ذخیره شد.</string>
+    <string name="config_json">JSON پیکربندی</string>
+    <string name="config_copied">پیکربندی در حافظه رونویسی شد.</string>
+    <string name="import_config_title">ورودی پیکربندی</string>
+    <string name="import_config_hint">یک config.json واقعی RSTA paste کنید (برای مثال rsta-source/config.json ارائه‌شده). این عمل فقط فرم را پر می‌کند — تا زمانی که «ذخیره تنظیمات» را نزنید چیزی ذخیره نمی‌شود.</string>
+    <string name="import_action">ورودی</string>
+    <string name="close">بستن</string>
+    <string name="error_invalid_json">این JSON معتبر نیست</string>
+    <string name="imported_review">وارد شد. مقادیر را بررسی کنید، سپس «ذخیره تنظیمات» را بزنید.</string>
+    <string name="error_imported_config">پیکربندی ورودی: %1$s</string>
+    <string name="error_listen_port_number">درگاه گوش‌دادن باید عدد باشد</string>
+    <string name="error_connect_port_number">درگاه مقصد باید عدد باشد</string>
+    <string name="error_delay_number">تأخیر خردشدن باید عددی به ثانیه باشد</string>
+
+    <!-- Logs -->
+    <string name="pause">توقف نمایش</string>
+    <string name="resume">ادامه</string>
+    <string name="copy">رونویسی</string>
+    <string name="clear">پاک کردن</string>
+    <string name="logs_paused">نمایش متوقف شد — موتور همچنان لاگ‌گذاری می‌کند.</string>
+    <string name="logs_empty">هنوز خط لاگی وجود ندارد.\n\nموتور را راه‌اندازی کنید (تنظیمات → مانیتورینگ روشن، حالت ساکت خاموش)، سپس یک کلاینت به پراکسی محلی متصل کنید: باز شدن اتصال، تحلیل TLS SNI، خردشدن، پاسخ‌های سرور و مسدودی‌ها با زمان واقعی خود اینجا ظاهر می‌شوند.</string>
+    <string name="clear_logs_title">پاک کردن لاگ‌ها؟</string>
+    <string name="clear_logs_text">همه خطوط لاگ موتور در بافر حذف شوند؟</string>
+
+    <!-- About -->
+    <string name="about_description">منجنیق یک کنترل‌کننده پراکسی TLS محلی برای موتور واقعی RSTA SNI Spoof است. موتور اصلی را روی همین دستگاه اجرا می‌کند و پیکربندی، آمار زنده و لاگ‌های آن را در دسترس می‌قرارد — ترافیک دستگاه را هدایت نمی‌کند و به روت نیاز ندارد.</string>
+    <string name="about_version">نسخه %1$s</string>
+    <string name="about_engine">موتور RSTA SNI Spoof نسخه %1$s</string>
+    <string name="about_acknowledgements">سپاسگزاری‌ها</string>
+    <string name="about_acknowledgements_text">موتور RSTA SNI Spoof و روش‌های دور زدن واقعی آن؛ Android Jetpack (Compose، Startup، Test)؛ Kotlin؛ Go.</string>
+    <string name="about_engine_note">این نسخه از سوکت‌های معمولی استفاده می‌کند — بدون تزریق بسته خام و بدون روت.</string>
+
+    <!-- Service / notifications -->
+    <string name="channel_name">موتور RSTA</string>
+    <string name="channel_description">تا زمانی که پراکسی محلی RSTA در حال اجرا است نمایش داده می‌شود</string>
+    <string name="notification_title">منجنیق — موتور RSTA</string>
+    <string name="notification_starting">در حال راه‌اندازی موتور RSTA…</string>
+    <string name="notification_restarting">در حال راه‌اندازی مجدد موتور RSTA…</string>
+    <string name="notification_proxy_format">پراکسی %1$s ← %2$s (%3$s)</string>
+    <string name="notification_stop">توقف</string>
+
+    <!-- Permission rationale -->
+    <string name="notification_permission_needed">مجموعه اعلان به برنامه اجازه می‌دهد وضعیت سرویس پیش‌زمینه را در حال اجرای موتور نمایش دهد. موتور بدون آن کار می‌کند؛ فقط اعلان دائمی سرکوب می‌شود.</string>
+    <string name="notification_permission_denied">مجموعه اعلان رد شد — موتور همچنان اجرا می‌شود، اما اعلان وضعیت نمایش داده نمی‌شود.</string>
+</resources>

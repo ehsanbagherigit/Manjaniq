@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -17,6 +18,7 @@ import com.manjaniq.core.EngineLog
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.manjaniq.R
 
 /**
  * Live engine log: genuine monitor events with timestamps and
@@ -52,20 +54,22 @@ fun LogsScreen(
             OutlinedButton(onClick = {
                 if (!paused) frozen = logs
                 paused = !paused
-            }) { Text(if (paused) "Resume" else "Pause") }
+            }) { Text(stringResource(if (paused) R.string.resume else R.string.pause)) }
             OutlinedButton(onClick = {
                 val fmt = SimpleDateFormat("HH:mm:ss", Locale.US)
                 val text = shown.joinToString("\n") {
                     "${fmt.format(Date(it.timeMs))} [${it.level}] ${it.message}"
                 }
                 clipboard.setText(AnnotatedString(text))
-            }) { Text("Copy") }
-            OutlinedButton(onClick = { showClearConfirm = true }) { Text("Clear") }
+            }) { Text(stringResource(R.string.copy)) }
+            OutlinedButton(onClick = { showClearConfirm = true }) {
+                Text(stringResource(R.string.clear))
+            }
         }
 
         if (paused) {
             Text(
-                "Display paused — the engine is still logging.",
+                stringResource(R.string.logs_paused),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp
             )
@@ -82,11 +86,7 @@ fun LogsScreen(
         ) {
             if (shown.isEmpty()) {
                 Text(
-                    text = "No log lines yet.\n\nStart the engine (Settings → " +
-                        "monitoring on, quiet off), then connect a client to " +
-                        "the local proxy: connection opens, TLS SNI parsing, " +
-                        "fragmentation, server replies and blocks appear here " +
-                        "with their real timestamps.",
+                    text = stringResource(R.string.logs_empty),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 13.sp
                 )
@@ -101,17 +101,19 @@ fun LogsScreen(
     if (showClearConfirm) {
         AlertDialog(
             onDismissRequest = { showClearConfirm = false },
-            title = { Text("Clear logs?") },
-            text = { Text("Delete all buffered engine log lines?") },
+            title = { Text(stringResource(R.string.clear_logs_title)) },
+            text = { Text(stringResource(R.string.clear_logs_text)) },
             confirmButton = {
                 TextButton(onClick = {
                     onClearLogs()
                     frozen = emptyList()
                     showClearConfirm = false
-                }) { Text("Clear") }
+                }) { Text(stringResource(R.string.clear)) }
             },
             dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }) { Text("Cancel") }
+                TextButton(onClick = { showClearConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
             }
         )
     }

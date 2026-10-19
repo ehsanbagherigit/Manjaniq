@@ -62,7 +62,7 @@ class EngineService : Service() {
 
     private fun startEngine() {
         // Must go foreground promptly after startForegroundService.
-        goForeground("Starting RSTA engine…")
+        goForeground(getString(R.string.notification_starting))
         scope.launch {
             val config = ConfigStore(this@EngineService).load()
             val problem = config.validate()
@@ -75,8 +75,12 @@ class EngineService : Service() {
             if (result.isSuccess) {
                 EngineRepository.onEngineActionFinished(null)
                 goForeground(
-                    "Proxy ${config.listenHost}:${config.listenPort} → " +
-                        "${config.connectIp}:${config.connectPort} (${config.bypassMethod})"
+                    getString(
+                        R.string.notification_proxy_format,
+                        "${config.listenHost}:${config.listenPort}",
+                        "${config.connectIp}:${config.connectPort}",
+                        config.bypassMethod
+                    )
                 )
             } else {
                 EngineRepository.onEngineActionFinished(
@@ -98,7 +102,7 @@ class EngineService : Service() {
     }
 
     private fun restartEngine() {
-        goForeground("Restarting RSTA engine…")
+        goForeground(getString(R.string.notification_restarting))
         scope.launch {
             NativeBridge.stopEngine()
             val config = ConfigStore(this@EngineService).load()
@@ -112,8 +116,12 @@ class EngineService : Service() {
             if (result.isSuccess) {
                 EngineRepository.onEngineActionFinished(null)
                 goForeground(
-                    "Proxy ${config.listenHost}:${config.listenPort} → " +
-                        "${config.connectIp}:${config.connectPort} (${config.bypassMethod})"
+                    getString(
+                        R.string.notification_proxy_format,
+                        "${config.listenHost}:${config.listenPort}",
+                        "${config.connectIp}:${config.connectPort}",
+                        config.bypassMethod
+                    )
                 )
             } else {
                 EngineRepository.onEngineActionFinished(
@@ -144,10 +152,10 @@ class EngineService : Service() {
         )
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
-            .setContentTitle("Manjaniq — RSTA engine")
+            .setContentTitle(getString(R.string.notification_title))
             .setContentText(statusText)
             .setContentIntent(openApp)
-            .addAction(0, "Stop", stopAction)
+            .addAction(0, getString(R.string.notification_stop), stopAction)
             .setOngoing(true)
             .build()
         ServiceCompat.startForeground(
@@ -162,10 +170,10 @@ class EngineService : Service() {
         val manager = getSystemService(NotificationManager::class.java)
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "RSTA engine",
+            getString(R.string.channel_name),
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Shown while the local RSTA proxy is running"
+            description = getString(R.string.channel_description)
         }
         manager.createNotificationChannel(channel)
     }

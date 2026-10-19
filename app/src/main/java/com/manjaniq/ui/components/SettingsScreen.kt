@@ -11,6 +11,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
@@ -18,30 +20,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.manjaniq.core.models.EngineState
 import com.manjaniq.core.models.RSTAConfig
+import com.manjaniq.R
 
-private fun methodDescription(method: String): String = when (method) {
-    "fragment" ->
-        "Splits the real TLS ClientHello into fragments (chosen strategy below) " +
-            "so the SNI is never visible in one packet. No fake traffic is sent."
-    "fake_sni" ->
-        "As implemented in the genuine engine: sends a fake ClientHello probe " +
-            "with the Fake SNI on a side connection, then sends the real hello " +
-            "split at the SNI. With the TTL toggle on, the probe uses the " +
-            "engine's TTL-trick path. (This build uses regular sockets — no " +
-            "raw-packet injection and no root.)"
-    "combined" ->
-        "Fake-hello probe (when TTL trick is on) plus fragmentation of the " +
-            "real ClientHello with your strategy and delay. The original " +
-            "program's recommended method."
-    else -> ""
+private fun methodDescription(method: String): Int = when (method) {
+    "fragment" -> R.string.method_fragment_desc
+    "fake_sni" -> R.string.method_fake_sni_desc
+    "combined" -> R.string.method_combined_desc
+    else -> R.string.method_fragment_desc
 }
 
-private fun strategyDescription(strategy: String): String = when (strategy) {
-    "sni_split" -> "Split in the middle of the SNI value (recommended)."
-    "half" -> "Split the ClientHello record into two halves."
-    "multi" -> "Split into many small 24-byte chunks."
-    "tls_record_frag" -> "Re-wrap the handshake as two separate TLS records."
-    else -> ""
+private fun strategyDescription(strategy: String): Int = when (strategy) {
+    "sni_split" -> R.string.strategy_sni_split_desc
+    "half" -> R.string.strategy_half_desc
+    "multi" -> R.string.strategy_multi_desc
+    "tls_record_frag" -> R.string.strategy_tls_record_frag_desc
+    else -> R.string.strategy_sni_split_desc
 }
 
 /**
@@ -74,9 +67,9 @@ fun SettingsScreen(
         val lp = listenPortText.toIntOrNull()
         val cp = connectPortText.toIntOrNull()
         val delay = delayText.toDoubleOrNull()
-        if (lp == null) { errorText = "Listen port must be a number"; return null }
-        if (cp == null) { errorText = "Target port must be a number"; return null }
-        if (delay == null) { errorText = "Fragment delay must be a number of seconds"; return null }
+        if (lp == null) { errorText = stringResource(R.string.error_listen_port_number); return null }
+        if (cp == null) { errorText = stringResource(R.string.error_connect_port_number); return null }
+        if (delay == null) { errorText = stringResource(R.string.error_delay_number); return null }
         val cfg = draft.copy(listenPort = lp, connectPort = cp, fragmentDelay = delay)
         val problem = cfg.validate()
         if (problem != null) { errorText = problem; return null }
@@ -105,21 +98,43 @@ fun SettingsScreen(
             Text(infoText!!, color = MaterialTheme.colorScheme.primary, fontSize = 14.sp)
         }
 
-        InfoCard(title = "CONNECTION") {
-            ConfigTextField("Listen host", draft.listenHost, "0.0.0.0 listens on all interfaces; 127.0.0.1 is device-only") {
+        InfoCard(title = stringResource(R.string.section_connection)) {
+            ConfigTextField(
+                stringResource(R.string.settings_listen_host),
+                draft.listenHost,
+                stringResource(R.string.settings_listen_host_hint)
+            ) {
                 draft = draft.copy(listenHost = it)
             }
-            ConfigTextField("Listen port", listenPortText, null, KeyboardType.Number) { listenPortText = it }
-            ConfigTextField("Target host or IP", draft.connectIp, "Every proxied connection is forwarded here") {
+            ConfigTextField(
+                stringResource(R.string.settings_listen_port),
+                listenPortText,
+                null,
+                KeyboardType.Number
+            ) { listenPortText = it }
+            ConfigTextField(
+                stringResource(R.string.settings_connect_host),
+                draft.connectIp,
+                stringResource(R.string.settings_connect_host_hint)
+            ) {
                 draft = draft.copy(connectIp = it)
             }
-            ConfigTextField("Target port", connectPortText, null, KeyboardType.Number) { connectPortText = it }
-            ConfigTextField("Fake SNI hostname", draft.sniHostname, "The allowed-looking name DPI should see") {
+            ConfigTextField(
+                stringResource(R.string.settings_connect_port),
+                connectPortText,
+                null,
+                KeyboardType.Number
+            ) { connectPortText = it }
+            ConfigTextField(
+                stringResource(R.string.settings_fake_sni),
+                draft.sniHostname,
+                stringResource(R.string.settings_fake_sni_hint)
+            ) {
                 draft = draft.copy(sniHostname = it)
             }
         }
 
-        InfoCard(title = "BYPASS METHOD") {
+        InfoCard(title = stringResource(R.string.section_bypass_method)) {
             Row(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -133,18 +148,18 @@ fun SettingsScreen(
                 }
             }
             Text(
-                methodDescription(draft.bypassMethod),
+                stringResource(methodDescription(draft.bypassMethod)),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 13.sp
             )
             ToggleRow(
-                "TTL trick / fake-hello probe",
-                "Used by fake_sni and combined, as implemented in the genuine engine",
+                stringResource(R.string.settings_ttl_trick),
+                stringResource(R.string.settings_ttl_trick_hint),
                 draft.useTtlTrick
             ) { draft = draft.copy(useTtlTrick = it) }
         }
 
-        InfoCard(title = "FRAGMENTATION") {
+        InfoCard(title = stringResource(R.string.section_fragmentation)) {
             Row(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -158,36 +173,42 @@ fun SettingsScreen(
                 }
             }
             Text(
-                strategyDescription(draft.fragmentStrategy),
+                stringResource(strategyDescription(draft.fragmentStrategy)),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 13.sp
             )
             ConfigTextField(
-                "Delay between fragments (seconds, 0–5)",
-                delayText, null, KeyboardType.Decimal
+                stringResource(R.string.settings_fragment_delay),
+                delayText,
+                null,
+                KeyboardType.Decimal
             ) { delayText = it }
         }
 
-        InfoCard(title = "OUTPUT") {
+        InfoCard(title = stringResource(R.string.section_output)) {
             ToggleRow(
-                "Connection monitoring",
-                "Collect statistics and stream connection events to Logs",
+                stringResource(R.string.settings_monitor),
+                stringResource(R.string.settings_monitor_hint),
                 draft.monitorEnabled
             ) { draft = draft.copy(monitorEnabled = it) }
             ToggleRow(
-                "Quiet mode",
-                "Suppresses event logging (engine counters still update)",
+                stringResource(R.string.settings_quiet),
+                stringResource(R.string.settings_quiet_hint),
                 draft.quietMode
             ) { draft = draft.copy(quietMode = it) }
         }
 
-        InfoCard(title = "ADVANCED (GENUINE CONFIG KEYS)") {
-            ConfigTextField("FAKE_SNI_METHOD", draft.fakeSNIMethod, null) {
+        InfoCard(title = stringResource(R.string.section_advanced)) {
+            ConfigTextField(
+                stringResource(R.string.settings_fake_sni_method),
+                draft.fakeSNIMethod,
+                null
+            ) {
                 draft = draft.copy(fakeSNIMethod = it)
             }
             ToggleRow(
-                "FAKE_SNI_FRAGMENT_REAL",
-                "Stored and sent to the engine; the current engine build always fragments the real hello",
+                stringResource(R.string.settings_fake_sni_fragment_real),
+                stringResource(R.string.settings_fake_sni_fragment_real_hint),
                 draft.fakeSNIFragmentReal
             ) { draft = draft.copy(fakeSNIFragmentReal = it) }
         }
@@ -200,12 +221,15 @@ fun SettingsScreen(
                 } else {
                     onSave(cfg, false)
                     refreshTexts(cfg)
-                    infoText = "Settings saved. They take effect on the next start."
+                    infoText = stringResource(R.string.saved_next_start)
                 }
             },
-            modifier = Modifier.fillMaxWidth().height(52.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .testTag("settings_save_button"),
             shape = RoundedCornerShape(14.dp)
-        ) { Text("Save settings") }
+        ) { Text(stringResource(R.string.save_settings)) }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -214,16 +238,16 @@ fun SettingsScreen(
             OutlinedButton(
                 onClick = { buildDraft()?.let { exportText = it.toJson() } },
                 modifier = Modifier.weight(1f)
-            ) { Text("Export JSON") }
+            ) { Text(stringResource(R.string.export_json)) }
             OutlinedButton(
                 onClick = { importVisible = true },
                 modifier = Modifier.weight(1f)
-            ) { Text("Import JSON") }
+            ) { Text(stringResource(R.string.import_json)) }
         }
         OutlinedButton(
             onClick = { showResetConfirm = true },
             modifier = Modifier.fillMaxWidth()
-        ) { Text("Reset to defaults (supplied config.json values)") }
+        ) { Text(stringResource(R.string.reset_defaults)) }
 
         Spacer(modifier = Modifier.height(8.dp))
     }
@@ -232,26 +256,27 @@ fun SettingsScreen(
         val cfg = showRestartConfirm!!
         AlertDialog(
             onDismissRequest = { showRestartConfirm = null },
-            title = { Text("Restart engine?") },
+            title = { Text(stringResource(R.string.restart_confirm_title)) },
             text = {
-                Text("The engine is running. Save these settings and restart " +
-                    "the engine so they take effect now? Active connections will drop.")
+                Text(
+                    stringResource(R.string.restart_confirm_text)
+                )
             },
             confirmButton = {
                 TextButton(onClick = {
                     onSave(cfg, true)
                     refreshTexts(cfg)
-                    infoText = "Settings saved; engine restarting."
+                    infoText = stringResource(R.string.saved_restarting)
                     showRestartConfirm = null
-                }) { Text("Save & restart") }
+                }) { Text(stringResource(R.string.save_and_restart)) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     onSave(cfg, false)
                     refreshTexts(cfg)
-                    infoText = "Settings saved; they apply on the next manual start."
+                    infoText = stringResource(R.string.saved_save_only)
                     showRestartConfirm = null
-                }) { Text("Save only") }
+                }) { Text(stringResource(R.string.save_only)) }
             }
         )
     }
@@ -259,18 +284,21 @@ fun SettingsScreen(
     if (showResetConfirm) {
         AlertDialog(
             onDismissRequest = { showResetConfirm = false },
-            title = { Text("Reset settings?") },
-            text = { Text("Replace your saved configuration with the defaults " +
-                "from the supplied config.json? This cannot be undone.") },
+            title = { Text(stringResource(R.string.reset_confirm_title)) },
+            text = {
+                Text(stringResource(R.string.reset_confirm_text))
+            },
             confirmButton = {
                 TextButton(onClick = {
                     refreshTexts(onResetDefaults())
-                    infoText = "Defaults restored and saved."
+                    infoText = stringResource(R.string.defaults_restored)
                     showResetConfirm = false
-                }) { Text("Reset") }
+                }) { Text(stringResource(R.string.reset)) }
             },
             dismissButton = {
-                TextButton(onClick = { showResetConfirm = false }) { Text("Cancel") }
+                TextButton(onClick = { showResetConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
             }
         )
     }
@@ -278,7 +306,7 @@ fun SettingsScreen(
     if (exportText != null) {
         AlertDialog(
             onDismissRequest = { exportText = null },
-            title = { Text("Configuration JSON") },
+            title = { Text(stringResource(R.string.config_json)) },
             text = {
                 Text(
                     exportText!!,
@@ -290,12 +318,14 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = {
                     clipboard.setText(AnnotatedString(exportText!!))
-                    infoText = "Configuration copied to clipboard."
+                    infoText = stringResource(R.string.config_copied)
                     exportText = null
-                }) { Text("Copy") }
+                }) { Text(stringResource(R.string.copy)) }
             },
             dismissButton = {
-                TextButton(onClick = { exportText = null }) { Text("Close") }
+                TextButton(onClick = { exportText = null }) {
+                    Text(stringResource(R.string.close))
+                }
             }
         )
     }
@@ -303,13 +333,11 @@ fun SettingsScreen(
     if (importVisible) {
         AlertDialog(
             onDismissRequest = { importVisible = false },
-            title = { Text("Import configuration") },
+            title = { Text(stringResource(R.string.import_config_title)) },
             text = {
                 Column {
                     Text(
-                        "Paste a genuine RSTA config.json (for example the " +
-                            "supplied rsta-source/config.json). It fills this " +
-                            "form only — nothing is saved until you tap Save.",
+                        stringResource(R.string.import_config_hint),
                         fontSize = 13.sp
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -327,21 +355,23 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     val parsed = RSTAConfig.fromJson(importText)
                     if (parsed == null) {
-                        errorText = "That is not valid JSON"
+                        errorText = stringResource(R.string.error_invalid_json)
                     } else {
                         val problem = parsed.validate()
                         if (problem != null) {
-                            errorText = "Imported config: $problem"
+                            errorText = stringResource(R.string.error_imported_config, problem)
                         } else {
                             refreshTexts(parsed)
-                            infoText = "Imported. Review the values, then tap Save settings."
+                            infoText = stringResource(R.string.imported_review)
                         }
                     }
                     importVisible = false
-                }) { Text("Import") }
+                }) { Text(stringResource(R.string.import_action)) }
             },
             dismissButton = {
-                TextButton(onClick = { importVisible = false }) { Text("Cancel") }
+                TextButton(onClick = { importVisible = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
             }
         )
     }

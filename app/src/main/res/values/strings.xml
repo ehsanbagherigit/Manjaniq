@@ -1,4 +1,147 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Manjaniq</string>
+
+    <!-- App shell -->
+    <string name="app_tagline">RSTA SNI Spoof — local proxy control</string>
+    <string name="tab_dashboard">Dashboard</string>
+    <string name="tab_settings">Settings</string>
+    <string name="tab_logs">Logs</string>
+    <string name="tab_about">About</string>
+
+    <!-- Engine selector -->
+    <string name="engine_selector_title">ENGINE</string>
+    <string name="engine_rsta">RSTA</string>
+    <string name="engine_rsta_status_available">Available</string>
+    <string name="engine_aether">Aether</string>
+    <string name="engine_aether_status_coming_soon">Coming Soon</string>
+
+    <!-- Dashboard -->
+    <string name="engine_status">ENGINE STATUS</string>
+    <string name="listening_on">Listening on %1$s</string>
+    <string name="status_last_start_failed">Last start failed — see the error below and Logs</string>
+    <string name="status_not_running">Local RSTA proxy is not running</string>
+    <string name="engine_error">Engine error</string>
+    <string name="view_logs">View logs</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="start_engine">START ENGINE</string>
+    <string name="stop_engine">STOP ENGINE</string>
+    <string name="starting">STARTING…</string>
+    <string name="stopping">STOPPING…</string>
+    <string name="section_connection">CONNECTION</string>
+    <string name="section_statistics">LIVE STATISTICS</string>
+    <string name="section_recent_log">RECENT LOG</string>
+    <string name="section_how_it_works">HOW IT WORKS</string>
+    <string name="label_listen">Listen</string>
+    <string name="label_target">Target</string>
+    <string name="label_method">Method</string>
+    <string name="label_fragmentation">Fragmentation</string>
+    <string name="label_fake_sni">Fake SNI</string>
+    <string name="label_ttl_trick">TTL trick</string>
+    <string name="label_engine">Engine</string>
+    <string name="engine_version">RSTA SNI Spoof v%1$s</string>
+    <string name="on">on</string>
+    <string name="off">off</string>
+    <string name="label_uptime">Uptime</string>
+    <string name="label_active_connections">Active connections</string>
+    <string name="label_total_connections">Total connections</string>
+    <string name="label_bypass_confirmed">Bypass confirmed</string>
+    <string name="label_blocked">Blocked / no reply</string>
+    <string name="label_traffic_up">Traffic up (client → target)</string>
+    <string name="label_traffic_down">Traffic down (target → client)</string>
+    <string name="stats_note">Counters come from the engine\'s own monitor; traffic totals advance in 256 KB steps, as in the original program.</string>
+    <string name="no_engine_events">No engine events yet. Start the engine (with monitoring on) and connection events will appear here.</string>
+    <string name="open_full_logs">Open full logs</string>
+    <string name="how_it_works">Manjaniq runs the original RSTA engine as a local proxy. Point the app or browser you want to protect at the listen address above (for this device: 127.0.0.1:%1$d). It does not redirect all device traffic and needs no root.</string>
+    <string name="fragmentation_summary">%1$s · delay %2$s s</string>
+
+    <!-- Settings -->
+    <string name="settings_listen_host">Listen host</string>
+    <string name="settings_listen_host_hint">0.0.0.0 listens on all interfaces; 127.0.0.1 is device-only</string>
+    <string name="settings_listen_port">Listen port</string>
+    <string name="settings_connect_host">Target host or IP</string>
+    <string name="settings_connect_host_hint">Every proxied connection is forwarded here</string>
+    <string name="settings_connect_port">Target port</string>
+    <string name="settings_fake_sni">Fake SNI hostname</string>
+    <string name="settings_fake_sni_hint">The allowed-looking name DPI should see</string>
+    <string name="section_bypass_method">BYPASS METHOD</string>
+    <string name="method_fragment_desc">Splits the real TLS ClientHello into fragments (chosen strategy below) so the SNI is never visible in one packet. No fake traffic is sent.</string>
+    <string name="method_fake_sni_desc">As implemented in the genuine engine: sends a fake ClientHello probe with the Fake SNI on a side connection, then sends the real hello split at the SNI. With the TTL toggle on, the probe uses the engine\'s TTL-trick path. (This build uses regular sockets — no raw-packet injection and no root.)</string>
+    <string name="method_combined_desc">Fake-hello probe (when TTL trick is on) plus fragmentation of the real ClientHello with your strategy and delay. The original program\'s recommended method.</string>
+    <string name="settings_ttl_trick">TTL trick / fake-hello probe</string>
+    <string name="settings_ttl_trick_hint">Used by fake_sni and combined, as implemented in the genuine engine</string>
+    <string name="section_fragmentation">FRAGMENTATION</string>
+    <string name="strategy_sni_split_desc">Split in the middle of the SNI value (recommended).</string>
+    <string name="strategy_half_desc">Split the ClientHello record into two halves.</string>
+    <string name="strategy_multi_desc">Split into many small 24-byte chunks.</string>
+    <string name="strategy_tls_record_frag_desc">Re-wrap the handshake as two separate TLS records.</string>
+    <string name="settings_fragment_delay">Delay between fragments (seconds, 0–5)</string>
+    <string name="section_output">OUTPUT</string>
+    <string name="settings_monitor">Connection monitoring</string>
+    <string name="settings_monitor_hint">Collect statistics and stream connection events to Logs</string>
+    <string name="settings_quiet">Quiet mode</string>
+    <string name="settings_quiet_hint">Suppresses event logging (engine counters still update)</string>
+    <string name="section_advanced">ADVANCED (GENUINE CONFIG KEYS)</string>
+    <string name="settings_fake_sni_method">FAKE_SNI_METHOD</string>
+    <string name="settings_fake_sni_fragment_real">FAKE_SNI_FRAGMENT_REAL</string>
+    <string name="settings_fake_sni_fragment_real_hint">Stored and sent to the engine; the current engine build always fragments the real hello</string>
+    <string name="save_settings">Save settings</string>
+    <string name="export_json">Export JSON</string>
+    <string name="import_json">Import JSON</string>
+    <string name="reset_defaults">Reset to defaults (supplied config.json values)</string>
+    <string name="restart_confirm_title">Save and restart?</string>
+    <string name="restart_confirm_text">Save these settings and restart the engine so they take effect now? Active connections will drop.</string>
+    <string name="save_and_restart">Save &amp; restart</string>
+    <string name="save_only">Save only</string>
+    <string name="saved_next_start">Settings saved. They take effect on the next start.</string>
+    <string name="saved_restarting">Settings saved; engine restarting.</string>
+    <string name="saved_save_only">Settings saved; they apply on the next manual start.</string>
+    <string name="reset_confirm_title">Reset settings?</string>
+    <string name="reset_confirm_text">Replace your saved configuration with the defaults from the supplied config.json? This cannot be undone.</string>
+    <string name="reset">Reset</string>
+    <string name="cancel">Cancel</string>
+    <string name="defaults_restored">Defaults restored and saved.</string>
+    <string name="config_json">Configuration JSON</string>
+    <string name="config_copied">Configuration copied to clipboard.</string>
+    <string name="import_config_title">Import configuration</string>
+    <string name="import_config_hint">Paste a genuine RSTA config.json (for example the supplied rsta-source/config.json). It fills this form only — nothing is saved until you tap Save settings.</string>
+    <string name="import_action">Import</string>
+    <string name="close">Close</string>
+    <string name="error_invalid_json">That is not valid JSON</string>
+    <string name="imported_review">Imported. Review the values, then tap Save settings.</string>
+    <string name="error_imported_config">Imported config: %1$s</string>
+    <string name="error_listen_port_number">Listen port must be a number</string>
+    <string name="error_connect_port_number">Target port must be a number</string>
+    <string name="error_delay_number">Fragment delay must be a number of seconds</string>
+
+    <!-- Logs -->
+    <string name="pause">Pause</string>
+    <string name="resume">Resume</string>
+    <string name="copy">Copy</string>
+    <string name="clear">Clear</string>
+    <string name="logs_paused">Display paused — the engine is still logging.</string>
+    <string name="logs_empty">No log lines yet.\n\nStart the engine (Settings → monitoring on, quiet off), then connect a client to the local proxy: connection opens, TLS SNI parsing, fragmentation, server replies and blocks appear here with their real timestamps.</string>
+    <string name="clear_logs_title">Clear logs?</string>
+    <string name="clear_logs_text">Delete all buffered engine log lines?</string>
+
+    <!-- About -->
+    <string name="about_description">Manjaniq is a local TLS proxy controller for the genuine RSTA SNI Spoof engine. It runs the original engine on this device and exposes its configuration, live statistics and logs — it does not redirect device traffic and needs no root.</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_engine">RSTA SNI Spoof engine v%1$s</string>
+    <string name="about_acknowledgements">Acknowledgements</string>
+    <string name="about_acknowledgements_text">RSTA SNI Spoof engine and its genuine bypass strategies; Android Jetpack (Compose, Startup, Test); Kotlin; Go.</string>
+    <string name="about_engine_note">This build uses regular sockets — no raw-packet injection and no root.</string>
+
+    <!-- Service / notifications -->
+    <string name="channel_name">RSTA engine</string>
+    <string name="channel_description">Shown while the local RSTA proxy is running</string>
+    <string name="notification_title">Manjaniq — RSTA engine</string>
+    <string name="notification_starting">Starting RSTA engine…</string>
+    <string name="notification_restarting">Restarting RSTA engine…</string>
+    <string name="notification_proxy_format">Proxy %1$s → %2$s (%3$s)</string>
+    <string name="notification_stop">Stop</string>
+
+    <!-- Permission rationale -->
+    <string name="notification_permission_needed">Notification permission lets the app show the foreground-service status while the engine runs. The engine works without it; only the persistent notification is suppressed.</string>
+    <string name="notification_permission_denied">Notification permission denied — the engine still runs, but no status notification is shown.</string>
 </resources>
