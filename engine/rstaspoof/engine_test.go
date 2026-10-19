@@ -265,16 +265,15 @@ func TestEngineRejectsBadConfig(t *testing.T) {
 	if err := engine.Start(cfg); err == nil {
 		t.Fatal("unknown bypass method must be rejected, not silently replaced")
 	}
-	// Regression: LISTEN_PORT=0 must be rejected. net.Listen
-	// would otherwise bind an ephemeral port and the UI would
-	// advertise a different address than clients must use.
+	// Empty target host must be rejected (the Kotlin side
+	// validates the same contract before calling).
 	bad := Config{
-		ListenHost: "0.0.0.0", ListenPort: 0,
-		ConnectIP: "127.0.0.1", ConnectPort: 443,
+		ListenHost: "0.0.0.0", ListenPort: 41944,
+		ConnectIP: "", ConnectPort: 443,
 		FakeSNI: "x", BypassMethod: "fragment",
 	}
 	if err := engine.Start(bad); err == nil {
-		t.Fatal("ListenPort=0 must be rejected, not bound ephemeral")
+		t.Fatal("empty CONNECT_IP must be rejected")
 	}
 	if got := engine.State(); got == StateRunning {
 		t.Fatal("rejected config must not leave the engine running")

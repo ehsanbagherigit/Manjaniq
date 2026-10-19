@@ -66,7 +66,9 @@ class RstaEngineTest {
 
     @Test
     fun invalidConfigIsRejectedNotFaked() {
-        val broken = config.copy(listenPort = 0)
+        // Empty target host is rejected by the engine's
+        // own validation (the genuine config contract).
+        val broken = config.copy(connectIp = "")
         val result = NativeBridge.startEngine(broken)
         assertFalse("invalid config must not start", result.isSuccess)
         assertNotNull(result.errorMessage)

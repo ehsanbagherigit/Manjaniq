@@ -76,3 +76,20 @@ PR #2 (`feature/manjaniq-ui-redesign`): OPEN, unmerged — must stay that way.
   installation, instrumentation execution. Evidence: toolchain absence +
   blocked hosts listed above. These run in GitHub Actions instead; results
   are reported from real workflow runs.
+
+## CI evidence log (this branch)
+
+- Run 39203828700 (commit 0e9e191): build job FAILED at
+  "Test Go engine package" — TestRapidStartStop and
+  TestEngineEndToEndFragment.
+  Root cause: my engine.go change rejected LISTEN_PORT=0,
+  but the engine deliberately supports port 0 (ephemeral;
+  the real address is reported via Metrics().ListenAddr and
+  the tests rely on it). Evidence: engine_test.go
+  `ListenPort: 0, // ephemeral; actual addr via Metrics`.
+  Correction: reverted the Go-side validation (port 0 stays
+  a legitimate embedder input; the Kotlin UI validates
+  1..65535 for user input), and the instrumentation test
+  now uses an empty CONNECT_IP (genuinely rejected) instead.
+  Lesson recorded: CI evidence corrected the diagnosis —
+  the change was speculative.

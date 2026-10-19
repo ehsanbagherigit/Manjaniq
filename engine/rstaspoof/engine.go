@@ -211,12 +211,14 @@ func (c Config) toMap() map[string]interface{} {
 }
 
 func validateConfig(c Config) error {
-	// Port 0 is rejected: net.Listen would silently bind an
-	// ephemeral port and the UI would advertise a different
-	// address than the one clients must use. The genuine
-	// CLI rejects port 0 the same way (AddressParser.Parse).
-	if c.ListenPort < 1 || c.ListenPort > 65535 {
-		return fmt.Errorf("invalid LISTEN_PORT %d (want 1-65535)", c.ListenPort)
+	// NOTE: ListenPort 0 is intentionally allowed here: it
+	// asks the kernel for an ephemeral port, and the real
+	// bound address is reported through Metrics().ListenAddr
+	// (the embedded engine and the tests rely on this). The
+	// Android UI validates 1..65535 before calling, so user
+	// input cannot reach this path with 0.
+	if c.ListenPort < 0 || c.ListenPort > 65535 {
+		return fmt.Errorf("invalid LISTEN_PORT %d (want 0-65535)", c.ListenPort)
 	}
 	if strings.TrimSpace(c.ConnectIP) == "" {
 		return errors.New("CONNECT_IP must not be empty")
