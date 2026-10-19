@@ -1,0 +1,74 @@
+{
+  "manjaniq_logo": {
+    "original": "assets/logos/originals/manjaniq_logo_upload_a16b18e.jpg",
+    "original_format": "JPEG",
+    "original_size": [
+      3464,
+      3464
+    ],
+    "original_sha256": "4f33d00bf09d29a726e40eb7bb511c8cf651eaa3a7a97223401bc168c2917241",
+    "assets_png": "assets/logos/manjaniq_logo.png",
+    "drawable": "app/src/main/res/drawable/ic_manjaniq_logo.png",
+    "drawable_size": [
+      512,
+      512
+    ],
+    "content_bbox": [
+      512,
+      883,
+      2626,
+      2538
+    ]
+  },
+  "rsta_logo": {
+    "original": "assets/logos/originals/rsta_logo_upload.jpg",
+    "original_format": "JPEG",
+    "original_size": [
+      1254,
+      1254
+    ],
+    "original_sha256": "8c4a9feca1af45e785173523bb20f5c4b72cec71d7780c8ce484567efb56acc8",
+    "assets_png": "assets/logos/rsta_logo.png",
+    "drawable": "app/src/main/res/drawable/ic_rsta_logo.png",
+    "drawable_size": [
+      512,
+      512
+    ]
+  },
+  "aether_logo": {
+    "original": "assets/logos/originals/aether_logo_upload.jpg",
+    "original_format": "JPEG",
+    "original_size": [
+      1254,
+      1254
+    ],
+    "original_sha256": "0565ee28ab8c33ad128192ddf3ea4137fe8d752b0c1394f82a030eeebb681826",
+    "assets_png": "assets/logos/aether_logo.png",
+    "drawable": "app/src/main/res/drawable/ic_aether_logo.png",
+    "drawable_size": [
+      512,
+      512
+    ]
+  },
+  "launcher": {
+    "files": [
+      "app/src/main/res/mipmap-mdpi/ic_launcher.png",
+      "app/src/main/res/mipmap-mdpi/ic_launcher_round.png",
+      "app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png",
+      "app/src/main/res/mipmap-hdpi/ic_launcher.png",
+      "app/src/main/res/mipmap-hdpi/ic_launcher_round.png",
+      "app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png",
+      "app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+      "app/src/main/res/mipmap-xhdpi/ic_launcher_round.png",
+      "app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png",
+      "app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+      "app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png",
+      "app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png",
+      "app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png",
+      "app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png"
+    ],
+    "background_color": "#000000",
+    "adaptive_safe_zone_fill": 0.88
+  }
+}
