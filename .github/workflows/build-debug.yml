@@ -156,10 +156,11 @@ jobs:
           set -euo pipefail
           export PATH="$HOME/.cargo/bin:$PATH"
           export ANDROID_NDK_HOME="$ANDROID_NDK_HOME"
-          # Verify source is pinned to v2.3.0 (github fetch via codeload)
+          # Verify source is pinned to v2.3.0 (vendored path or git tag)
           test -f third_party/Aether-LICENSE || { echo "::error::Missing third_party/Aether-LICENSE (AGPL)"; exit 1; }
           test -f aether-wrapper/Cargo.toml
-          grep -q 'tag = "v2.3.0"' aether-wrapper/Cargo.toml || { echo "::error::aether-wrapper not pinned to v2.3.0"; exit 1; }
+          (grep -q 'tag = "v2.3.0"' aether-wrapper/Cargo.toml || grep -q 'path = "../third_party/Aether/aether"' aether-wrapper/Cargo.toml) || { echo "::error::aether-wrapper not pinned to v2.3.0"; exit 1; }
+          test -f third_party/Aether/aether/Cargo.toml && grep -q 'version = "2.3.0"' third_party/Aether/aether/Cargo.toml || { echo "::error::vendored Aether not v2.3.0"; exit 1; }
           # Vendor path in third_party/Aether (v2.3.0 peeled 6175b67) already patched: rust-version 1.98→1.56, 1.88→1.56
           sudo apt-get update && sudo apt-get install -y cmake perl || true
           rustc --version; cargo --version
