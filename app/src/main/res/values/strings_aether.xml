@@ -91,7 +91,7 @@
     <string name="profile_tor_aether_desc">Tor as upstream for Aether dial-out. Requires Tor SOCKS upstream.</string>
 
     <!-- Capabilities -->
-    <string name="badge_available">Available</string>
+    <!-- badge_available is in strings.xml canonical -->
     <string name="badge_needs_config">Needs config</string>
     <string name="badge_unsupported">Unsupported</string>
     <string name="badge_requires_external">Needs external</string>
