@@ -153,21 +153,23 @@ jobs:
 
       - name: Build Aether Native Library (libaether.so) - Rust
         run: |
-          set -euo pipefail
+          set -uo pipefail
           export PATH="$HOME/.cargo/bin:$PATH"
-          export ANDROID_NDK_HOME="$ANDROID_NDK_HOME"
+          export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-${ANDROID_HOME:-}/ndk/25.2.9519653}"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
+          test -n "${ANDROID_NDK_HOME}" || { echo "::error::ANDROID_NDK_HOME not set"; echo "ANDROID_HOME=${ANDROID_HOME}"; ls -ld ${ANDROID_HOME}/ndk 2>&1 || true; exit 1; }
           # Verify source is pinned to v2.3.0 (vendored path or git tag)
           test -f third_party/Aether-LICENSE || { echo "::error::Missing third_party/Aether-LICENSE (AGPL)"; exit 1; }
-          test -f aether-wrapper/Cargo.toml
-          (grep -q 'tag = "v2.3.0"' aether-wrapper/Cargo.toml || grep -q 'path = "../third_party/Aether/aether"' aether-wrapper/Cargo.toml) || { echo "::error::aether-wrapper not pinned to v2.3.0"; exit 1; }
-          test -f third_party/Aether/aether/Cargo.toml && grep -q 'version = "2.3.0"' third_party/Aether/aether/Cargo.toml || { echo "::error::vendored Aether not v2.3.0"; exit 1; }
+          test -f aether-wrapper/Cargo.toml || { echo "::error::aether-wrapper/Cargo.toml missing"; exit 1; }
+          (grep -q 'tag = "v2.3.0"' aether-wrapper/Cargo.toml || grep -q 'path = "../third_party/Aether/aether"' aether-wrapper/Cargo.toml) || { echo "::error::aether-wrapper not pinned to v2.3.0"; cat aether-wrapper/Cargo.toml; exit 1; }
+          test -f third_party/Aether/aether/Cargo.toml || { echo "::error::vendored Aether missing"; ls third_party/Aether/ 2>&1 | head -n 20; exit 1; }
+          grep -q 'version = "2.3.0"' third_party/Aether/aether/Cargo.toml || { echo "::error::vendored Aether not v2.3.0"; cat third_party/Aether/aether/Cargo.toml | head -n 10; exit 1; }
           # Vendor path in third_party/Aether (v2.3.0 peeled 6175b67) already patched: rust-version 1.98→1.56, 1.88→1.56
           sudo apt-get update && sudo apt-get install -y cmake perl pkg-config || true
-          rustc --version; cargo --version; cargo ndk --version || cargo-ndk --version || true
-          echo "CMAKE=$CMAKE cmake --version && perl --version | head -n1"
-          cmake --version 2>&1 | head -n1; perl --version 2>&1 | head -n1 || true
+          rustc --version || echo "rustc missing"; cargo --version || echo "cargo missing"; cargo ndk --version 2>&1 || cargo-ndk --version 2>&1 || echo "cargo-ndk missing, will try cargo ndk"
+          cmake --version 2>&1 | head -n1 || echo "cmake missing"; perl --version 2>&1 | head -n1 || echo "perl missing"
           # Build arm64-v8a (primary) - vendored path avoids git fetch + rust-version gate
-          set +e
+          set +e; set +u
           cd aether-wrapper
           echo "=== cargo ndk arm64 verbose ===" | tee /tmp/aether_arm64.log
           cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --locked --verbose 2>&1 | tee -a /tmp/aether_arm64.log; RC=${PIPESTATUS[0]}
@@ -182,10 +184,13 @@ jobs:
           cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --locked 2>&1 | tee -a /tmp/aether_x64.log || echo "::warning::x86_64 libaether build failed, continuing with arm64 only" | tee -a /tmp/aether_x64.log
           ls -lh ../app/src/main/jniLibs/x86_64/ 2>&1 | tee -a /tmp/aether_x64.log || true
           cd ..
-          cat /tmp/aether_arm64.log | tail -n 200
-          cat /tmp/aether_x64.log | tail -n 100
+          echo "--- tail arm64 log ---"
+          cat /tmp/aether_arm64.log 2>&1 | tail -n 300 || echo "no arm64 log yet"
+          echo "--- tail x64 log ---"
+          cat /tmp/aether_x64.log 2>&1 | tail -n 100 || echo "no x64 log"
+          ls -R app/src/main/jniLibs 2>&1 | head -n 30
           # Fail if primary missing
-          test -f app/src/main/jniLibs/arm64-v8a/libaether.so || { echo "::error::libaether.so not produced - see /tmp/aether_arm64.log"; cat /tmp/aether_arm64.log; exit 1; }
+          test -f app/src/main/jniLibs/arm64-v8a/libaether.so || { echo "::error::libaether.so not produced - see /tmp/aether_arm64.log"; cat /tmp/aether_arm64.log 2>&1 | tail -n 500; exit 1; }
 
       - name: Verify native libraries (RSTA + Aether)
         run: |
