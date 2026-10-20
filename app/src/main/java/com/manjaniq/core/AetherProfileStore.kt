@@ -5,7 +5,7 @@ import com.manjaniq.core.models.AetherConfig
 import com.manjaniq.core.models.AetherProfile
 import com.manjaniq.core.models.AetherProfileConfig
 
-class AetherProfileStore(context: Context) {
+class AetherProfileStore(private val context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun getSelectedProfile(): AetherProfile {

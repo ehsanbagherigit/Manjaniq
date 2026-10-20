@@ -469,16 +469,16 @@ private fun ProfileSettingsContent(
                     }
                 }
                 "peer" -> {
-                    OutlinedTextField(value = draft.base.peer, onValueChange = { updateBase { it.copy(peer = it) } }, label = { Text(stringResource(R.string.aether_peer)) }, supportingText = { Text(stringResource(R.string.aether_peer_hint), fontSize = 11.sp) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = draft.base.peer, onValueChange = { v -> updateBase { cfg -> cfg.copy(peer = v) } }, label = { Text(stringResource(R.string.aether_peer)) }, supportingText = { Text(stringResource(R.string.aether_peer_hint), fontSize = 11.sp) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 }
                 "socksBind" -> {
-                    OutlinedTextField(value = draft.base.socksBind, onValueChange = { updateBase { it.copy(socksBind = it) } }, label = { Text(stringResource(R.string.aether_socks_bind)) }, supportingText = { Text(stringResource(R.string.aether_socks_hint), fontSize = 11.sp) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = draft.base.socksBind, onValueChange = { v -> updateBase { cfg -> cfg.copy(socksBind = v) } }, label = { Text(stringResource(R.string.aether_socks_bind)) }, supportingText = { Text(stringResource(R.string.aether_socks_hint), fontSize = 11.sp) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 }
                 "httpProxyBind" -> {
-                    OutlinedTextField(value = draft.base.httpProxyBind, onValueChange = { updateBase { it.copy(httpProxyBind = it) } }, label = { Text(stringResource(R.string.aether_http_bind)) }, supportingText = { Text(stringResource(R.string.aether_http_hint), fontSize = 11.sp) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = draft.base.httpProxyBind, onValueChange = { v -> updateBase { cfg -> cfg.copy(httpProxyBind = v) } }, label = { Text(stringResource(R.string.aether_http_bind)) }, supportingText = { Text(stringResource(R.string.aether_http_hint), fontSize = 11.sp) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 }
                 "dns" -> {
-                    OutlinedTextField(value = draft.base.dns, onValueChange = { updateBase { it.copy(dns = it) } }, label = { Text(stringResource(R.string.aether_dns)) }, supportingText = { Text(stringResource(R.string.aether_dns_hint), fontSize = 11.sp) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = draft.base.dns, onValueChange = { v -> updateBase { cfg -> cfg.copy(dns = v) } }, label = { Text(stringResource(R.string.aether_dns)) }, supportingText = { Text(stringResource(R.string.aether_dns_hint), fontSize = 11.sp) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 }
                 "noizeProfile" -> {
                     if (section.titleRes == R.string.section_advanced && !showAdvanced.value) return@forEach
@@ -492,7 +492,7 @@ private fun ProfileSettingsContent(
                 "echEnabled" -> {
                     if (section.titleRes == R.string.section_advanced && !showAdvanced.value) return@forEach
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Checkbox(checked = draft.base.echEnabled, onCheckedChange = { updateBase { it.copy(echEnabled = it) } })
+                        Checkbox(checked = draft.base.echEnabled, onCheckedChange = { v -> updateBase { cfg -> cfg.copy(echEnabled = v) } } })
                         Column(Modifier.weight(1f).padding(start = 8.dp)) {
                             Text(text = stringResource(R.string.aether_ech), fontWeight = FontWeight.Medium, fontSize = 13.sp)
                             Text(text = stringResource(R.string.aether_ech_desc), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
@@ -510,12 +510,12 @@ private fun ProfileSettingsContent(
                 }
                 "upstream" -> {
                     if (section.titleRes == R.string.section_advanced && !showAdvanced.value) return@forEach
-                    OutlinedTextField(value = draft.base.upstream, onValueChange = { updateBase { it.copy(upstream = it) } }, label = { Text(stringResource(R.string.aether_upstream)) }, supportingText = { Text(stringResource(R.string.aether_upstream_hint), fontSize = 11.sp) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = draft.base.upstream, onValueChange = { v -> updateBase { cfg -> cfg.copy(upstream = v) } }, label = { Text(stringResource(R.string.aether_upstream)) }, supportingText = { Text(stringResource(R.string.aether_upstream_hint), fontSize = 11.sp) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 }
                 "quickReconnect" -> {
                     if (section.titleRes == R.string.section_advanced && !showAdvanced.value) return@forEach
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Checkbox(checked = draft.base.quickReconnect, onCheckedChange = { updateBase { it.copy(quickReconnect = it) } })
+                        Checkbox(checked = draft.base.quickReconnect, onCheckedChange = { v -> updateBase { cfg -> cfg.copy(quickReconnect = v) } } })
                         Column(Modifier.weight(1f).padding(start = 8.dp)) {
                             Text(text = stringResource(R.string.aether_quick_reconnect), fontWeight = FontWeight.Medium, fontSize = 13.sp)
                             Text(text = stringResource(R.string.aether_quick_desc), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
@@ -524,7 +524,7 @@ private fun ProfileSettingsContent(
                 }
                 "teamName" -> {
                     if (section.titleRes == R.string.section_advanced && !showAdvanced.value) return@forEach
-                    OutlinedTextField(value = draft.base.teamName, onValueChange = { updateBase { it.copy(teamName = it) } }, label = { Text(stringResource(R.string.aether_team)) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = draft.base.teamName, onValueChange = { v -> updateBase { cfg -> cfg.copy(teamName = v) } }, label = { Text(stringResource(R.string.aether_team)) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 }
                 "psiphonEndpoint" -> {
                     Text(text = stringResource(R.string.psiphon_endpoint), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
