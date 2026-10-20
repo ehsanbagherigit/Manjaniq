@@ -8,7 +8,6 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -80,6 +79,20 @@ class AetherPanelUiTest {
 
     private fun toggle(tag: String) {
         compose.onNodeWithTag(tag).performScrollTo().performClick()
+    }
+
+    /**
+     * Replaces the contents of a text field.
+     *
+     * Each action is called on the same interaction instead of chaining the
+     * return values: `performTextClearance` does not hand back the interaction
+     * in this Compose version, so a chain does not compile.
+     */
+    private fun typeInto(tag: String, text: String) {
+        val field = compose.onNodeWithTag(tag)
+        field.performScrollTo()
+        field.performTextClearance()
+        field.performTextInput(text)
     }
 
     @Test
@@ -319,9 +332,7 @@ class AetherPanelUiTest {
         toggle(AetherTestTags.sectionToggle("tunnel"))
         waitForNode("aether_socks_field", present = true)
 
-        compose.onNodeWithTag("aether_socks_field").performScrollTo()
-            .performTextClearance()
-            .performTextInput("127.0.0.1:1999")
+        typeInto("aether_socks_field", "127.0.0.1:1999")
         waitForText("127.0.0.1:1999", present = true)
         // The panel flags unsaved edits instead of silently keeping them.
         waitForText(UNSAVED_HINT, present = true)
@@ -341,20 +352,14 @@ class AetherPanelUiTest {
         toggle(AetherTestTags.sectionToggle("tunnel"))
         waitForNode("aether_socks_field", present = true)
 
-        compose.onNodeWithTag("aether_socks_field").performScrollTo()
-            .performTextClearance()
-            .performTextInput("0.0.0.0:1819")
+        typeInto("aether_socks_field", "0.0.0.0:1819")
         waitForText("Must be loopback", present = true)
 
-        compose.onNodeWithTag("aether_socks_field").performScrollTo()
-            .performTextClearance()
-            .performTextInput("127.0.0.1:1819")
+        typeInto("aether_socks_field", "127.0.0.1:1819")
         waitForText("Must be loopback", present = false)
 
         // Save refuses an unusable configuration and says why.
-        compose.onNodeWithTag("aether_socks_field").performScrollTo()
-            .performTextClearance()
-            .performTextInput("127.0.0.1:80")
+        typeInto("aether_socks_field", "127.0.0.1:80")
         toggle(AetherTestTags.SAVE)
         waitForText("Invalid SOCKS port", present = true)
     }
