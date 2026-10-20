@@ -162,16 +162,30 @@ jobs:
           (grep -q 'tag = "v2.3.0"' aether-wrapper/Cargo.toml || grep -q 'path = "../third_party/Aether/aether"' aether-wrapper/Cargo.toml) || { echo "::error::aether-wrapper not pinned to v2.3.0"; exit 1; }
           test -f third_party/Aether/aether/Cargo.toml && grep -q 'version = "2.3.0"' third_party/Aether/aether/Cargo.toml || { echo "::error::vendored Aether not v2.3.0"; exit 1; }
           # Vendor path in third_party/Aether (v2.3.0 peeled 6175b67) already patched: rust-version 1.98→1.56, 1.88→1.56
-          sudo apt-get update && sudo apt-get install -y cmake perl || true
-          rustc --version; cargo --version
+          sudo apt-get update && sudo apt-get install -y cmake perl pkg-config || true
+          rustc --version; cargo --version; cargo ndk --version || cargo-ndk --version || true
+          echo "CMAKE=$CMAKE cmake --version && perl --version | head -n1"
+          cmake --version 2>&1 | head -n1; perl --version 2>&1 | head -n1 || true
           # Build arm64-v8a (primary) - vendored path avoids git fetch + rust-version gate
+          set +e
           cd aether-wrapper
-          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --locked || cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release
-          ls -lh ../app/src/main/jniLibs/arm64-v8a/libaether.so
+          echo "=== cargo ndk arm64 verbose ===" | tee /tmp/aether_arm64.log
+          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --locked --verbose 2>&1 | tee -a /tmp/aether_arm64.log; RC=${PIPESTATUS[0]}
+          if [ $RC -ne 0 ]; then
+            echo "--- RETRY without --locked ---" | tee -a /tmp/aether_arm64.log
+            cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --verbose 2>&1 | tee -a /tmp/aether_arm64.log; RC=${PIPESTATUS[0]}
+          fi
+          echo "arm64 build rc=$RC" | tee -a /tmp/aether_arm64.log
+          ls -lh ../app/src/main/jniLibs/arm64-v8a/libaether.so 2>&1 | tee -a /tmp/aether_arm64.log
           # Build x86_64 (emulator) - best effort, don't fail primary if missing
-          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --locked || echo "::warning::x86_64 libaether build failed, continuing with arm64 only"
-          ls -lh ../app/src/main/jniLibs/x86_64/ || true
+          echo "=== cargo ndk x86_64 ===" | tee /tmp/aether_x64.log
+          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --locked 2>&1 | tee -a /tmp/aether_x64.log || echo "::warning::x86_64 libaether build failed, continuing with arm64 only" | tee -a /tmp/aether_x64.log
+          ls -lh ../app/src/main/jniLibs/x86_64/ 2>&1 | tee -a /tmp/aether_x64.log || true
           cd ..
+          cat /tmp/aether_arm64.log | tail -n 200
+          cat /tmp/aether_x64.log | tail -n 100
+          # Fail if primary missing
+          test -f app/src/main/jniLibs/arm64-v8a/libaether.so || { echo "::error::libaether.so not produced - see /tmp/aether_arm64.log"; cat /tmp/aether_arm64.log; exit 1; }
 
       - name: Verify native libraries (RSTA + Aether)
         run: |
@@ -200,6 +214,16 @@ jobs:
           bash scripts/ci/gradle_step.sh /tmp/gradle_test.log :app:testDebugUnitTest --stacktrace
           echo "Unit test results:"
           find app/build/test-results -name 'TEST-*.xml' -print -exec grep -o '<testsuite[^>]*>' {} \;
+
+      - name: Upload Aether Rust build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aether-rust-build-logs
+          path: |
+            /tmp/aether_arm64.log
+            /tmp/aether_x64.log
+          if-no-files-found: warn
 
       - name: Upload Gradle logs and unit test results
         if: always()
