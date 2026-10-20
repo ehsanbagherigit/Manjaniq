@@ -172,16 +172,12 @@ jobs:
           set +e; set +u
           cd aether-wrapper
           echo "=== cargo ndk arm64 verbose ===" | tee /tmp/aether_arm64.log
-          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --locked --verbose 2>&1 | tee -a /tmp/aether_arm64.log; RC=${PIPESTATUS[0]}
-          if [ $RC -ne 0 ]; then
-            echo "--- RETRY without --locked ---" | tee -a /tmp/aether_arm64.log
-            cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --verbose 2>&1 | tee -a /tmp/aether_arm64.log; RC=${PIPESTATUS[0]}
-          fi
+          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --verbose 2>&1 | tee -a /tmp/aether_arm64.log; RC=${PIPESTATUS[0]}
           echo "arm64 build rc=$RC" | tee -a /tmp/aether_arm64.log
           ls -lh ../app/src/main/jniLibs/arm64-v8a/libaether.so 2>&1 | tee -a /tmp/aether_arm64.log
           # Build x86_64 (emulator) - best effort, don't fail primary if missing
           echo "=== cargo ndk x86_64 ===" | tee /tmp/aether_x64.log
-          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --locked 2>&1 | tee -a /tmp/aether_x64.log || echo "::warning::x86_64 libaether build failed, continuing with arm64 only" | tee -a /tmp/aether_x64.log
+          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release 2>&1 | tee -a /tmp/aether_x64.log || echo "::warning::x86_64 libaether build failed, continuing with arm64 only" | tee -a /tmp/aether_x64.log
           ls -lh ../app/src/main/jniLibs/x86_64/ 2>&1 | tee -a /tmp/aether_x64.log || true
           cd ..
           echo "--- tail arm64 log ---"
@@ -416,9 +412,9 @@ jobs:
           go build -buildmode=c-shared -o app/src/main/jniLibs/x86_64/libmanjaniq_native.so ./native
           # Aether (Rust) - x86_64 needed for emulator
           cd aether-wrapper
-          # Vendored path already patched; rebuild for emulator
-          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --locked || cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release
-          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --locked || cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release || echo "::warning::Aether x86_64 build failed"
+          # Vendored path already patched; rebuild for emulator (no --locked, wrapper has no Cargo.lock)
+          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release || cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --verbose
+          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release || cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --verbose || echo "::warning::Aether x86_64 build failed"
           cd ..
           ls -lh app/src/main/jniLibs/arm64-v8a/ app/src/main/jniLibs/x86_64/
 
