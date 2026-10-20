@@ -25,11 +25,17 @@ data class Result<T>(
     // already exposes boolean `isSuccess()` on the JVM; declaring an
     // explicit fun isSuccess() would be a platform-signature clash and
     // break compilation.
+    val isFailure: Boolean get() = !isSuccess
+
     fun getOrNull(): T? {
         return if (isSuccess) data else null
     }
 
     fun getErrorOrNull(): String? {
         return if (!isSuccess) errorMessage else null
+    }
+
+    fun exceptionOrNull(): Throwable? {
+        return if (!isSuccess) Throwable(errorMessage ?: "unknown error") else null
     }
 }

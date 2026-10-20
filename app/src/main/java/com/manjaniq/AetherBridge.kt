@@ -1,6 +1,7 @@
 package com.manjaniq
 
 import android.util.Log
+import com.manjaniq.core.models.Result
 import org.json.JSONObject
 
 /**

@@ -160,7 +160,7 @@ fun ManjaniqApp() {
                                 aetherLogs = aetherLogs,
                                 onAetherStart = {
                                     // Port conflict check + native availability
-                                    val conflict = com.manjaniq.core.models.detectAetherPortConflict(aetherConfig, config.listenPort)
+                                    val conflict = com.manjaniq.core.models.detectAetherPortConflict(aetherConfig, config)
                                     if (conflict != null) {
                                         aetherLocalError = conflict
                                     } else if (!aetherUi.isNativeLoaded) {
