@@ -55,11 +55,35 @@ class AetherPanelValidationTest {
             assertEquals("inline and model disagree for socksBind='$value'", modelSaysOk, inlineSaysOk)
 
             // The optional HTTP proxy field is validated by the same rule, except
-            // that empty means "do not bind a second listener".
+            // that empty means "do not bind a second listener". The comparison uses
+            // a SOCKS port no sample can clash with: socks == http is a two-field
+            // rule that a single-field helper cannot know about (AetherSetting
+            // checks it per field, and AetherConfigLogicTest pins it).
             val httpInline = aetherBindError(value) == null
-            val httpModel = AetherConfig.DEFAULT.copy(httpProxyBind = value).validate() == null
+            val httpModel = AetherConfig.DEFAULT.copy(
+                socksBind = "127.0.0.1:2001",
+                httpProxyBind = value
+            ).validate() == null
             assertEquals("inline and model disagree for httpProxyBind='$value'", httpModel, httpInline)
         }
+    }
+
+    @Test
+    fun twoListenersOnOnePortAreRejectedByTheModel() {
+        assertNotNull(
+            AetherConfig.DEFAULT.copy(
+                socksBind = "127.0.0.1:1819",
+                httpProxyBind = "127.0.0.1:1819"
+            ).validate()
+        )
+        assertNull(
+            AetherConfig.DEFAULT.copy(
+                socksBind = "127.0.0.1:1819",
+                httpProxyBind = "127.0.0.1:1820"
+            ).validate()
+        )
+        // Blank (including all-whitespace) means "no second listener".
+        assertNull(AetherConfig.DEFAULT.copy(httpProxyBind = "   ").validate())
     }
 
     @Test

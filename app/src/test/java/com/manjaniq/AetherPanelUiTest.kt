@@ -4,7 +4,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.boundsInRoot
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -66,8 +66,9 @@ class AetherPanelUiTest {
     private fun nodeCount(tag: String) =
         compose.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().size
 
+    /** `hasText` defaults to an exact match; these waits look for a fragment. */
     private fun textCount(text: String) =
-        compose.onAllNodes(hasText(text)).fetchSemanticsNodes().size
+        compose.onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().size
 
     private fun waitForNode(tag: String, present: Boolean, timeoutMs: Long = 10_000) {
         compose.waitUntil(timeoutMs) { (nodeCount(tag) > 0) == present }
@@ -98,14 +99,22 @@ class AetherPanelUiTest {
     @Test
     fun panelKeepsTheStartControlReachableAndShowsEveryAetherArea() {
         openAether()
-        // The start control sits above the settings, so it is on screen without
-        // scrolling past a wall of configuration.
-        compose.onNodeWithTag(TestTags.AETHER_TOGGLE).assertExists().assertIsDisplayed()
         compose.onNodeWithTag(AetherTestTags.NOTICE).assertExists()
         compose.onNodeWithTag(AetherTestTags.ROUTE_LIST).assertExists()
         compose.onNodeWithTag(AetherTestTags.ROUTE_TITLE).assertExists()
         compose.onNodeWithTag(TestTags.AETHER_STATUS).assertExists()
         compose.onNodeWithTag(AetherTestTags.LOG_PANEL).assertExists()
+
+        // The start control is composed above the route settings and above the
+        // log, so reaching it never means scrolling past configuration. Layout
+        // order is asserted instead of visibility: a host-JVM viewport is not a
+        // device viewport, and the ordering is the property that matters.
+        val startTop = compose.onNodeWithTag(TestTags.AETHER_TOGGLE).fetchSemanticsNode().boundsInRoot.top
+        val settingsTop = compose.onNodeWithTag(AetherTestTags.routeSettings("warp_direct"))
+            .fetchSemanticsNode().boundsInRoot.top
+        val logTop = compose.onNodeWithTag(AetherTestTags.LOG_PANEL).fetchSemanticsNode().boundsInRoot.top
+        assertTrue("the start control must sit above the route settings", startTop < settingsTop)
+        assertTrue("the route settings must sit above the log panel", settingsTop < logTop)
         // The selected route owns its settings, and they start open.
         compose.onNodeWithTag(AetherTestTags.routeSettings("warp_direct")).assertExists()
         // Routes that need an external component stay listed, never hidden.
@@ -119,7 +128,7 @@ class AetherPanelUiTest {
         openAether()
         // Collapsed: the long body and the limitation paragraph are not composed,
         // so the panel does not open with a wall of text above the start button.
-        compose.onAllNodes(hasText(LIMITATION_TITLE)).assertCountEquals(0)
+        compose.onAllNodes(hasText(LIMITATION_TITLE, substring = true)).assertCountEquals(0)
         // The one-line summary still names the limitation.
         waitForText("no device-wide VPN", present = true)
 
@@ -190,7 +199,7 @@ class AetherPanelUiTest {
         AetherRepository.log("INFO", "team enrolment token=SuperSecret123 accepted for team acme")
 
         waitForText(MASK_TEXT, present = true)
-        compose.onAllNodes(hasText("SuperSecret123")).assertCountEquals(0)
+        compose.onAllNodes(hasText("SuperSecret123", substring = true)).assertCountEquals(0)
         // Redaction happens at the logging boundary, not in the panel, so the
         // StateFlow every Aether surface collects is already clean.
         assertTrue(
