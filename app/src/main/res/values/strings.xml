@@ -22,8 +22,6 @@
     <string name="badge_available">Available</string>
     <string name="badge_ready">Ready</string>
     <string name="badge_coming_soon">Coming Soon</string>
-    <string name="aether_coming_soon_title">Aether — Coming Soon</string>
-    <string name="aether_coming_soon_body">Aether is a planned next-generation transport engine for Manjaniq. The UI is ready, but the engine is not yet integrated. No functionality is available in this build. Follow project updates for integration timeline.</string>
     <string name="aether_not_available">Engine not available in this build</string>
     <string name="aether_learn_more">Learn more</string>
 
@@ -174,11 +172,7 @@
     <!-- Empty states -->
     <string name="no_events">No engine events yet. Start the engine and connection events will appear here.</string>
 
-    <!-- Previously hardcoded in composables -->
-    <string name="aether_no_effect">Selecting Aether does not start or affect the RSTA engine. Switch back to RSTA to control the available proxy.</string>
-    <string name="aether_feature_1">Pluggable transport architecture</string>
-    <string name="aether_feature_2">Advanced obfuscation pipeline</string>
-    <string name="aether_feature_3">Multi-core orchestration (planned)</string>
+    <!-- Previously hardcoded in composables (Aether specifics now in strings_aether.xml) -->
     <string name="stats_footnote">Counters come from the engine\'s own monitor; traffic totals advance in 256 KB steps, as in the original program.</string>
     <string name="config_management_hint">Switch to Home → RSTA to edit connection, bypass and fragmentation settings. They are persisted separately from app language and theme.</string>
     <string name="rsta_config_intro">Your RSTA engine configuration is ready. Adjust listen/target, SNI, method and fragmentation below.</string>
