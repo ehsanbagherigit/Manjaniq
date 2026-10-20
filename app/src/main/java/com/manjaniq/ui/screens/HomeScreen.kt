@@ -212,22 +212,7 @@ fun HomeScreen(
                     }
                 }
 
-                // Profiles UI - if profile mode available, show cards; else fallback to old single form
-                if (selectedAetherProfile != null && onSelectAetherProfile != null) {
-                    ProfilesSection(
-                        selectedProfile = selectedAetherProfile,
-                        onSelectProfile = onSelectAetherProfile,
-                        profileConfig = aetherProfileConfig ?: AetherProfileConfig(profileId = selectedAetherProfile.id, base = aetherConfig),
-                        aetherState = aetherUi.state,
-                        onSaveProfile = onSaveAetherProfileConfig,
-                        onResetProfile = onResetAetherProfileDefaults
-                    )
-                } else {
-                    // Legacy single settings form (fallback)
-                    Text(text = stringResource(R.string.aether_profiles_intro), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 15.sp)
-                }
-
-                // Start/Stop - neon blue for Start, purple for Stop per theme spec
+                // Start/Stop - neon blue for Start, purple for Stop per theme spec (must be visible without scroll for instrumentation)
                 Button(
                     onClick = { if (aRunning) onAetherStop() else onAetherStart() },
                     enabled = aetherUi.isNativeLoaded && !aetherUi.busy && !aTransition,
@@ -251,6 +236,21 @@ fun HomeScreen(
                         },
                         fontSize = 15.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp
                     )
+                }
+
+                // Profiles UI - if profile mode available, show cards; else fallback to old single form
+                if (selectedAetherProfile != null && onSelectAetherProfile != null) {
+                    ProfilesSection(
+                        selectedProfile = selectedAetherProfile,
+                        onSelectProfile = onSelectAetherProfile,
+                        profileConfig = aetherProfileConfig ?: AetherProfileConfig(profileId = selectedAetherProfile.id, base = aetherConfig),
+                        aetherState = aetherUi.state,
+                        onSaveProfile = onSaveAetherProfileConfig,
+                        onResetProfile = onResetAetherProfileDefaults
+                    )
+                } else {
+                    // Legacy single settings form (fallback)
+                    Text(text = stringResource(R.string.aether_profiles_intro), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 15.sp)
                 }
 
                 if (!aetherUi.isNativeLoaded) {
