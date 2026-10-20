@@ -440,7 +440,6 @@ private fun ProfileSettingsContent(
     onDraftChange: (AetherProfileConfig) -> Unit,
     aetherState: AetherState
 ) {
-    // Helper to update base
     fun updateBase(mut: (AetherConfig) -> AetherConfig) {
         onDraftChange(draft.copy(base = mut(draft.base)))
     }
@@ -481,50 +480,56 @@ private fun ProfileSettingsContent(
                     OutlinedTextField(value = draft.base.dns, onValueChange = { v -> updateBase { cfg -> cfg.copy(dns = v) } }, label = { Text(stringResource(R.string.aether_dns)) }, supportingText = { Text(stringResource(R.string.aether_dns_hint), fontSize = 11.sp) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 }
                 "noizeProfile" -> {
-                    if (section.titleRes == R.string.section_advanced && !showAdvanced.value) return@forEach
-                    Text(text = stringResource(R.string.aether_noize), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("firewall", "balanced", "gfw", "aggressive", "off").forEach { p ->
-                            FilterChip(selected = draft.base.noizeProfile == p, onClick = { updateBase { it.copy(noizeProfile = p) } }, label = { Text(p, fontSize = 11.sp) })
+                    if (section.titleRes != R.string.section_advanced || showAdvanced.value) {
+                        Text(text = stringResource(R.string.aether_noize), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("firewall", "balanced", "gfw", "aggressive", "off").forEach { p ->
+                                FilterChip(selected = draft.base.noizeProfile == p, onClick = { updateBase { it.copy(noizeProfile = p) } }, label = { Text(p, fontSize = 11.sp) })
+                            }
                         }
                     }
                 }
                 "echEnabled" -> {
-                    if (section.titleRes == R.string.section_advanced && !showAdvanced.value) return@forEach
-                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Checkbox(checked = draft.base.echEnabled, onCheckedChange = { v -> updateBase { cfg -> cfg.copy(echEnabled = v) } } })
-                        Column(Modifier.weight(1f).padding(start = 8.dp)) {
-                            Text(text = stringResource(R.string.aether_ech), fontWeight = FontWeight.Medium, fontSize = 13.sp)
-                            Text(text = stringResource(R.string.aether_ech_desc), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                    if (section.titleRes != R.string.section_advanced || showAdvanced.value) {
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Checkbox(checked = draft.base.echEnabled, onCheckedChange = { v -> updateBase { cfg -> cfg.copy(echEnabled = v) } })
+                            Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                                Text(text = stringResource(R.string.aether_ech), fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                                Text(text = stringResource(R.string.aether_ech_desc), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                            }
                         }
                     }
                 }
                 "ipVersion" -> {
-                    if (section.titleRes == R.string.section_advanced && !showAdvanced.value) return@forEach
-                    Text(text = "IP version", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("v4" to "IPv4", "v6" to "IPv6", "both" to "Dual").forEach { (id, label) ->
-                            FilterChip(selected = draft.base.ipVersion == id, onClick = { updateBase { it.copy(ipVersion = id) } }, label = { Text(label, fontSize = 11.sp) })
+                    if (section.titleRes != R.string.section_advanced || showAdvanced.value) {
+                        Text(text = "IP version", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("v4" to "IPv4", "v6" to "IPv6", "both" to "Dual").forEach { (id, label) ->
+                                FilterChip(selected = draft.base.ipVersion == id, onClick = { updateBase { it.copy(ipVersion = id) } }, label = { Text(label, fontSize = 11.sp) })
+                            }
                         }
                     }
                 }
                 "upstream" -> {
-                    if (section.titleRes == R.string.section_advanced && !showAdvanced.value) return@forEach
-                    OutlinedTextField(value = draft.base.upstream, onValueChange = { v -> updateBase { cfg -> cfg.copy(upstream = v) } }, label = { Text(stringResource(R.string.aether_upstream)) }, supportingText = { Text(stringResource(R.string.aether_upstream_hint), fontSize = 11.sp) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    if (section.titleRes != R.string.section_advanced || showAdvanced.value) {
+                        OutlinedTextField(value = draft.base.upstream, onValueChange = { v -> updateBase { cfg -> cfg.copy(upstream = v) } }, label = { Text(stringResource(R.string.aether_upstream)) }, supportingText = { Text(stringResource(R.string.aether_upstream_hint), fontSize = 11.sp) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    }
                 }
                 "quickReconnect" -> {
-                    if (section.titleRes == R.string.section_advanced && !showAdvanced.value) return@forEach
-                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Checkbox(checked = draft.base.quickReconnect, onCheckedChange = { v -> updateBase { cfg -> cfg.copy(quickReconnect = v) } } })
-                        Column(Modifier.weight(1f).padding(start = 8.dp)) {
-                            Text(text = stringResource(R.string.aether_quick_reconnect), fontWeight = FontWeight.Medium, fontSize = 13.sp)
-                            Text(text = stringResource(R.string.aether_quick_desc), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                    if (section.titleRes != R.string.section_advanced || showAdvanced.value) {
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Checkbox(checked = draft.base.quickReconnect, onCheckedChange = { v -> updateBase { cfg -> cfg.copy(quickReconnect = v) } })
+                            Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                                Text(text = stringResource(R.string.aether_quick_reconnect), fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                                Text(text = stringResource(R.string.aether_quick_desc), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                            }
                         }
                     }
                 }
                 "teamName" -> {
-                    if (section.titleRes == R.string.section_advanced && !showAdvanced.value) return@forEach
-                    OutlinedTextField(value = draft.base.teamName, onValueChange = { v -> updateBase { cfg -> cfg.copy(teamName = v) } }, label = { Text(stringResource(R.string.aether_team)) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    if (section.titleRes != R.string.section_advanced || showAdvanced.value) {
+                        OutlinedTextField(value = draft.base.teamName, onValueChange = { v -> updateBase { cfg -> cfg.copy(teamName = v) } }, label = { Text(stringResource(R.string.aether_team)) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    }
                 }
                 "psiphonEndpoint" -> {
                     Text(text = stringResource(R.string.psiphon_endpoint), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
@@ -557,7 +562,6 @@ private fun ProfileSettingsContent(
                 }
             }
         }
-        // Advanced toggle
         val hasAdvanced = sections.any { it.titleRes == R.string.section_advanced }
         if (hasAdvanced) {
             TextButton(onClick = { showAdvanced.value = !showAdvanced.value }) {
