@@ -15,10 +15,9 @@ import androidx.compose.ui.unit.sp
 import com.manjaniq.core.models.AetherProfile
 import com.manjaniq.core.models.ProfileCapability
 import com.manjaniq.ui.TestTags
+import com.manjaniq.ui.theme.AetherCyan
+import com.manjaniq.ui.theme.AetherSurface
 import com.manjaniq.ui.theme.ManjaniqBorder
-import com.manjaniq.ui.theme.ManjaniqPurple
-import com.manjaniq.ui.theme.ManjaniqPurpleDeep
-import com.manjaniq.ui.theme.ManjaniqPurpleNeon
 
 @Composable
 fun AetherProfileCard(
@@ -28,8 +27,10 @@ fun AetherProfileCard(
     expanded: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val borderColor = if (selected) ManjaniqPurpleNeon else ManjaniqBorder
-    val bg = if (selected) ManjaniqPurpleDeep else MaterialTheme.colorScheme.surface
+    // Aether's own accent: the route list reads as Aether, not as the app-wide
+    // purple, and a selected route differs by border, tint and label colour.
+    val borderColor = if (selected) AetherCyan else ManjaniqBorder
+    val bg = if (selected) AetherSurface else MaterialTheme.colorScheme.surface
     val badgeText = when (profile.capability) {
         ProfileCapability.Available -> stringResource(com.manjaniq.R.string.badge_available)
         ProfileCapability.NeedsConfiguration -> stringResource(com.manjaniq.R.string.badge_needs_config)
@@ -38,7 +39,7 @@ fun AetherProfileCard(
         ProfileCapability.NotVerified -> stringResource(com.manjaniq.R.string.cap_not_verified)
     }
     val badgeBg = when (profile.capability) {
-        ProfileCapability.Available -> ManjaniqPurple.copy(alpha = 0.18f)
+        ProfileCapability.Available -> AetherCyan.copy(alpha = 0.16f)
         ProfileCapability.RequiresExternalComponent -> MaterialTheme.colorScheme.surfaceVariant
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
@@ -68,13 +69,13 @@ fun AetherProfileCard(
             ) {
                 Text(
                     text = stringResource(profile.titleRes),
-                    color = if (selected) ManjaniqPurpleNeon else MaterialTheme.colorScheme.onSurface,
+                    color = if (selected) AetherCyan else MaterialTheme.colorScheme.onSurface,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Badge(
                     containerColor = badgeBg,
-                    contentColor = if (profile.capability == ProfileCapability.Available) ManjaniqPurple else MaterialTheme.colorScheme.onSurfaceVariant
+                    contentColor = if (profile.capability == ProfileCapability.Available) AetherCyan else MaterialTheme.colorScheme.onSurfaceVariant
                 ) {
                     Text(text = badgeText, fontSize = 10.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.5.sp)
                 }
@@ -103,13 +104,13 @@ fun AetherProfileCard(
                             if (expanded) com.manjaniq.R.string.profile_collapse_settings
                             else com.manjaniq.R.string.profile_expand_settings
                         ),
-                        color = ManjaniqPurpleNeon,
+                        color = AetherCyan,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium
                     )
                     Text(
                         text = if (expanded) "▲" else "▼",
-                        color = ManjaniqPurpleNeon,
+                        color = AetherCyan,
                         fontSize = 10.sp
                     )
                 }

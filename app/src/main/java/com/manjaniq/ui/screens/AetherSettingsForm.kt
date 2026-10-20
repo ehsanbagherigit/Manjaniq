@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -19,6 +20,7 @@ import androidx.compose.ui.unit.sp
 import com.manjaniq.R
 import com.manjaniq.core.models.AetherConfig
 import com.manjaniq.core.models.AetherState
+import com.manjaniq.ui.TestTags
 
 @Composable
 fun AetherSettingsForm(
@@ -45,7 +47,10 @@ fun AetherSettingsForm(
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        // TestTags.AETHER_SETTINGS was declared for this form but never applied.
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(TestTags.AETHER_SETTINGS),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)

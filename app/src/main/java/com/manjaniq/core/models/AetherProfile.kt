@@ -157,18 +157,43 @@ data class SettingSection(
     val keys: List<String> // keys correspond to AetherConfig fields or extra
 )
 
+/**
+ * The settings a profile owns, in the order the Aether CLI asks for them
+ * (protocol -> scan -> IP version -> carrier -> obfuscation -> local proxy).
+ *
+ * Fragmenting is listed only for profiles that can carry MASQUE: Aether applies
+ * it on the MASQUE-over-HTTP/2 carrier (`masque_h2.rs`), so it has no meaning
+ * for a Tor-only route.
+ */
 fun getSectionsForProfile(profile: AetherProfile): List<SettingSection> {
+    // Keys shared by every route that dials an Aether gateway.
+    val gateway = SettingSection(
+        R.string.section_gateway,
+        listOf("transport", "scanMode", "ipVersion", "peer")
+    )
+    val fragmenting = SettingSection(
+        R.string.section_fragmenting,
+        listOf("fragmentEnabled", "fragmentSize", "fragmentDelay", "fragmentSniSplit")
+    )
     return when (profile) {
         AetherProfile.WARP_DIRECT -> listOf(
-            SettingSection(R.string.section_gateway, listOf("transport", "scanMode", "peer")),
-            SettingSection(R.string.section_tunnel, listOf("socksBind", "httpProxyBind", "dns")),
-            SettingSection(R.string.section_advanced, listOf("noizeProfile", "echEnabled", "ipVersion", "upstream", "quickReconnect", "teamName"))
+            gateway,
+            fragmenting,
+            SettingSection(R.string.section_tunnel, listOf("socksBind", "httpProxyBind", "dns", "upstream")),
+            SettingSection(
+                R.string.section_advanced,
+                listOf("noizeProfile", "echEnabled", "quickReconnect", "teamName", "identityPath")
+            )
         )
         AetherProfile.AETHER_PSIPHON -> listOf(
-            SettingSection(R.string.section_gateway, listOf("transport", "scanMode", "peer")),
-            SettingSection(R.string.section_psiphon, listOf("psiphonEndpoint", "psiphonRegion", "upstream")),
-            SettingSection(R.string.section_tunnel, listOf("socksBind", "httpProxyBind", "dns")),
-            SettingSection(R.string.section_advanced, listOf("noizeProfile", "echEnabled"))
+            gateway,
+            fragmenting,
+            SettingSection(R.string.section_psiphon, listOf("psiphonEnabled", "psiphonEndpoint", "psiphonRegion")),
+            SettingSection(R.string.section_tunnel, listOf("socksBind", "httpProxyBind", "dns", "upstream")),
+            SettingSection(
+                R.string.section_advanced,
+                listOf("noizeProfile", "echEnabled", "quickReconnect", "teamName", "identityPath")
+            )
         )
         AetherProfile.TOR_DIRECT -> listOf(
             SettingSection(R.string.section_tor, listOf("torSocks", "torBridges", "torUseBridges")),
@@ -176,25 +201,44 @@ fun getSectionsForProfile(profile: AetherProfile): List<SettingSection> {
             SettingSection(R.string.section_advanced, listOf("ipVersion"))
         )
         AetherProfile.AETHER_TOR -> listOf(
-            SettingSection(R.string.section_gateway, listOf("transport", "scanMode", "peer")),
-            SettingSection(R.string.section_tor, listOf("torSocks", "torBridges")),
-            SettingSection(R.string.section_tunnel, listOf("socksBind", "upstream", "dns")),
-            SettingSection(R.string.section_advanced, listOf("noizeProfile", "echEnabled"))
+            gateway,
+            fragmenting,
+            SettingSection(R.string.section_tor, listOf("torSocks", "torBridges", "torUseBridges")),
+            SettingSection(R.string.section_tunnel, listOf("socksBind", "httpProxyBind", "dns", "upstream")),
+            SettingSection(
+                R.string.section_advanced,
+                listOf("noizeProfile", "echEnabled", "quickReconnect", "teamName", "identityPath")
+            )
         )
         AetherProfile.TOR_PSIPHON -> listOf(
-            SettingSection(R.string.section_tor, listOf("torSocks", "torBridges")),
-            SettingSection(R.string.section_psiphon, listOf("psiphonEndpoint", "psiphonRegion")),
+            SettingSection(R.string.section_tor, listOf("torSocks", "torBridges", "torUseBridges")),
+            SettingSection(R.string.section_psiphon, listOf("psiphonEnabled", "psiphonEndpoint", "psiphonRegion")),
             SettingSection(R.string.section_tunnel, listOf("socksBind", "upstream")),
             SettingSection(R.string.section_advanced, listOf("dns"))
         )
         AetherProfile.TOR_AETHER -> listOf(
-            SettingSection(R.string.section_tor, listOf("torSocks", "torBridges")),
-            SettingSection(R.string.section_gateway, listOf("transport", "scanMode", "peer")),
-            SettingSection(R.string.section_tunnel, listOf("socksBind", "upstream", "dns")),
-            SettingSection(R.string.section_advanced, listOf("noizeProfile", "echEnabled"))
+            SettingSection(R.string.section_tor, listOf("torSocks", "torBridges", "torUseBridges")),
+            gateway,
+            fragmenting,
+            SettingSection(R.string.section_tunnel, listOf("socksBind", "httpProxyBind", "dns", "upstream")),
+            SettingSection(
+                R.string.section_advanced,
+                listOf("noizeProfile", "echEnabled", "quickReconnect", "teamName", "identityPath")
+            )
         )
     }
 }
+
+/**
+ * True when [profile] dials an Aether gateway at all (i.e. it owns the gateway
+ * section). Tor-only routes do not, so their Aether settings stay hidden.
+ */
+fun profileUsesAetherGateway(profile: AetherProfile): Boolean =
+    getSectionsForProfile(profile).any { it.titleRes == R.string.section_gateway }
+
+/** True when [profile] can carry MASQUE and therefore honour fragmenting. */
+fun profileSupportsFragmenting(profile: AetherProfile): Boolean =
+    getSectionsForProfile(profile).any { it.titleRes == R.string.section_fragmenting }
 
 object AetherProfileManager {
     var selectedProfile: AetherProfile = AetherProfile.WARP_DIRECT

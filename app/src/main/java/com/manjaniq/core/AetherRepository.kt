@@ -48,12 +48,41 @@ object AetherRepository {
     private val logRing = ArrayDeque<AetherLog>(100)
     private var logSeq = 0L
 
+    /**
+     * Guard for [logRing] and [logSeq].
+     *
+     * AetherService logs from a Dispatchers.IO coroutine while the UI logs from
+     * the main thread; ArrayDeque and a plain Long counter are not safe under
+     * that concurrency, so every mutation happens inside this monitor.
+     */
+    private val logLock = Any()
+
+    /** Oldest entries kept for the on-screen operational log. */
+    const val MAX_LOG_ENTRIES = 500
+
+    /**
+     * Appends one Aether event.
+     *
+     * The message passes through [AetherLogSanitizer] first: this is the Aether
+     * logging boundary, so a credential that reaches a log call never reaches
+     * the panel, the clipboard copy, or the StateFlow the UI collects.
+     */
     fun log(level: String, msg: String) {
-        val entry = AetherLog(seq = ++logSeq, timeMs = System.currentTimeMillis(), level = level, message = msg)
-        logRing.addLast(entry)
-        if (logRing.size > 500) logRing.removeFirst()
-        _logs.value = logRing.toList()
+        val entry = AetherLog(
+            seq = nextLogSeq(),
+            timeMs = System.currentTimeMillis(),
+            level = level,
+            message = AetherLogSanitizer.redact(msg)
+        )
+        val snapshot = synchronized(logLock) {
+            logRing.addLast(entry)
+            while (logRing.size > MAX_LOG_ENTRIES) logRing.removeFirst()
+            logRing.toList()
+        }
+        _logs.value = snapshot
     }
+
+    private fun nextLogSeq(): Long = synchronized(logLock) { logSeq += 1L; logSeq }
 
     fun requestStart(context: Context) {
         // Port conflict guard is UI-side; repository just sets busy and starts service
@@ -119,7 +148,7 @@ object AetherRepository {
     }
 
     fun clearLogs() {
-        logRing.clear()
+        synchronized(logLock) { logRing.clear() }
         _logs.value = emptyList()
     }
 
@@ -145,11 +174,22 @@ object AetherRepository {
     // For UI: check port conflict externally, but provide helper
     fun detectConflict(aetherCfg: AetherConfig, rstaPort: Int): String? {
         val aetherPort = aetherCfg.socksBind.substringAfterLast(":").toIntOrNull()
-        if (aetherPort != null && aetherPort == rstaPort) {
+        if (aetherPort != null && rstaPort > 0 && aetherPort == rstaPort) {
             return "Port $aetherPort conflicts with RSTA ($rstaPort). Change Aether or RSTA port."
         }
-        val httpPort = aetherCfg.httpProxyBind.substringAfterLast(":").toIntOrNull()
-        if (httpPort != null && httpPort == rstaPort) return "Aether HTTP proxy conflicts with RSTA port $rstaPort"
+        if (aetherCfg.httpProxyBind.trim().isNotEmpty()) {
+            val httpPort = aetherCfg.httpProxyBind.trim().substringAfterLast(":").toIntOrNull()
+            if (httpPort != null && rstaPort > 0 && httpPort == rstaPort) {
+                return "Aether HTTP proxy conflicts with RSTA port $rstaPort"
+            }
+            // Aether binds two listeners; the same port twice fails at bind time.
+            // The UI-side guard (detectAetherPortConflict) already checks this,
+            // the service-side guard did not, so a restart from the notification
+            // could slip through with an unusable configuration.
+            if (httpPort != null && httpPort == aetherPort) {
+                return "Aether SOCKS and HTTP proxy ports must differ"
+            }
+        }
         return null
     }
 }

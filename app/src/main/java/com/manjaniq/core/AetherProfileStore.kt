@@ -23,12 +23,16 @@ class AetherProfileStore(private val context: Context) {
         if (json != null) {
             AetherProfileConfig.fromJson(json)?.let { return it }
         }
-        // Migration: try old single-config store
+        // Migration from the single-config store that existed before profiles.
+        // There is no "aether_config_json" key in *this* preferences file, so it
+        // is not read here any more: AetherConfigStore owns that key in
+        // "manjaniq_aether_config".
         if (profile == AetherProfile.WARP_DIRECT) {
-            val oldJson = prefs.getString("aether_config_json", null) // from old AetherConfigStore (different prefs file, check)
-            // Also check legacy prefs name
             val legacy = context.getSharedPreferences("manjaniq_aether_config", Context.MODE_PRIVATE)
             val legacyJson = legacy.getString("aether_config_json", null)
+            // `json` is retried as a bare AetherConfig: an older build could have
+            // written a base config under the profile key, which parses as
+            // AetherConfig but not as AetherProfileConfig.
             val toMigrate = legacyJson ?: json
             if (toMigrate != null) {
                 val cfg = AetherConfig.fromJson(toMigrate)
