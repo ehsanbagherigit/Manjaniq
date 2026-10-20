@@ -35,7 +35,7 @@ fn c_string_to_jstring<'a>(env: &mut JNIEnv<'a>, ptr: *mut c_char) -> JString<'a
 // ---- Wrappers for every aether FFI export ----
 
 #[no_mangle]
-pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherVersion<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherVersion<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
 ) -> JString<'a> {
     let ptr = aether::ffi::aether_version();
     // aether_version never returns null but handle it
@@ -53,7 +53,7 @@ pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherVersion<'a>(mut e
 }
 
 #[no_mangle]
-pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherJobPoll<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherJobPoll<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
     id: i64,
 ) -> JString<'a> {
     let ptr = aether::ffi::aether_job_poll(id as u64);
@@ -61,7 +61,7 @@ pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherJobPoll<'a>(mut e
 }
 
 #[no_mangle]
-pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherJobCancel<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherJobCancel<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
     id: i64,
 ) -> JString<'a> {
     let ptr = aether::ffi::aether_job_cancel(id as u64);
@@ -69,7 +69,7 @@ pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherJobCancel<'a>(mut
 }
 
 #[no_mangle]
-pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherJobFree<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherJobFree<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
     id: i64,
 ) -> JString<'a> {
     let ptr = aether::ffi::aether_job_free(id as u64);
@@ -77,7 +77,7 @@ pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherJobFree<'a>(mut e
 }
 
 #[no_mangle]
-pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherIdentityOpen<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>, payload: JString<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherIdentityOpen<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>, payload: JString<'a>,
 ) -> JString<'a> {
     let rust_payload = jstring_to_rust(&mut env, payload);
     let c_payload = match CString::new(rust_payload) {
@@ -93,7 +93,7 @@ pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherIdentityOpen<'a>(
 }
 
 #[no_mangle]
-pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherIdentitySummary<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherIdentitySummary<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
     id: i64,
 ) -> JString<'a> {
     let ptr = aether::ffi::aether_identity_summary(id as u64);
@@ -101,7 +101,7 @@ pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherIdentitySummary<'
 }
 
 #[no_mangle]
-pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherIdentityFree<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherIdentityFree<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
     id: i64,
 ) -> JString<'a> {
     let ptr = aether::ffi::aether_identity_free(id as u64);
@@ -109,7 +109,7 @@ pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherIdentityFree<'a>(
 }
 
 #[no_mangle]
-pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherScanStart<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherScanStart<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
     identityId: i64, payload: JString<'a>,
 ) -> JString<'a> {
     let rust_payload = jstring_to_rust(&mut env, payload);
@@ -126,7 +126,7 @@ pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherScanStart<'a>(mut
 }
 
 #[no_mangle]
-pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherVerifyStart<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherVerifyStart<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
     identityId: i64, payload: JString<'a>,
 ) -> JString<'a> {
     let rust_payload = jstring_to_rust(&mut env, payload);
@@ -143,7 +143,7 @@ pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherVerifyStart<'a>(m
 }
 
 #[no_mangle]
-pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherTunnelStart<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTunnelStart<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
     identityId: i64, payload: JString<'a>,
 ) -> JString<'a> {
     let rust_payload = jstring_to_rust(&mut env, payload);
@@ -160,7 +160,7 @@ pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherTunnelStart<'a>(m
 }
 
 #[no_mangle]
-pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherCoreStart<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>, argsJson: JString<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherCoreStart<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>, argsJson: JString<'a>,
 ) -> JString<'a> {
     let rust_args = jstring_to_rust(&mut env, argsJson);
     let c_args = match CString::new(rust_args) {
@@ -177,7 +177,7 @@ pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherCoreStart<'a>(mut
 
 // Team APIs - used for ZeroTrust; optional in first phase but wrapper provided
 #[no_mangle]
-pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamSignIn<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>, payload: JString<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamSignIn<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>, payload: JString<'a>,
 ) -> JString<'a> {
     let rust_payload = jstring_to_rust(&mut env, payload);
     let c_payload = match CString::new(rust_payload) {
@@ -193,7 +193,7 @@ pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamSignIn<'a>(mu
 }
 
 #[no_mangle]
-pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamCodeRequest<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>, payload: JString<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamCodeRequest<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>, payload: JString<'a>,
 ) -> JString<'a> {
     let rust_payload = jstring_to_rust(&mut env, payload);
     let c_payload = match CString::new(rust_payload) {
@@ -209,7 +209,7 @@ pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamCodeRequest<'
 }
 
 #[no_mangle]
-pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamCodeResend<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamCodeResend<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
     session: i64,
 ) -> JString<'a> {
     let ptr = aether::ffi::aether_team_code_resend(session as u64);
@@ -217,7 +217,7 @@ pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamCodeResend<'a
 }
 
 #[no_mangle]
-pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamCodeSubmit<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamCodeSubmit<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
     session: i64, code: JString<'a>,
 ) -> JString<'a> {
     let rust_code = jstring_to_rust(&mut env, code);
@@ -234,7 +234,7 @@ pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamCodeSubmit<'a
 }
 
 #[no_mangle]
-pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamSessionFree<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamSessionFree<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
     id: i64,
 ) -> JString<'a> {
     let ptr = aether::ffi::aether_team_session_free(id as u64);
@@ -242,7 +242,7 @@ pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamSessionFree<'
 }
 
 #[no_mangle]
-pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamTokenSet<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>, token: JString<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamTokenSet<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>, token: JString<'a>,
 ) -> JString<'a> {
     let rust_token = jstring_to_rust(&mut env, token);
     let c_token = match CString::new(rust_token) {
@@ -258,7 +258,7 @@ pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamTokenSet<'a>(
 }
 
 #[no_mangle]
-pub extern \"C\" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamTokenClear<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamTokenClear<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
 ) -> JString<'a> {
     let ptr = aether::ffi::aether_team_token_clear();
     c_string_to_jstring(&mut env, ptr)
