@@ -12,11 +12,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.manjaniq.core.AetherConfigStore
+import com.manjaniq.core.AetherRepository
 import com.manjaniq.core.AppLanguage
 import com.manjaniq.core.AppPreferences
 import com.manjaniq.core.ConfigStore
 import com.manjaniq.core.EngineRepository
 import com.manjaniq.core.SelectedCore
+import com.manjaniq.core.models.AetherConfig
 import com.manjaniq.ui.navigation.AppDestination
 import com.manjaniq.ui.screens.AboutScreen
 import com.manjaniq.ui.screens.GeneralSettingsScreen
@@ -39,6 +42,12 @@ fun ManjaniqApp() {
 
     val ui by EngineRepository.uiState.collectAsState()
     val logs by EngineRepository.logs.collectAsState()
+
+    val aetherConfigStore = remember { AetherConfigStore(appContext) }
+    var aetherConfig by remember { mutableStateOf(aetherConfigStore.load()) }
+    val aetherUi by AetherRepository.uiState.collectAsState()
+    val aetherLogs by AetherRepository.logs.collectAsState()
+    var aetherLocalError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         appPrefs.coreFlow.collect { selectedCore = it }
@@ -144,6 +153,37 @@ fun ManjaniqApp() {
                                     val defaults = configStore.resetToDefaults()
                                     config = defaults
                                     defaults
+                                },
+                                // Aether bindings - independent from RSTA
+                                aetherConfig = aetherConfig,
+                                aetherUi = aetherUi.copy(lastError = aetherLocalError ?: aetherUi.lastError),
+                                aetherLogs = aetherLogs,
+                                onAetherStart = {
+                                    // Port conflict check + native availability
+                                    val conflict = com.manjaniq.core.models.detectAetherPortConflict(aetherConfig, config.listenPort)
+                                    if (conflict != null) {
+                                        aetherLocalError = conflict
+                                    } else if (!aetherUi.isNativeLoaded) {
+                                        aetherLocalError = "Aether native library not built for this APK. See build logs."
+                                    } else {
+                                        val v = aetherConfig.validate()
+                                        if (v != null) aetherLocalError = v else {
+                                            aetherLocalError = null
+                                            AetherRepository.requestStart(appContext)
+                                        }
+                                    }
+                                },
+                                onAetherStop = { AetherRepository.requestStop(appContext) },
+                                onAetherDismissError = { aetherLocalError = null; AetherRepository.clearError() },
+                                onAetherSaveConfig = { saved, restart ->
+                                    aetherConfigStore.save(saved)
+                                    aetherConfig = saved
+                                    if (restart) AetherRepository.requestRestart(appContext)
+                                },
+                                onAetherResetDefaults = {
+                                    val d = aetherConfigStore.resetToDefaults()
+                                    aetherConfig = d
+                                    d
                                 }
                             )
                         }

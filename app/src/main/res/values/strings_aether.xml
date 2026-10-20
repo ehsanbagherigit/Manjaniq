@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Aether strings - replaces Coming Soon placeholders with real controls -->
+    <string name="aether_coming_soon_title">Aether — Next-Gen Transport</string>
+    <string name="aether_coming_soon_body">Aether discovers reachable gateways, opens an encrypted tunnel (MASQUE/WireGuard) and exposes a local SOCKS5 proxy. Configure transport, scan mode and bind address, then start.</string>
+    <string name="aether_no_effect">Aether runs independently from RSTA; it has its own identity and tunnel. Switch cores to control each engine separately.</string>
+    <string name="aether_feature_1">MASQUE (HTTP/3 &amp; H2) + WireGuard, nested Gool/MIM</string>
+    <string name="aether_feature_2">Endpoint discovery + data-plane validation + obfuscation</string>
+    <string name="aether_feature_3">Local SOCKS5 (127.0.0.1:1819) + optional HTTP proxy</string>
+
+    <!-- Aether Settings Form -->
+    <string name="aether_settings">Aether Configuration</string>
+    <string name="aether_settings_intro">Configure Aether transport, SOCKS binding, and scan behaviour. All settings apply on next start.</string>
+    <string name="aether_transport">Transport</string>
+    <string name="aether_transport_desc">masque (QUIC) recommended; wg, gool, mim for special routes</string>
+    <string name="aether_transport_masque">MASQUE (HTTP/3)</string>
+    <string name="aether_transport_wg">WireGuard</string>
+    <string name="aether_transport_gool">Gool (WG in MASQUE)</string>
+    <string name="aether_transport_mim">MIM (MASQUE in MASQUE)</string>
+    <string name="aether_scan_mode">Scan mode</string>
+    <string name="aether_scan_turbo">turbo — first answer</string>
+    <string name="aether_scan_balanced">balanced — fastest few (default)</string>
+    <string name="aether_scan_thorough">thorough — full sweep</string>
+    <string name="aether_scan_verified">verified — data-plane check</string>
+    <string name="aether_scan_ironclad">ironclad — real HTTP probe</string>
+    <string name="aether_noize">Obfuscation profile</string>
+    <string name="aether_noize_off">off</string>
+    <string name="aether_noize_firewall">firewall (default)</string>
+    <string name="aether_noize_balanced">balanced</string>
+    <string name="aether_noize_gfw">gfw</string>
+    <string name="aether_noize_aggressive">aggressive</string>
+    <string name="aether_socks_bind">SOCKS bind</string>
+    <string name="aether_socks_hint">Loopback only — e.g. 127.0.0.1:1819 (blocked: 0.0.0.0)</string>
+    <string name="aether_http_bind">HTTP proxy bind (optional)</string>
+    <string name="aether_http_hint">Leave empty to disable — e.g. 127.0.0.1:1820</string>
+    <string name="aether_peer">Fixed peer (optional)</string>
+    <string name="aether_peer_hint">Empty = scan; set 1.2.3.4:443 to force endpoint</string>
+    <string name="aether_upstream">Upstream proxy (optional)</string>
+    <string name="aether_upstream_hint">socks5://127.0.0.1:1080 or http://host:8080 to dial through</string>
+    <string name="aether_dns">DNS inside tunnel</string>
+    <string name="aether_dns_hint">1.1.1.1,1.0.0.1 — comma separated</string>
+    <string name="aether_ech">Encrypted ClientHello</string>
+    <string name="aether_ech_desc">Enable auto ECH (needs DoH, may fail on strict networks)</string>
+    <string name="aether_quick_reconnect">Quick reconnect</string>
+    <string name="aether_quick_desc">Reuse last working gateway, skip scan</string>
+    <string name="aether_identity_path">Identity storage name</string>
+    <string name="aether_team">Team (ZeroTrust, optional)</string>
+
+    <!-- Connection Status for Aether -->
+    <string name="aether_status_title">Aether Tunnel</string>
+    <string name="aether_proxy_copy">Copy SOCKS address</string>
+    <string name="aether_proxy_copied">SOCKS address copied</string>
+    <string name="aether_proxy_hint">Configure apps to use this SOCKS5</string>
+    <string name="aether_proxy_format">socks5h://%1$s</string>
+    <string name="aether_http_format">http://%1$s</string>
+    <string name="aether_state_running">Tunnel up</string>
+    <string name="aether_state_stopped">Tunnel down</string>
+    <string name="aether_state_scanning">Scanning gateways…</string>
+    <string name="aether_state_connecting">Connecting…</string>
+    <string name="aether_error_title">Aether error</string>
+
+    <!-- Notifications -->
+    <string name="notification_channel_name_aether">Aether engine</string>
+    <string name="notification_channel_desc_aether">Shown while Aether tunnel is active</string>
+    <string name="notification_title_aether">Manjaniq — Aether engine</string>
+
+    <!-- Dialogs -->
+    <string name="aether_port_conflict">Port conflict with RSTA: %1$s</string>
+    <string name="aether_not_native">Aether native library not loaded. Rebuild APK with libaether.so.</string>
+    <string name="aether_export_title">Aether config JSON</string>
+    <string name="aether_import_title">Import Aether config</string>
+</resources>

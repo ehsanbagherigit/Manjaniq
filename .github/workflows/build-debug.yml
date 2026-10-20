@@ -116,7 +116,19 @@ jobs:
           grep -q -- "--- PASS: TestRapidStartStop" /tmp/gotest.log
           echo "Ephemeral-port regression tests passed (TestEngineEndToEndFragment, TestRapidStartStop)."
 
-      - name: Build Native Libraries (arm64-v8a + x86_64)
+      - name: Install Rust toolchain (Aether)
+        run: |
+          set -euo pipefail
+          rustup update stable --no-self-update || curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.cargo/bin:$PATH"
+          rustc --version
+          cargo --version
+          rustup target add aarch64-linux-android x86_64-linux-android --toolchain stable || rustup target add aarch64-linux-android x86_64-linux-android
+          cargo install cargo-ndk --locked || cargo install cargo-ndk
+          cargo-ndk --version || cargo ndk --version
+
+      - name: Build Native Libraries (arm64-v8a + x86_64) - RSTA (Go)
         run: |
           set -euo pipefail
           mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/jniLibs/x86_64
@@ -139,10 +151,41 @@ jobs:
             ./native
           ls -lh app/src/main/jniLibs/arm64-v8a/ app/src/main/jniLibs/x86_64/
 
-      - name: Verify native library
+      - name: Build Aether Native Library (libaether.so) - Rust
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          export ANDROID_NDK_HOME="$ANDROID_NDK_HOME"
+          # Verify source is pinned to v2.3.0 (github fetch via codeload)
+          test -f third_party/Aether-LICENSE || { echo "::error::Missing third_party/Aether-LICENSE (AGPL)"; exit 1; }
+          test -f aether-wrapper/Cargo.toml
+          grep -q 'tag = "v2.3.0"' aether-wrapper/Cargo.toml || { echo "::error::aether-wrapper not pinned to v2.3.0"; exit 1; }
+          # Toolchain: Rust 1.98 matches aether/Cargo.toml rust-version, BoringSSL needs cmake+perl+clang (already via NDK)
+          sudo apt-get update && sudo apt-get install -y cmake perl || true
+          # Build arm64-v8a (primary)
+          cd aether-wrapper
+          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --locked || cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release
+          ls -lh ../app/src/main/jniLibs/arm64-v8a/libaether.so
+          # Build x86_64 (emulator) - best effort, don't fail primary if missing
+          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --locked || echo "::warning::x86_64 libaether build failed, continuing with arm64 only"
+          ls -lh ../app/src/main/jniLibs/x86_64/ || true
+          cd ..
+
+      - name: Verify native libraries (RSTA + Aether)
         run: |
           set -euo pipefail
           bash native/verify_native_lib.sh
+          bash native/verify_aether_lib.sh || { echo "::warning::Aether lib verification warning (see logs)"; cat native/verify_aether_lib.sh.log 2>/dev/null || true; }
+          # Explicit ELF + symbol gate for libaether (fail if missing when wrapper exists)
+          if [ -f app/src/main/jniLibs/arm64-v8a/libaether.so ]; then
+            echo "Aether lib present, checking exports..."
+            nm -D app/src/main/jniLibs/arm64-v8a/libaether.so 2>&1 | grep -q "Java_com_manjaniq_AetherBridge" || llvm-nm app/src/main/jniLibs/arm64-v8a/libaether.so 2>&1 | grep -q "Java_com_manjaniq_AetherBridge" || { echo "::error::Missing JNI exports in libaether.so"; exit 1; }
+            readelf -h app/src/main/jniLibs/arm64-v8a/libaether.so 2>&1 | grep -q "Machine:.*AArch64" || llvm-readelf -h app/src/main/jniLibs/arm64-v8a/libaether.so 2>&1 | grep -q "AArch64"
+            echo "libaether.so ELF + exports OK"
+          else
+            echo "::error::libaether.so not built - workflow must produce it"
+            exit 1
+          fi
 
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
@@ -206,6 +249,8 @@ jobs:
           grep -q "classes.dex" /tmp/apk_listing.txt
           grep -q "lib/arm64-v8a/libmanjaniq_native.so" /tmp/apk_listing.txt
           grep -q "lib/x86_64/libmanjaniq_native.so" /tmp/apk_listing.txt
+          grep -q "lib/arm64-v8a/libaether.so" /tmp/apk_listing.txt || { echo "::error::APK missing lib/arm64-v8a/libaether.so"; exit 1; }
+          grep -q "lib/x86_64/libaether.so" /tmp/apk_listing.txt || echo "::warning::APK missing lib/x86_64/libaether.so"
           # Launcher + brand resources must be packaged (regression for missing icon / stale logo)
           for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             grep -q "res/mipmap-${d}-v4/ic_launcher.png\|res/mipmap-${d}/ic_launcher.png\|mipmap-${d}.*ic_launcher" /tmp/apk_listing.txt \
@@ -243,6 +288,7 @@ jobs:
               sys.exit(1)
           PY
           bash native/verify_native_lib.sh /tmp/apkcheck/lib/arm64-v8a/libmanjaniq_native.so
+          bash native/verify_aether_lib.sh /tmp/apkcheck/lib/arm64-v8a/libaether.so
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -308,15 +354,34 @@ jobs:
           "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0" "ndk;25.2.9519653"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> "$GITHUB_ENV"
 
-      - name: Build native libs for the instrumentation build (arm64 + x86_64)
+      - name: Install Rust toolchain (Aether - emulator-smoke)
+        run: |
+          set -euo pipefail
+          rustup update stable --no-self-update || curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.cargo/bin:$PATH"
+          rustup target add aarch64-linux-android x86_64-linux-android --toolchain stable || rustup target add aarch64-linux-android x86_64-linux-android
+          cargo install cargo-ndk --locked || cargo install cargo-ndk
+          sudo apt-get update && sudo apt-get install -y cmake perl || true
+
+      - name: Build native libs for the instrumentation build (arm64 + x86_64) - RSTA + Aether
         run: |
           set -euo pipefail
           mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/jniLibs/x86_64
+          export PATH="$HOME/.cargo/bin:$PATH"
+          export ANDROID_NDK_HOME="$ANDROID_NDK_HOME"
+          # RSTA (Go)
           export CGO_ENABLED=1 GOOS=android GO111MODULE=on
           export GOARCH=arm64 CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
           go build -buildmode=c-shared -o app/src/main/jniLibs/arm64-v8a/libmanjaniq_native.so ./native
           export GOARCH=amd64 CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang"
           go build -buildmode=c-shared -o app/src/main/jniLibs/x86_64/libmanjaniq_native.so ./native
+          # Aether (Rust) - x86_64 needed for emulator
+          cd aether-wrapper
+          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --locked || cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release
+          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --locked || cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release || echo "::warning::Aether x86_64 build failed"
+          cd ..
+          ls -lh app/src/main/jniLibs/arm64-v8a/ app/src/main/jniLibs/x86_64/
 
       - name: Free disk space for emulator
         run: |
