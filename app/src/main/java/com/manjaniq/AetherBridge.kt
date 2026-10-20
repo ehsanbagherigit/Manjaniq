@@ -27,6 +27,13 @@ object AetherBridge {
     val isNativeAvailable: Boolean
         get() = loadError == null
 
+    /** ABI list from the OS - for diagnostics and tests */
+    val SUPPORTED_ABIS: List<String>
+        get() = try { android.os.Build.SUPPORTED_ABIS.toList() } catch (_: Throwable) { emptyList() }
+
+    /** Public accessor for load diagnostics (used by tests/UI) */
+    fun getLoadDiagnostics(): String? = loadError?.let { buildLoadDiagnostics(it) }
+
     /** Detailed diagnostics for missing deps (e.g. libc++_shared.so) */
     private fun buildLoadDiagnostics(t: Throwable): String {
         val chain = mutableListOf<String>()

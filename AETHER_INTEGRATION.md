@@ -72,3 +72,69 @@ See `AETHER_AUDIT_REPORT.md §4` for root-cause (run 39347831303 exit 101) and f
 - New: `aether-wrapper/Cargo.toml`, `aether-wrapper/src/lib.rs`, `app/src/main/java/com/manjaniq/AetherBridge.kt`, `core/models/AetherConfig.kt`, `core/models/AetherState.kt`, `core/AetherConfigStore.kt`, `core/AetherRepository.kt`, `service/AetherService.kt`, `ui/screens/AetherSettingsForm.kt`, `ui/components/AetherStatusCard.kt`, `app/src/main/res/values/strings_aether.xml`, `native/verify_aether_lib.sh`, `third_party/Aether-LICENSE`, `third_party/aether-v2.3.0.tar.gz`, `THIRD_PARTY_NOTICES.md`, this file
 - Modified: `app/src/main/java/com/manjaniq/ui/screens/HomeScreen.kt`, `app/src/main/java/com/manjaniq/ui/components/ManjaniqApp.kt`, `app/src/main/java/com/manjaniq/ui/screens/AboutScreen.kt`, `app/src/main/java/com/manjaniq/ui/TestTags.kt`, `app/src/main/AndroidManifest.xml`, `app/build.gradle.kts`
 - Preserved: `engine/rstaspoof/`, `native/bridge.*`, `core/EngineRepository`, `service/EngineService`, `promt.md`, `rsta-source/`, docs
+
+## 6-Profile UI (added 2026-10-20)
+
+### Profiles (single-source enum `AetherProfile.kt`)
+| # | Profile | Route string key | Capability badge | Settings sections |
+|---|---|---|---|---|
+| 1 | WARP/Aether Direct | `Aether → Cloudflare → Internet` | Available (green) | Gateway (transport, scanMode, peer), Tunnel (socks/http/dns), Advanced (noize, ECH, ipVersion, upstream, quickReconnect, team) |
+| 2 | Aether→Psiphon | `Aether → Psiphon → Internet` | Needs external (orange) | Gateway, Psiphon (endpoint, region, upstream), Tunnel, Advanced (noize, ECH) |
+| 3 | Tor Direct | `Tor → Internet` | Needs external | Tor (socks, bridges), Tunnel, Advanced (ipVersion) |
+| 4 | Aether→Tor | `Aether → Tor → Internet` | Needs external | Gateway, Tor, Tunnel (socks/upstream/dns), Advanced |
+| 5 | Tor→Psiphon | `Tor → Psiphon → Internet` | Needs external | Tor, Psiphon, Tunnel, Advanced (dns) |
+| 6 | Tor→Aether | `Tor → Aether → Internet` | Needs external | Tor, Gateway, Tunnel, Advanced |
+
+Only WARP_DIRECT is `Available`; all others show `RequiresExternalComponent` with orange badge + `profile_requires_external` disclaimer. Truthful: no claim that Tor/Psiphon works without external binaries.
+
+### UI→Persistence→Repository→Service→JNI→Rust path (per-profile)
+```
+HomeScreen (selects profile id via AetherProfileCard -> onSelectAetherProfile)
+  -> ManjaniqApp state selectedAetherProfile + currentProfileConfig (mutableState)
+  -> AetherProfileStore (SharedPreferences `manjaniq_aether_profiles` JSON per profileId, plus `selected_profile_id`)
+     - saveFor(profile, cfg) called on Start and on Save
+     - legacy AetherConfigStore still synced for AetherService compat (reads `aether_base` JSON)
+  -> onAetherStart: persist current profile, set AetherProfileManager.selectedProfile, AetherConfigStore.save(base)
+  -> AetherRepository.requestStart(context) -> starts AetherService foreground
+     -> AetherService.onStartCommand: reads AetherConfigStore.load() (base config)
+     -> if port conflict vs RSTA -> uiState error, no native call
+     -> else AetherBridge.isNativeAvailable? if false -> error with diagnostics (SUPPORTED_ABIS + loadError)
+     -> else AetherBridge.identityOpen(path=filesDir/aether_identity) -> job poll -> scan/tunnel/coreStart
+     -> Rust: aether-wrapper JNI `Java_com_manjaniq_AetherBridge_*` -> aether::ffi::* -> Tokio runtime OnceLock, JOBS hash, netstack via smoltcp/quiche/BoringSSL
+     -> SOCKS5 bound to cfg.socksBind (default 127.0.0.1:1819) -> app exposes `socksEndpoint` in UI
+```
+Persistence per-profile, validation per-profile (`validateForProfile` + `AetherConfig.validate()`), import/export JSON per profile.
+
+### Theme
+- Black/purple base (ManjaniqPurple #6A00FF, Deep #200040, Surface #121212, Border #2A2A30)
+- Neon blue `NeonBlue #00D5FF` for Aether Start only; purple for Stop/selected; no yellow/gold in Aether section (RSTA keeps RstaGold for its own Start)
+- Cards: purple border when selected, orange for NeedsExternal, error red
+
+### SOCKS/HTTP proxy vs VPN/TUN disclaimer
+- Current phase: SOCKS5 + HTTP proxy only (`127.0.0.1:1819` + optional httpProxyBind). No `VpnService`/`protect()`/TUN fd pump. Shown in UI as `vpn_limitation_title/body` + `profile_socks_note` + `aether_coming_soon_body`.
+- VPN would require `AetherVpnService : VpnService` bridging TUN fd ↔ netstack DataIn channel + protect(quic socket). Not implemented; documented as limitation.
+
+### Upstream capability audit matrix (26+ features, truthful status)
+| Feature | Upstream (Aether 2.3.0) | Manjaniq status | Notes |
+|---|---|---|---|
+| MASQUE/HTTP3 gateway | `aether/src/masque.rs`, `quiche 0.29.3` | Available via `transport=masque` | needs peer |
+| WireGuard gateway | `boringtun 0.7` | Available via `transport=wg` | |
+| Gool gateway | gool flag | Available via `transport=gool` | |
+| MIM gateway | mim flag | Available via `transport=mim` | |
+| Gateway scan | `aether_scan_start` (scanMode turbo/balanced/thorough/verified/ironclad) | Available (ScanMode chips) | |
+| Obfuscation (noize) | `noizeProfile firewall/balanced/gfw/aggressive/off` | Available (chips) | |
+| SOCKS5 bind | `socks::serve` 127.0.0.1:1819 | Available | AETHER_TOGGLE shows `profile_socks_note` |
+| HTTP proxy bind | `httpProxyBind` | Available | |
+| Peer manual | `peer` field | Available | skips scan |
+| Upstream proxy chaining | `upstream` field (socks/http) | Available | used for Aether→Psiphon: upstream set to Psiphon endpoint |
+| DNS override | `dns` field | Available | |
+| Identity/provision | `aether_identity_open` path filesDir | Available (auto) | |
+| ZeroTrust team | `aether_team_*` FFI | FFI Available, UI TBD (teamName field only) | |
+| ECH | `echEnabled` | Available (checkbox) | |
+| Quick reconnect | `quickReconnect` | Available | |
+| IP version | `ipVersion v4/v6/both` | Available | |
+| Tor (arti-client) | `--features tor`, liblzma, pt binaries | Blocked (RequiresExternalComponent) - profile badge orange | needs cross-compile pt/ |
+| Psiphon tunnel-core binary | external `psiphon-tunnel-core` | Blocked (RequiresExternalComponent) | chaining via upstream field possible if binary installed separately |
+| VpnService TUN | not in upstream, needs app-side bridging | Not implemented - disclaimer shown | |
+
+Build/packaging verified: `libaether.so` + `libc++_shared.so` per ABI (arm64-v8a + x86_64) in jniLibs and APK; `verify_aether_lib.sh` checks ELF, JNI exports, bionic, and libc++ presence; `AetherBridge.SUPPORTED_ABIS` + `getLoadDiagnostics()` + `buildLoadDiagnostics()` hint for dlopen failures; `readelf -d NEEDED` logged in CI.

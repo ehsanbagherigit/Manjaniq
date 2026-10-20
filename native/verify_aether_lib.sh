@@ -67,4 +67,17 @@ if [ -n "$READELF_BIN" ]; then
     if $READELF_BIN -d "$SO" 2>&1 | grep -q "libc.so.6"; then echo "FAIL: glibc libc.so.6 found - not Android"; exit 1; fi
 fi
 
+
+# Check libc++_shared.so co-packaged for x86_64/arm64
+for abi in arm64-v8a x86_64; do
+  cand="$REPO_ROOT/app/src/main/jniLibs/$abi/libc++_shared.so"
+  if [ -f "$cand" ]; then
+    echo "PASS: $abi libc++_shared.so present ($cand) - required for libaether BoringSSL/quiche"
+  else
+    if [ -f "$SO" ]; then
+      echo "WARN: $abi libc++_shared.so missing at $cand - libaether may dlopen fail (needs NDK STL)"
+    fi
+  fi
+done
+
 echo "== Aether library verification complete =="
