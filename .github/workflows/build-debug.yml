@@ -171,7 +171,10 @@ jobs:
           # Build arm64-v8a (primary) - vendored path avoids git fetch + rust-version gate
           set +e; set +u
           cd aether-wrapper
-          echo "=== cargo ndk arm64 verbose ===" | tee /tmp/aether_arm64.log
+          echo "cargo clean to pick up jni 0.20 change"
+          cargo clean 2>&1 | tee /tmp/aether_arm64.log || true
+          rm -f Cargo.lock 2>&1 | tee -a /tmp/aether_arm64.log || true
+          echo "=== cargo ndk arm64 verbose ===" | tee -a /tmp/aether_arm64.log
           cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --verbose 2>&1 | tee -a /tmp/aether_arm64.log; RC=${PIPESTATUS[0]}
           echo "arm64 build rc=$RC" | tee -a /tmp/aether_arm64.log
           ls -lh ../app/src/main/jniLibs/arm64-v8a/libaether.so 2>&1 | tee -a /tmp/aether_arm64.log
