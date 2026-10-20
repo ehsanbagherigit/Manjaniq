@@ -189,6 +189,13 @@ jobs:
           echo "--- tail x64 log ---"
           cat /tmp/aether_x64.log 2>&1 | tail -n 100 || echo "no x64 log"
           ls -R app/src/main/jniLibs 2>&1 | head -n 30
+          # Emit first error line as annotation (visible via API)
+          if [ -f /tmp/aether_arm64.log ]; then
+            ERR=$(grep -m1 -E "error\[|error: |FAILED|failed to run" /tmp/aether_arm64.log 2>&1 | head -n1 | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g' | cut -c1-600)
+            if [ -n "$ERR" ]; then echo "::error title=Aether cargo arm64::$ERR"; fi
+            echo "### Aether arm64 build log (tail)" >> $GITHUB_STEP_SUMMARY 2>&1 || true
+            tail -n 80 /tmp/aether_arm64.log >> $GITHUB_STEP_SUMMARY 2>&1 || true
+          fi
           # Fail if primary missing
           test -f app/src/main/jniLibs/arm64-v8a/libaether.so || { echo "::error::libaether.so not produced - see /tmp/aether_arm64.log"; cat /tmp/aether_arm64.log 2>&1 | tail -n 500; exit 1; }
 
