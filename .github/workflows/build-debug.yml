@@ -160,17 +160,25 @@ jobs:
           test -f third_party/Aether-LICENSE || { echo "::error::Missing third_party/Aether-LICENSE (AGPL)"; exit 1; }
           test -f aether-wrapper/Cargo.toml
           grep -q 'tag = "v2.3.0"' aether-wrapper/Cargo.toml || { echo "::error::aether-wrapper not pinned to v2.3.0"; exit 1; }
-          # Toolchain: aether/Cargo.toml declares rust-version=1.98 (future). Runner stable is ~1.88-1.91,
-          # so we pass --ignore-rust-version (Cargo 1.84+). BoringSSL needs cmake+perl+clang (via NDK).
+          # Toolchain: aether/Cargo.toml declares rust-version=1.98 (future). Runner stable is older,
+          # so we bypass via patching cargo cache (cargo ndk does not forward --ignore-rust-version reliably).
           sudo apt-get update && sudo apt-get install -y cmake perl || true
           rustc --version; cargo --version
-          echo "aether requires Rust 1.98 - using --ignore-rust-version; verify build still succeeds"
-          # Build arm64-v8a (primary)
+          echo "Patching aether rust-version gate for CI (1.98 → 1.56) - see AETHER_AUDIT_REPORT §4"
+          # Pre-fetch to populate cargo git cache, then sed the checked-out Cargo.toml
+          (cd aether-wrapper && cargo fetch --locked --ignore-rust-version 2>&1 | tail -n 20 || cargo fetch --ignore-rust-version 2>&1 | tail -n 20 || true)
+          for f in $(find $HOME/.cargo/git/checkouts -name Cargo.toml 2>/dev/null | xargs grep -l 'name = "aether"' 2>/dev/null | head -n 5); do
+            echo "Patching $f"
+            sed -i 's/rust-version = "1.98"/rust-version = "1.56"/' "$f" 2>&1 || true
+            sed -i 's/rust-version = "1.88"/rust-version = "1.56"/' "$f" 2>&1 || true
+          done
+          for f in $(find /tmp -name Cargo.toml 2>/dev/null | head -n 5); do :; done
+          # Build arm64-v8a (primary) via cargo-ndk (now with patched manifest)
           cd aether-wrapper
-          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --locked --ignore-rust-version || cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --ignore-rust-version
+          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --locked || cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release
           ls -lh ../app/src/main/jniLibs/arm64-v8a/libaether.so
           # Build x86_64 (emulator) - best effort, don't fail primary if missing
-          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --locked --ignore-rust-version || echo "::warning::x86_64 libaether build failed, continuing with arm64 only"
+          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --locked || echo "::warning::x86_64 libaether build failed, continuing with arm64 only"
           ls -lh ../app/src/main/jniLibs/x86_64/ || true
           cd ..
 
@@ -381,8 +389,11 @@ jobs:
           go build -buildmode=c-shared -o app/src/main/jniLibs/x86_64/libmanjaniq_native.so ./native
           # Aether (Rust) - x86_64 needed for emulator
           cd aether-wrapper
-          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --locked --ignore-rust-version || cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --ignore-rust-version
-          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --locked --ignore-rust-version || cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --ignore-rust-version || echo "::warning::Aether x86_64 build failed"
+          # Same patch for emulator-smoke (rebuild after fetch)
+          (cd aether-wrapper && cargo fetch --locked --ignore-rust-version 2>&1 | tail -n 5 || cargo fetch --ignore-rust-version 2>&1 | tail -n 5 || true)
+          for f in $(find $HOME/.cargo/git/checkouts -name Cargo.toml 2>/dev/null | xargs grep -l 'name = "aether"' 2>/dev/null | head -n 5); do sed -i 's/rust-version = "1.98"/rust-version = "1.56"/;s/rust-version = "1.88"/rust-version = "1.56"/' "$f" || true; done
+          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --locked || cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release
+          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --locked || cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release || echo "::warning::Aether x86_64 build failed"
           cd ..
           ls -lh app/src/main/jniLibs/arm64-v8a/ app/src/main/jniLibs/x86_64/
 
