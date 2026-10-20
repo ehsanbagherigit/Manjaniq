@@ -11,11 +11,11 @@ crate-type = ["cdylib"]
 path = "src/lib.rs"
 
 [dependencies]
-# Pin to exact v2.3.0 tag via git - CI has full internet egress
-aether = { git = "https://github.com/CluvexStudio/Aether", tag = "v2.3.0" }
+# Path-pinned to vendored third_party/Aether (v2.3.0 peeled 6175b67). Avoids git fetch
+# and allows rust-version patch (1.98 -> 1.56) for CI stable.
+aether = { path = "../third_party/Aether/aether" }
 jni = "0.21.1"
 serde_json = "1"
 
 # Build requirements documented in aether/README.md:
-# Rust 1.98+, CMake, C++ compiler, Perl required for BoringSSL
-# Android NDK provides clang + cmake + perl
+# CMake, C++ compiler, Perl required for BoringSSL (NDK provides clang)
