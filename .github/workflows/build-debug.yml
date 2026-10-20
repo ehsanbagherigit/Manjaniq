@@ -204,6 +204,55 @@ jobs:
           # Fail if primary missing
           test -f app/src/main/jniLibs/arm64-v8a/libaether.so || { echo "::error::libaether.so not produced - see /tmp/aether_arm64.log"; cat /tmp/aether_arm64.log 2>&1 | tail -n 500; exit 1; }
 
+          # ---- Fix libc++_shared.so: required by libaether.so (BoringSSL/C++ via quiche) ----
+          # The NDK provides it at sources/cxx-stl/llvm-libc++/libs/<abi>/libc++_shared.so
+          # Also available under sysroot. Copy the exact ABI-matched file into jniLibs.
+          echo "=== Packaging libc++_shared.so for each ABI ==="
+          for ABI in arm64-v8a x86_64; do
+            # Map Gradle ABI to NDK arch string
+            case "$ABI" in
+              arm64-v8a) NDK_ABI=arm64-v8a; SYS_ARCH=aarch64-linux-android ;;
+              x86_64)    NDK_ABI=x86_64;  SYS_ARCH=x86_64-linux-android ;;
+              *) continue ;;
+            esac
+            SRC_CANDIDATES=(
+              "$ANDROID_NDK_HOME/sources/cxx-stl/llvm-libc++/libs/$NDK_ABI/libc++_shared.so"
+              "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/$SYS_ARCH/libc++_shared.so"
+            )
+            FOUND=""
+            for cand in "${SRC_CANDIDATES[@]}"; do
+              if [ -f "$cand" ]; then FOUND="$cand"; break; fi
+            done
+            if [ -z "$FOUND" ]; then
+              # Fallback: search under NDK
+              FOUND=$(find "$ANDROID_NDK_HOME" -name "libc++_shared.so" -path "*${NDK_ABI}*" 2>/dev/null | head -n 1 || true)
+              if [ -z "$FOUND" ]; then
+                FOUND=$(find "$ANDROID_NDK_HOME" -name "libc++_shared.so" 2>/dev/null | head -n 1 || true)
+              fi
+            fi
+            if [ -n "$FOUND" ] && [ -f "$FOUND" ]; then
+              echo "Copying $FOUND -> app/src/main/jniLibs/$ABI/libc++_shared.so"
+              cp -v "$FOUND" "app/src/main/jniLibs/$ABI/libc++_shared.so" 2>&1 | tee -a /tmp/aether_arm64.log
+              ls -lh "app/src/main/jniLibs/$ABI/libc++_shared.so" 2>&1 | tee -a /tmp/aether_arm64.log
+              # Sanity: check ELF matches ABI
+              readelf -h "app/src/main/jniLibs/$ABI/libc++_shared.so" 2>&1 | grep -E "Class:|Machine:" | tee -a /tmp/aether_arm64.log || true
+            else
+              echo "::warning::libc++_shared.so not found for ABI $ABI (search in $ANDROID_NDK_HOME) - libaether will fail at runtime with dlopen" | tee -a /tmp/aether_arm64.log
+              ls -R "$ANDROID_NDK_HOME/sources/cxx-stl" 2>&1 | head -n 50 | tee -a /tmp/aether_arm64.log || true
+            fi
+          done
+          echo "=== Final jniLibs ==="
+          ls -R app/src/main/jniLibs 2>&1 | tee -a /tmp/aether_arm64.log
+          # Verify ELF dependency now resolvable
+          echo "=== libaether.so NEEDED ==="
+          readelf -d app/src/main/jniLibs/arm64-v8a/libaether.so 2>&1 | grep NEEDED | tee -a /tmp/aether_arm64.log || llvm-readelf -d app/src/main/jniLibs/arm64-v8a/libaether.so 2>&1 | grep NEEDED | tee -a /tmp/aether_arm64.log || true
+          echo "=== check libc++_shared in NEEDED ==="
+          if readelf -d app/src/main/jniLibs/arm64-v8a/libaether.so 2>&1 | grep -q "libc++_shared.so"; then
+            echo "libaether NEEDED includes libc++_shared.so - packaging fix required and now provided" | tee -a /tmp/aether_arm64.log
+          else
+            echo "INFO: libaether does not list libc++_shared.so in DT_NEEDED (maybe statically linked?) - still package for safety" | tee -a /tmp/aether_arm64.log
+          fi
+
       - name: Verify native libraries (RSTA + Aether)
         run: |
           set -euo pipefail
@@ -294,6 +343,22 @@ jobs:
           grep -q "lib/x86_64/libmanjaniq_native.so" /tmp/apk_listing.txt
           grep -q "lib/arm64-v8a/libaether.so" /tmp/apk_listing.txt || { echo "::error::APK missing lib/arm64-v8a/libaether.so"; exit 1; }
           grep -q "lib/x86_64/libaether.so" /tmp/apk_listing.txt || echo "::warning::APK missing lib/x86_64/libaether.so"
+          # libc++_shared.so must be packaged for libaether (BoringSSL/C++). Fail if missing when libaether present.
+          if grep -q "lib/arm64-v8a/libaether.so" /tmp/apk_listing.txt; then
+            grep -q "lib/arm64-v8a/libc++_shared.so" /tmp/apk_listing.txt || { echo "::error::APK missing lib/arm64-v8a/libc++_shared.so required by libaether.so (dlopen failed: library \"libc++_shared.so\" not found)"; unzip -l "$APK" | grep -E "libc\\+\\+|libaether"; exit 1; }
+            echo "APK contains lib/arm64-v8a/libc++_shared.so - libc++ fix verified"
+          fi
+          if grep -q "lib/x86_64/libaether.so" /tmp/apk_listing.txt; then
+            grep -q "lib/x86_64/libc++_shared.so" /tmp/apk_listing.txt || echo "::warning::APK missing lib/x86_64/libc++_shared.so (emulator may fail)"
+          fi
+          # libc++_shared.so must be packaged for libaether (BoringSSL/C++). Fail if missing when libaether present.
+          if grep -q "lib/arm64-v8a/libaether.so" /tmp/apk_listing.txt; then
+            grep -q "lib/arm64-v8a/libc++_shared.so" /tmp/apk_listing.txt || { echo "::error::APK missing lib/arm64-v8a/libc++_shared.so required by libaether.so (dlopen failed: library \"libc++_shared.so\" not found)"; unzip -l "$APK" | grep -E "libc\+\+|libaether"; exit 1; }
+            echo "APK contains lib/arm64-v8a/libc++_shared.so - libc++ fix verified"
+          fi
+          if grep -q "lib/x86_64/libaether.so" /tmp/apk_listing.txt; then
+            grep -q "lib/x86_64/libc++_shared.so" /tmp/apk_listing.txt || echo "::warning::APK missing lib/x86_64/libc++_shared.so (emulator may fail)"
+          fi
           # Launcher + brand resources must be packaged (regression for missing icon / stale logo)
           for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             grep -q "res/mipmap-${d}-v4/ic_launcher.png\|res/mipmap-${d}/ic_launcher.png\|mipmap-${d}.*ic_launcher" /tmp/apk_listing.txt \
@@ -425,6 +490,17 @@ jobs:
           cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release || cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --verbose
           cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release || cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --verbose || echo "::warning::Aether x86_64 build failed"
           cd ..
+          # Copy libc++_shared.so for emulator build as well
+          for ABI in arm64-v8a x86_64; do
+            case "$ABI" in arm64-v8a) NDK_ABI=arm64-v8a; SYS_ARCH=aarch64-linux-android ;; x86_64) NDK_ABI=x86_64; SYS_ARCH=x86_64-linux-android ;; *) continue ;; esac
+            for cand in "$ANDROID_NDK_HOME/sources/cxx-stl/llvm-libc++/libs/$NDK_ABI/libc++_shared.so" "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/$SYS_ARCH/libc++_shared.so"; do
+              if [ -f "$cand" ]; then echo "Copy $cand -> app/src/main/jniLibs/$ABI/libc++_shared.so"; cp -v "$cand" "app/src/main/jniLibs/$ABI/libc++_shared.so" || true; break; fi
+            done
+            if [ ! -f "app/src/main/jniLibs/$ABI/libc++_shared.so" ]; then
+              FOUND=$(find "$ANDROID_NDK_HOME" -name "libc++_shared.so" 2>/dev/null | grep "$NDK_ABI" | head -n 1 || true)
+              if [ -n "$FOUND" ]; then cp -v "$FOUND" "app/src/main/jniLibs/$ABI/libc++_shared.so" || true; fi
+            fi
+          done
           ls -lh app/src/main/jniLibs/arm64-v8a/ app/src/main/jniLibs/x86_64/
 
       - name: Free disk space for emulator

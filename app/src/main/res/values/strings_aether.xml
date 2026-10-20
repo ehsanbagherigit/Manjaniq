@@ -69,4 +69,66 @@
     <string name="aether_not_native">Aether native library not loaded. Rebuild APK with libaether.so.</string>
     <string name="aether_export_title">Aether config JSON</string>
     <string name="aether_import_title">Import Aether config</string>
+
+    <!-- Profiles (6) -->
+    <string name="profile_warp_title">WARP / Aether Direct</string>
+    <string name="profile_warp_route">Phone → Aether gateway</string>
+    <string name="profile_warp_desc">Simple default — auto-discovers a WARP-compatible gateway via MASQUE/WireGuard and exposes local SOCKS5. Minimal setup.</string>
+    <string name="profile_aether_psiphon_title">Aether → Psiphon</string>
+    <string name="profile_aether_psiphon_route">Phone → Aether → Psiphon</string>
+    <string name="profile_aether_psiphon_desc">Route through Psiphon after Aether tunnel. Requires running Psiphon proxy.</string>
+    <string name="profile_tor_direct_title">Tor Direct</string>
+    <string name="profile_tor_direct_route">Phone → Tor</string>
+    <string name="profile_tor_direct_desc">Direct Tor connection via installed Tor daemon or bridge. No Aether.</string>
+    <string name="profile_aether_tor_title">Aether → Tor</string>
+    <string name="profile_aether_tor_route">Phone → Aether → Tor</string>
+    <string name="profile_aether_tor_desc">Aether gateway then Tor exit. Upstream must be Tor SOCKS.</string>
+    <string name="profile_tor_psiphon_title">Tor → Psiphon</string>
+    <string name="profile_tor_psiphon_route">Phone → Tor → Psiphon</string>
+    <string name="profile_tor_psiphon_desc">Tor circuit then Psiphon. Verify chain order and reachability.</string>
+    <string name="profile_tor_aether_title">Tor → Aether</string>
+    <string name="profile_tor_aether_route">Phone → Tor → Aether</string>
+    <string name="profile_tor_aether_desc">Tor as upstream for Aether dial-out. Requires Tor SOCKS upstream.</string>
+
+    <!-- Capabilities -->
+    <string name="badge_available">Available</string>
+    <string name="badge_needs_config">Needs config</string>
+    <string name="badge_unsupported">Unsupported</string>
+    <string name="badge_requires_external">Needs external</string>
+    <string name="cap_available">Available</string>
+    <string name="cap_needs_config">Needs configuration</string>
+    <string name="cap_requires_external">Requires external component</string>
+    <string name="cap_unsupported">Unsupported by pinned upstream</string>
+    <string name="cap_not_verified">Not verified</string>
+
+    <!-- Sections -->
+    <string name="section_gateway">Gateway</string>
+    <string name="section_tunnel">Local proxy</string>
+    <string name="section_tor">Tor</string>
+    <string name="section_psiphon">Psiphon</string>
+    <string name="section_advanced">Advanced</string>
+
+    <!-- Psiphon/Tor settings -->
+    <string name="psiphon_endpoint">Psiphon SOCKS endpoint</string>
+    <string name="psiphon_endpoint_hint">127.0.0.1:1821 — where your Psiphon instance listens</string>
+    <string name="psiphon_region">Psiphon region</string>
+    <string name="psiphon_region_hint">DE, US — optional country code</string>
+    <string name="tor_socks">Tor SOCKS</string>
+    <string name="tor_socks_hint">127.0.0.1:9050 — Tor daemon SOCKS address</string>
+    <string name="tor_bridges">Tor bridges (obfs4 / snowflake)</string>
+    <string name="tor_bridges_hint">One bridge per line; used when "Use bridges" enabled</string>
+    <string name="tor_use_bridges">Use bridges</string>
+    <string name="tor_use_bridges_desc">Route Tor through the listed bridges</string>
+
+    <!-- Profile UI -->
+    <string name="aether_profiles_title">Connection profiles</string>
+    <string name="aether_profiles_intro">Choose a routing profile. Only settings relevant to the selected profile are shown. Advanced options are collapsed by default.</string>
+    <string name="profile_selected">Selected — %1$s</string>
+    <string name="profile_expand_settings">Show settings</string>
+    <string name="profile_collapse_settings">Hide settings</string>
+    <string name="profile_requires_external">This profile needs an external component (Tor or Psiphon) that is not bundled. Install and verify it separately; app will show setup instructions.</string>
+    <string name="profile_socks_note">SOCKS5 %1$s — Port-conflict checked vs RSTA</string>
+    <string name="vpn_limitation_title">No device-wide VPN</string>
+    <string name="vpn_limitation_body">Aether exposes a local SOCKS5/HTTP proxy. Apps that respect proxy settings can use it; device traffic is not automatically routed via TUN/VpnService. A VpnService implementation would be needed for system-wide routing.</string>
+
 </resources>

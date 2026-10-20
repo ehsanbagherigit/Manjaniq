@@ -27,18 +27,40 @@ object AetherBridge {
     val isNativeAvailable: Boolean
         get() = loadError == null
 
+    /** Detailed diagnostics for missing deps (e.g. libc++_shared.so) */
+    private fun buildLoadDiagnostics(t: Throwable): String {
+        val chain = mutableListOf<String>()
+        var cur: Throwable? = t
+        while (cur != null) {
+            chain.add((cur.javaClass.simpleName + ": " + (cur.message ?: "null")).take(300))
+            if (chain.size>5) break
+            cur = cur.cause
+        }
+        val hint = when {
+            chain.joinToString().contains("libc++_shared") -> "Missing libc++_shared.so - NDK STL not packaged. Fixed in gradle by copying from NDK."
+            chain.joinToString().contains("dlopen failed") -> "dlopen failed - check APK lib/arm64-v8a/ inventory and DT_NEEDED"
+            else -> ""
+        }
+        return chain.joinToString(" -> ") + if(hint.isNotEmpty()) " | $hint" else ""
+    }
+
     init {
-        val err = try {
+        var err: Throwable? = null
+        var diag = ""
+        try {
             System.loadLibrary("aether")
-            null
         } catch (t: Throwable) {
-            t
+            err = t
+            diag = buildLoadDiagnostics(t)
+            Log.e(TAG, "Failed to load libaether.so: $diag", t)
+            // Try to hint ABI mismatch
+            try {
+                val abi = android.os.Build.SUPPORTED_ABIS.joinToString(",")
+                Log.e(TAG, "Supported ABIs: $abi, diagnostics: $diag")
+            } catch (_: Throwable) {}
         }
         loadError = err
-        if (err != null) {
-            Log.e(TAG, "Failed to load libaether.so: ${err.message}", err)
-        } else {
-            // Early version sanity check without throwing
+        if (err == null) {
             try {
                 val v = nativeAetherVersion()
                 Log.i(TAG, "Aether native loaded: $v")

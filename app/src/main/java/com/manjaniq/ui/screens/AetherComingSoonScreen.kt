@@ -16,7 +16,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.manjaniq.R
-import com.manjaniq.ui.theme.AetherCyan
+import com.manjaniq.ui.theme.ManjaniqPurple
 import com.manjaniq.ui.theme.AetherSurface
 
 @Composable
@@ -27,7 +27,7 @@ fun AetherComingSoonContent(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, AetherCyan.copy(alpha = 0.3f))
+        border = androidx.compose.foundation.BorderStroke(1.dp, ManjaniqPurple.copy(alpha = 0.3f))
     ) {
         Column(
             modifier = Modifier
@@ -49,14 +49,14 @@ fun AetherComingSoonContent(
                 Icon(
                     imageVector = Icons.Filled.HourglassEmpty,
                     contentDescription = null,
-                    tint = AetherCyan,
+                    tint = ManjaniqPurple,
                     modifier = Modifier.size(28.dp)
                 )
             }
 
             Badge(
                 containerColor = AetherSurface,
-                contentColor = AetherCyan
+                contentColor = ManjaniqPurple
             ) {
                 Text(
                     text = stringResource(R.string.badge_coming_soon),
@@ -112,7 +112,7 @@ private fun FeatureRow(bullet: String, text: String) {
     ) {
         Text(
             text = bullet,
-            color = AetherCyan,
+            color = ManjaniqPurple,
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.width(16.dp)

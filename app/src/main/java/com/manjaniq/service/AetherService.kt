@@ -76,8 +76,25 @@ class AetherService : Service() {
     private fun startAether() {
         goForeground(getString(R.string.notification_starting))
         scope.launch {
-            val cfgStore = AetherConfigStore(this@AetherService)
-            val cfg = cfgStore.load()
+            // Prefer profile-specific config, fallback to legacy single config
+            val cfg: com.manjaniq.core.models.AetherConfig = try {
+                val profileStore = com.manjaniq.core.AetherProfileStore(this@AetherService)
+                val prof = profileStore.getSelectedProfile()
+                val profCfg = profileStore.loadFor(prof)
+                // If selected profile is not WARP_DIRECT but has different SOCKS/port, use it
+                profCfg.base
+            } catch (_: Throwable) {
+                val cfgStore = AetherConfigStore(this@AetherService)
+                cfgStore.load()
+            }
+            // Log which profile is active
+            try {
+                val ps = com.manjaniq.core.AetherProfileStore(this@AetherService).getSelectedProfile()
+                AetherRepository.log("INFO", "Active Aether profile: ${ps.id} -> transport=${cfg.transport}")
+                if (ps.capability != com.manjaniq.core.models.ProfileCapability.Available) {
+                    AetherRepository.log("WARN", "Profile ${ps.id} requires external component or is not verified - tunnel will use base Aether settings only")
+                }
+            } catch (_: Throwable) {}
             val validation = cfg.validate()
             if (validation != null) {
                 AetherRepository.onServiceActionFinished(validation, AetherState.ERROR)

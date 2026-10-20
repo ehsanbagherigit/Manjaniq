@@ -18,7 +18,6 @@ import androidx.compose.ui.unit.sp
 import com.manjaniq.R
 import com.manjaniq.ui.TestTags
 import com.manjaniq.core.SelectedCore
-import com.manjaniq.ui.theme.AetherCyan
 import com.manjaniq.ui.theme.ManjaniqBorder
 import com.manjaniq.ui.theme.ManjaniqPurple
 import com.manjaniq.ui.theme.RstaGold
@@ -62,7 +61,7 @@ fun CoreSelector(
             )
             CoreCard(
                 selected = selected == SelectedCore.AETHER,
-                accent = AetherCyan,
+                accent = ManjaniqPurple,
                 logoRes = R.drawable.ic_aether_logo,
                 logoDesc = stringResource(R.string.cd_aether_logo),
                 name = stringResource(R.string.aether_name),
