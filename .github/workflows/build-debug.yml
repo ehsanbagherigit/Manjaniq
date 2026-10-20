@@ -160,14 +160,17 @@ jobs:
           test -f third_party/Aether-LICENSE || { echo "::error::Missing third_party/Aether-LICENSE (AGPL)"; exit 1; }
           test -f aether-wrapper/Cargo.toml
           grep -q 'tag = "v2.3.0"' aether-wrapper/Cargo.toml || { echo "::error::aether-wrapper not pinned to v2.3.0"; exit 1; }
-          # Toolchain: Rust 1.98 matches aether/Cargo.toml rust-version, BoringSSL needs cmake+perl+clang (already via NDK)
+          # Toolchain: aether/Cargo.toml declares rust-version=1.98 (future). Runner stable is ~1.88-1.91,
+          # so we pass --ignore-rust-version (Cargo 1.84+). BoringSSL needs cmake+perl+clang (via NDK).
           sudo apt-get update && sudo apt-get install -y cmake perl || true
+          rustc --version; cargo --version
+          echo "aether requires Rust 1.98 - using --ignore-rust-version; verify build still succeeds"
           # Build arm64-v8a (primary)
           cd aether-wrapper
-          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --locked || cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release
+          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --locked --ignore-rust-version || cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --ignore-rust-version
           ls -lh ../app/src/main/jniLibs/arm64-v8a/libaether.so
           # Build x86_64 (emulator) - best effort, don't fail primary if missing
-          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --locked || echo "::warning::x86_64 libaether build failed, continuing with arm64 only"
+          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --locked --ignore-rust-version || echo "::warning::x86_64 libaether build failed, continuing with arm64 only"
           ls -lh ../app/src/main/jniLibs/x86_64/ || true
           cd ..
 
@@ -378,8 +381,8 @@ jobs:
           go build -buildmode=c-shared -o app/src/main/jniLibs/x86_64/libmanjaniq_native.so ./native
           # Aether (Rust) - x86_64 needed for emulator
           cd aether-wrapper
-          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --locked || cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release
-          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --locked || cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release || echo "::warning::Aether x86_64 build failed"
+          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --locked --ignore-rust-version || cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --ignore-rust-version
+          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --locked --ignore-rust-version || cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --ignore-rust-version || echo "::warning::Aether x86_64 build failed"
           cd ..
           ls -lh app/src/main/jniLibs/arm64-v8a/ app/src/main/jniLibs/x86_64/
 

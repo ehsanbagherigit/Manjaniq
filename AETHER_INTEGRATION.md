@@ -27,16 +27,15 @@
 ## Build
 ### CI (GitHub Actions, full egress)
 ```yaml
-- uses: dtolnay/rust-toolchain@stable  # 1.98
-- uses: actions-rust-lang/setup-rust-toolchain@v1
-  with: { toolchain: 1.98, targets: aarch64-linux-android,x86_64-linux-android }
+# aether/Cargo.toml rust-version=1.98 > runner stable (~1.88) → --ignore-rust-version required (Cargo 1.84+)
+- run: rustup target add aarch64-linux-android x86_64-linux-android
 - run: cargo install cargo-ndk
-- run: sudo $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.2.9519653"
-- run: cd aether-wrapper && cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --locked
-      # repeat for x86_64: cargo ndk -t x86_64-linux-android -o ../app/src/main/jniLibs build --release
+- run: cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --locked --ignore-rust-version
+      cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --locked --ignore-rust-version
 - run: bash native/verify_aether_lib.sh app/src/main/jniLibs/arm64-v8a/libaether.so
 - run: bash native/verify_native_lib.sh  # RSTA regression
 ```
+See `AETHER_AUDIT_REPORT.md §4` for root-cause (run 39347831303 exit 101) and fix.
 ### Local (sandbox, limited egress)
 - `github.com` + `codeload.github.com` + `api.github.com` allowed → source fetch OK
 - `static.rust-lang.org` + `static.crates.io` + `crates.io` **blocked** → `rustup` + `cargo fetch` fail (SSL_ERROR_SYSCALL). Documented as blocker; local APK builds without libaether.so and degrades (AetherBridge.isNativeAvailable=false banner).
