@@ -115,7 +115,7 @@ class AetherScanStateTest {
         assertEquals(AetherState.ERROR, ui.state)
         assertFalse("Aether must not look like it is running", ui.state.isRunning())
         assertFalse("and it must not look like it is still starting", ui.busy)
-        assertEquals("", "no endpoint may be published for a scan that chose none", ui.endpoint)
+        assertEquals("no endpoint may be published for a scan that chose none", "", ui.endpoint)
         val error = ui.lastError
         assertTrue("the failure is shown: $error", error != null && error.contains("no clean endpoint"))
         assertTrue(messages("ERROR").isNotEmpty())
