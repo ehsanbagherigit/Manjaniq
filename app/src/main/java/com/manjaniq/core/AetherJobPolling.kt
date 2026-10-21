@@ -110,4 +110,50 @@ object AetherJobPolling {
     /** The scan poll deadline: Aether's budget plus [SCAN_MARGIN_MS]. */
     fun scanTimeoutFor(transport: String, scanMode: String): Long =
         scanBudgetFor(transport, scanMode) + SCAN_MARGIN_MS
+
+    /**
+     * Registration (identity open) budget, taken from the engine's own constants
+     * in third_party/Aether/aether/src/account.rs, which drives every WARP API
+     * call including registration:
+     *
+     *  - `API_TIMEOUT = 20 s` (account.rs:248) bounds **one attempt**, and
+     *    `https::send` reports `"<host> did not answer within 20s"` when it
+     *    elapses (https.rs:66-74);
+     *  - `API_ATTEMPTS = 5` (account.rs:250), with `backoff_delay` slept before
+     *    attempts 2-5 (account.rs:255-260): 0.45-0.75 s, 0.9-1.5 s, 1.8-3.0 s,
+     *    3.6-6.0 s, i.e. 6.75-11.25 s in total;
+     *  - a 429/408/5xx answer may carry `Retry-After`, capped at
+     *    `API_RETRY_AFTER_CAP_SECS = 30` (account.rs:253) and slept **inside** the
+     *    loop, so up to four 30 s sleeps.
+     *
+     * A registration nobody answers therefore takes 106.75-111.25 s, and a
+     * rate-limited one up to about 231 s. The identity poll used the flat
+     * [DEFAULT_TIMEOUT_MS] (120 s): 10 s of slack in the first case, and in the
+     * second the app gave up first, called `aether_job_free` - which cancels the
+     * job it removes (ffi.rs:318-330) - and reported its own timeout instead of
+     * the engine's answer.
+     */
+    const val API_ATTEMPT_TIMEOUT_MS: Long = 20_000L
+    const val API_ATTEMPTS: Int = 5
+    const val API_BACKOFF_MIN_MS: Long = 6_750L
+    const val API_BACKOFF_MAX_MS: Long = 11_250L
+    const val API_RETRY_AFTER_MAX_MS: Long = 120_000L
+
+    /** Slack on top of the engine's worst case, for FFI round trips. */
+    const val IDENTITY_MARGIN_MS: Long = 15_000L
+
+    /**
+     * The window a registration occupies when nothing answers at all: five 20 s
+     * attempts plus the four backoff sleeps. An observed failure inside this
+     * window is the engine exhausting its own retries, not the app giving up.
+     */
+    fun noAnswerWindowMs(): LongRange {
+        val attempts = API_ATTEMPTS * API_ATTEMPT_TIMEOUT_MS
+        return (attempts + API_BACKOFF_MIN_MS)..(attempts + API_BACKOFF_MAX_MS)
+    }
+
+    /** The identity poll deadline: the engine's worst case plus [IDENTITY_MARGIN_MS]. */
+    fun identityTimeoutMs(): Long =
+        API_ATTEMPTS * API_ATTEMPT_TIMEOUT_MS + API_BACKOFF_MAX_MS +
+            API_RETRY_AFTER_MAX_MS + IDENTITY_MARGIN_MS
 }

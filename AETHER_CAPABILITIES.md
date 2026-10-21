@@ -201,6 +201,10 @@ this task's scope, so it is reported rather than done):
 | o | A **successful** scan still failed the tunnel start, and its endpoint was thrown away. | `aether_scan_start` finishes with `{"endpoint":{"ip":..,"port":..,"rtt_ms":..},"ok":true}` (`ffi.rs:418-424`, `api.rs:340-345`); the service read that member with `optString`, which stringifies the object, and passed the JSON text to `aether_tunnel_start`, where `socket_of` (`ffi.rs:269-273`) rejects it as `the peer address '…' is not an address:port`. | New pure `core/AetherScanOutcome.endpointFrom` builds `ip:port` (bracketing IPv6 the way `SocketAddr::from_str` needs it) and accepts only text that really parses as an address, so a mis-shaped reply fails here with a clear message instead. |
 | p | `thorough` and `ironclad` scans could never succeed through the app. | The scan poll used the flat `DEFAULT_TIMEOUT_MS` (120 s) while Aether's own budget is per transport and per mode: `prober::ScanMode::strategy` gives thorough 300 s / ironclad 180 s and `wg_prober::WgScanMode::strategy` 250 s / 180 s. The deadline expired first, then `aether_job_free` cancelled the still-working scan (`ffi.rs:318-330`). | `AetherJobPolling.scanBudgetFor` / `scanTimeoutFor` carry the engine's ten budgets (with the engine's own fallbacks: unknown transport → MASQUE, unknown mode → balanced) plus a 20 s margin for in-flight probes and FFI round trips; the service polls with that. |
 | q | A stored or imported transport this build cannot dispatch silently ran as MASQUE. | `api::Transport::parse` maps every id that is not `wg` to Masque, while `validate()` accepted all four ids, so `transport = "gool"` started plain MASQUE with only a WARN in the log. | `validate()` rejects any id outside `AetherTransportChoice.SELECTABLE_IDS` (`masque`, `wg`) and names what would otherwise have run. `AetherService` calls `validate()` before touching the FFI, so the start fails with that message instead of mislabelling the connection. |
+| r | The identity poll could cancel a registration the engine was still retrying, and then report its own timeout. | `pollJob(jobId)` used the flat `DEFAULT_TIMEOUT_MS` (120 s). Registration is bounded by the engine: `API_TIMEOUT = 20 s` per attempt and `API_ATTEMPTS = 5` with backoff (`account.rs:248-260`) is up to 111.25 s, and a 429/408/5xx answer may add `Retry-After` sleeps of up to 30 s each inside the loop (`account.rs:253, 293-304`) — about 231 s. When the app gave up first it called `jobFree`, which cancels the job it removes (`ffi.rs:318-330`). | `AetherJobPolling.identityTimeoutMs()` carries the engine's worst case plus a 15 s margin (246 s), and `noAnswerWindowMs()` records the 106.75-111.25 s window an unanswered registration occupies; the identity block polls with the former and logs the budget before it waits. |
+| s | A registration failure reached the user as a raw nested engine string, with no attempt count, no elapsed time and no way to tell reachability from refusal. | Nothing classified identity/registration failures — unlike scans, which `core/AetherScanOutcome` interprets. The reported run showed only `api: registration: api: api.cloudflareclient.com did not answer within 20s`. | New pure `core/AetherRegistrationOutcome` classifies the engine's own message (NO_ANSWER, REFUSED_BY_API, IDENTITY_REFUSED, BAD_RESPONSE, STORAGE, TLS, ECH, CANCELLED, TIMEOUT, OTHER) and keeps that message **verbatim** in front of one factual sentence: what was tried, that no identity was registered and no tunnel started, and the recoveries the engine itself names (`account.rs:379-392`). A timeout is never dressed as a success and no check is ever suggested to be weakened. `core/AetherNetworkCheck` adds the platform's read-only connectivity facts beside a reachability failure. |
+| t | A successful registration logged `summary=null`. | `aether_identity_open` replies with `id`, `job`, `path`, `lastconn_path`, `model` and `locale` (`ffi.rs:356-365`) — there is no `summary` member, which only `aether_identity_summary` returns. | The log now prints the identity path the engine derived (`api::identity_path` → `…-masque`, `api.rs:256-264`, `lib.rs:840-852`), the lastconn path and the model the registration claimed. |
+| u | Stop during registration left the engine working and leaked the job. | The identity block polled its job without ever publishing it: `currentJobId` stayed null, so `stopAether()` found nothing to `jobCancel`/`jobFree` and `onDestroy()` freed nothing before `scope.cancel()` killed the poll — the engine kept running its five attempts after the user pressed Stop, and the job stayed in the FFI map for the process lifetime. The scan (`AetherService`:471) and tunnel (`:539`) blocks both publish their job; the identity block did not. | The identity job is now published with `setActiveJob` + `currentJobId` before the poll and cleared on all three exit paths (failure, no identity id, success), so Stop cancels it, `onDestroy` frees it, and the panel shows the job that is really in flight. A poll that answers `there is no job N` — the job the app just freed — is classified as a cancellation, not as a refusal. |
 
 `aether_reach_*` strings, `AetherCapabilities` and `AetherCapabilitiesTest` keep
 the matrix above executable: if a field is ever added to the FFI payloads, the
@@ -239,3 +243,25 @@ Listed so nothing is mistaken for missing when it is only unwired:
 * The MASQUE-over-HTTP/2 carrier (`AETHER_MASQUE_HTTP2`, `masque_h2.rs:141`) —
   no control was added, because enabling fragmenting without it would still do
   nothing, and enabling it changes the carrier the tunnel uses.
+* `AETHER_ENROLL_ADDRESS` (`account.rs:423-434`) — dials a named address or
+  address:port for enrollment instead of resolving the API's own name, keeping the
+  API's name for SNI and the HTTP host. Environment-only: `aether_identity_open`
+  has no field for it and an Android process cannot set the engine's environment, so
+  the app always enrolls against `api.cloudflareclient.com:443` (`consts.rs:1`).
+  Note that `api_call` requires it to be an IP address, not a name, when the egress
+  socket is marked (`account.rs:455-466`).
+* `AETHER_API_ECH` (`account.rs:347-365`, `dns.rs:19`) — offers an ECH key for the
+  API call, fetching it over DoH within 12 s when it is not already remembered.
+  Also environment-only, and unset here, so registration offers no ECH and spends no
+  time on that lookup.
+* The `model` and `locale` fields of `OpenPayload` (`ffi.rs:215-225`) — the bridge
+  accepts them (`AetherBridge.identityOpen`) but the service sends neither, so
+  registration claims `consts::DEFAULT_MODEL` / `DEFAULT_LOCALE` = `"PC"` /
+  `"en_US"`. This matches the CLI exactly: it has no `--model`/`--locale` option and
+  provisions with the same two constants (`lib.rs:775-779`). Sending the real device
+  model would change what the app claims to the WARP API, so it is left alone; the
+  model the engine reports back is logged on success, so what was claimed is visible.
+* `AetherBridge.identitySummary` → `aether_identity_summary` (`ffi.rs:371-377`) —
+  returns device id, addresses, organization, gateway proxy, assigned endpoint and
+  the MASQUE certificate state (`api.rs:228-238`). No caller: it is a separate call
+  from the open reply, and nothing in the panel needs it yet.

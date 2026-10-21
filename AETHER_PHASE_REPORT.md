@@ -536,3 +536,225 @@ other engine's files, the shared tag vocabulary in `ui/TestTags.kt`,
 dependency was added. `ui/components/AetherLogPanel.kt` keeps its cyan-on-black
 text on purpose (§8.1).
 
+
+---
+
+## 9. Registration pass — the reported identity failure, end to end
+
+The installed app was started at 02:59:33 and failed at 03:01:23 with
+
+```
+02:59:33 INFO  Aether start requested
+02:59:33 INFO  Active Aether profile: warp_direct -> transport=masque
+02:59:33 INFO  Aether version 2.3.0
+02:59:33 INFO  Opening identity at /data/user/0/com.manjaniq/files/aether_identity transport=masque
+02:59:33 INFO  Waiting for identity job 1...
+03:01:23 ERROR api: registration: api: api.cloudflareclient.com did not answer within 20s
+```
+
+Aether never reached a scan or a tunnel. Everything below is read from the code
+that produced those lines; nothing is inferred from the log text alone.
+
+### 9.1 What each line proves
+
+| Line | What it proves, and where |
+|---|---|
+| `Aether version 2.3.0` | `AetherService` called `AetherBridge.version()` → `nativeAetherVersion()` → `aether_version()`, which answers with `env!("CARGO_PKG_VERSION")` (`ffi.rs:276-278`). The string is compiled into the native library, so it can only appear if `libaether.so` loaded and the JNI round trip worked. `third_party/Aether/aether/Cargo.toml` says `version = "2.3.0"`, so the loaded engine is exactly the vendored one. |
+| `Opening identity at …aether_identity transport=masque` | The service built `"$filesDir/${cfg.identityPath}"`, created the parent directory and called `identityOpen(path, transport = "masque", team = null)`. `aether_identity_open` (`ffi.rs:331-368`) forwards all three into `api::ProvisionRequest::for_transport` and derives the file it writes with `api::identity_path` (`api.rs:256-264`), which for MASQUE and no team is `derive_sibling_path(base, "masque")` = `…/aether_identity-masque` (`lib.rs:840-852`). |
+| `Waiting for identity job 1…` | `aether_identity_open` answered `{"job":1,…}`, so the FFI accepted the payload and spawned the job. Registration runs inside that job. |
+| the ERROR line | `pollJob` returned a failure whose message is the engine's, and `failed()` published it verbatim as ERROR and set state ERROR. |
+
+That registration ran at all is itself evidence: `api::open_identity`
+(`api.rs:319-338`) **loads** an existing identity file and only **provisions** a new
+one when there is none, so this was a first registration for the MASQUE transport
+and no `aether_identity-masque` file existed yet.
+
+### 9.2 The 20 s is the engine's own per-attempt timeout
+
+The message is worded by `https::send`: it wraps one `exchange` (dial + TLS + HTTP)
+in `tokio::time::timeout` and, when that elapses, returns
+`AetherError::Api("{authority} did not answer within {N}s")` (`https.rs:60-74`).
+`{N}` is `account::API_TIMEOUT = 20 s` (`account.rs:248`). DNS resolution, the TCP
+dial, the TLS handshake and the HTTP answer all sit **inside** that one budget
+(`https.rs:76-110`), so "did not answer" covers any of them stalling.
+
+The prefixes in the log line decompose exactly: `api:` is `AetherError::Api`'s
+Display (`error.rs:29-30`), `registration:` is the label `api_call` was given
+(`account.rs:597`), and the second `api:` is the nested `AetherError::Api` from
+`https::send` folded into `format!("{label}: {error}")` (`account.rs:506`).
+
+It is **not** an app-side timeout. The app's own deadline would have produced
+`identity job timed out` from the `pollJob(jobId) == null` branch, and the identity
+poll used `AetherJobPolling.DEFAULT_TIMEOUT_MS` = 120 s, while this failure arrived
+at 110 s.
+
+It is **not** a cancellation caused by polling. The app only frees (and so cancels —
+`aether_job_free` cancels the job it removes, `ffi.rs:318-330`) *after* `pollJob`
+returns, and a cancelled job reports `AetherError::Cancelled` → `cancelled`
+(`error.rs:35-36`), not an API timeout.
+
+### 9.3 The timing arithmetic
+
+`api_call` (`account.rs:455-545`) makes `API_ATTEMPTS = 5` attempts
+(`account.rs:250`), sleeping `backoff_delay` before attempts 2-5
+(`account.rs:255-260`: 0.45-0.75 s, 0.9-1.5 s, 1.8-3.0 s, 3.6-6.0 s). When no
+attempt is answered it returns the last error (`account.rs:544`).
+
+| | seconds |
+|---|---|
+| 5 attempts × `API_TIMEOUT` | 100 |
+| four backoff sleeps (min / max) | 6.75 / 11.25 |
+| **total when nothing answers** | **106.75 – 111.25** |
+| **observed (02:59:33 → 03:01:23)** | **110** |
+
+The observed duration lands inside the engine's own window and below the app's
+120 s deadline: the engine exhausted its five attempts and reported the last one.
+`AetherRegistrationOutcomeTest.theObservedFailureLiesInsideTheEnginesOwnRetryWindow`
+pins this arithmetic so it cannot drift.
+
+`api_ech()` adds nothing here: it returns `Ok(None)` immediately unless the
+`AETHER_API_ECH` environment variable is set (`account.rs:347-352`), and the app
+cannot set process environment, so no DoH ECH lookup (and no `dns.rs:19` 12 s) is on
+this path.
+
+### 9.4 What the app forwards, against what the CLI forwards
+
+Compared only where the code shows both paths:
+
+| Registration input | App (`AetherService` → `AetherBridge.identityOpen`) | CLI (`lib.rs` → `account`) | Equal? |
+|---|---|---|---|
+| identity path | `"$filesDir/${cfg.identityPath}"`, forwarded as `path`; `api::identity_path` derives `…-masque` | `--identity` / config path | both go through `api::open_identity` with the caller's path (`api.rs:256-264, 319-338`) |
+| transport | `cfg.transport` = `masque` → `Transport::Masque`, `masque_cert = true` (`api.rs:214-219`) | same enum | yes |
+| team | sent only when `cfg.teamName` is non-empty | `--team`/Zero Trust settings | yes, both optional |
+| model / locale | **not sent**, so `ProvisionRequest::default()` applies | the CLI has no `--model`/`--locale` option either: `lib.rs:775-779` provisions with `consts::DEFAULT_MODEL`/`DEFAULT_LOCALE` | yes — both claim `"PC"` / `"en_US"` (`consts.rs:10-11`) |
+| API endpoint | `api.cloudflareclient.com:443` (`consts.rs:1`, `account.rs:290-292`) | same, unless `AETHER_ENROLL_ADDRESS` is set (`account.rs:423-434`) | same by default |
+| TLS | BoringSSL with the engine's fingerprint, ECH only when a key is given, validation untouched (`https.rs:76-110`) | same function | yes — one code path |
+| timeouts / retries | `API_TIMEOUT`, `API_ATTEMPTS`, backoff, `Retry-After` cap (`account.rs:248-304`) | same constants | yes |
+
+So the app asked for the same registration the CLI would ask for. Two knobs the CLI
+has and the app cannot reach are worth naming: `AETHER_ENROLL_ADDRESS` (dial a
+specific address for enrollment, `account.rs:423-434`) and `AETHER_API_ECH`
+(`account.rs:347-365`). Both are environment-only, and `aether_identity_open`
+exposes neither, so an Android process cannot set them — a limitation, not a defect.
+
+### 9.5 Two app-side defects this run exposed
+
+**r — the identity poll could cancel a registration the engine was still retrying.**
+The engine's worst case is longer than the 120 s the poll allowed: five 20 s
+attempts plus backoff is up to 111.25 s, and a 429/408/5xx answer may carry
+`Retry-After`, which `api_call` sleeps inside the loop capped at
+`API_RETRY_AFTER_CAP_SECS = 30` (`account.rs:253, 293-304`) — up to four such sleeps,
+so about 231 s. This run had 10 s of slack; a rate-limited one would have had the
+app give up first, call `jobFree`, cancel the still-retrying job and report
+`identity job timed out` instead of the engine's answer. Same family as defect p
+(the scan budgets). Fix: `AetherJobPolling.identityTimeoutMs()` = attempts +
+worst-case backoff + worst-case `Retry-After` + a 15 s margin = 246 s, with
+`noAnswerWindowMs()` recording the 106.75-111.25 s window for the tests.
+
+**s — a registration failure was reported with no explanation.** The user saw a raw
+nested engine string with no attempt count, no elapsed time and no indication of
+which layer failed, and every recovery had to be guessed. Fix: pure
+`core/AetherRegistrationOutcome`, mirroring `AetherScanOutcome`, classifies the
+engine's own message (NO_ANSWER, REFUSED_BY_API, IDENTITY_REFUSED, BAD_RESPONSE,
+STORAGE, TLS, ECH, CANCELLED, TIMEOUT, OTHER) and keeps the engine's wording
+**verbatim** in front of one factual sentence: how many attempts of how long, that
+no identity was registered and no tunnel was started, and the recoveries the engine
+itself names (`account.rs:379-392` for 403/429). It never converts a timeout into a
+success and never suggests weakening a check.
+
+**u — Stop during registration left the engine working and leaked the job.** The
+identity block polled its job without ever publishing it, so `currentJobId` stayed
+null while registration was in flight. `stopAether()` reads `currentJobId` to decide
+what to `jobCancel` and `jobFree`, and `onDestroy()` does the same before
+`scope.cancel()`: with nothing registered, a Stop cancelled the *attempt* (so the UI
+correctly showed STOPPED) while the engine kept running its five 20 s attempts in the
+background, and killing the poll coroutine meant the job was never freed at all. The
+scan and tunnel blocks both publish their job; the identity block did not. Fix: the
+identity job is published with `setActiveJob` + `currentJobId` before the poll and
+cleared on all three exit paths, and a poll that answers `there is no job N` — the job
+the app itself freed — is classified as a cancellation rather than a refusal. This
+matters more now that the deadline is 246 s: a Stop has to end the registration, not
+merely stop watching it.
+
+Alongside those, the identity block now logs what the engine answered with instead
+of a field that does not exist: the open reply carries `path`, `lastconn_path`,
+`model` and `locale` (`ffi.rs:356-365`), never `summary`, so `summary=null` was
+printed on every successful registration. It now prints the derived identity path,
+the lastconn path and the model the registration claimed.
+
+### 9.6 Environmental blocker, with the diagnostics that are safe to run
+
+The cause of the reported failure is that `api.cloudflareclient.com:443` did not
+answer this device on any of five attempts. That is a reachability result for the
+device's network — name resolution, TCP, TLS or the HTTP answer — and no change in
+this repository can make an unreachable endpoint reachable. It is reported as an
+**environmental blocker**, not as a product fix.
+
+To stop that being a guess, `core/AetherNetworkCheck` now logs the platform's own
+read-only answer next to such a failure: active network or none, validated /
+captive portal / not-internet, transport list (including vpn), DNS server count,
+system proxy and metered state. It opens no socket, performs no DNS query, sends no
+request and touches no certificate, and it uses only `ACCESS_NETWORK_STATE`, which
+the manifest already declares — no shared file changed. When those facts say the
+device was not on a usable network, a WARN says so plainly; when they say it was,
+the blocker is upstream of the device and the log shows that too.
+
+Ordinary checks that are safe to run on the device, in order: confirm the device has
+working internet in a browser; confirm DNS resolves `api.cloudflareclient.com`
+(e.g. from another app or `ping`); confirm no captive portal is waiting on the
+network; confirm no VPN, filtering app or firewall is blocking outbound 443; then
+retry the start, ideally on a different network. Nothing in that list weakens TLS:
+the engine's certificate validation, pinning and fingerprint stay exactly as they
+are (`https.rs:76-110`), and no code here disables them.
+
+### 9.7 Native library and version evidence
+
+* `libaether.so` for arm64-v8a and `libc++_shared.so` beside it are asserted by the
+  CI step "Verify APK contents" (`.github/workflows/build-debug.yml:333-361`), which
+  fails the build if either is missing; that step is green on run 39585297915.
+* On the device, the `Aether version 2.3.0` line is the native library answering
+  `aether_version()` (`ffi.rs:276-278`), and `Cargo.toml` says 2.3.0 — so the
+  installed APK contains the vendored engine and it loaded.
+* `native/verify_aether_lib.sh` is the local equivalent; in this sandbox it exits 0
+  with SKIP because no `.so` is built here.
+
+### 9.8 Tests added in this pass
+
+`test/AetherRegistrationOutcomeTest.kt` (pure JUnit) — classification of every
+failure family including the reported message verbatim, the engine's wording
+surviving into the report, the attempt count and per-attempt budget being named, no
+report claiming success or a running tunnel, recovery hints taken from what the
+engine says, no suggestion to weaken certificate validation, the 110 s observation
+inside the engine's window and below the app's deadline, and the identity deadline
+outlasting every schedule the engine can run.
+
+`test/AetherRegistrationStateTest.kt` (Robolectric) — what the screen is told:
+ERROR with the engine's wording on screen, no identity and no endpoint published, an
+app-side timeout reported as an error and not as a success, a user stop reported as
+STOPPED with no error, exactly one ERROR line per failed registration, a retry that
+starts clean, can succeed and keeps the earlier failure in the log history, and the
+identity job being the active job while it is polled and cleared on all three exits.
+
+`test/AetherNetworkCheckTest.kt` (Robolectric) — an unread network state is reported
+as unread rather than as offline, a captive portal is named, a missing DNS server or
+a system proxy is reported rather than hidden, and no line suggests disabling a
+check.
+
+Registration **success** through the real API cannot be unit-tested: it needs a
+device, a network that reaches the API and the real `libaether.so`. What is tested
+is the app's side of it — the state it publishes, the identity it records, the paths
+it logs and the errors it refuses to hide.
+
+### 9.9 Files changed in this pass
+
+New: `core/AetherRegistrationOutcome.kt`, `core/AetherNetworkCheck.kt`,
+`test/AetherRegistrationOutcomeTest.kt`, `test/AetherRegistrationStateTest.kt`,
+`test/AetherNetworkCheckTest.kt`.
+
+Modified: `core/AetherJobPolling.kt`, `service/AetherService.kt`,
+`AETHER_CAPABILITIES.md`, `AETHER_PHASE_REPORT.md`.
+
+All are Aether-owned by name and by content. `AndroidManifest.xml` was **not**
+touched — `ACCESS_NETWORK_STATE` was already declared (line 6). No shared
+component, theme, navigation, string resource, Gradle file, CI workflow, other
+engine file or vendored `third_party` file changed, and no dependency was added.

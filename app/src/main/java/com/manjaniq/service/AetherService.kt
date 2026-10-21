@@ -14,6 +14,8 @@ import com.manjaniq.MainActivity
 import com.manjaniq.R
 import com.manjaniq.core.AetherConfigStore
 import com.manjaniq.core.AetherJobPolling
+import com.manjaniq.core.AetherNetworkCheck
+import com.manjaniq.core.AetherRegistrationOutcome
 import com.manjaniq.core.AetherRepository
 import com.manjaniq.core.AetherScanOutcome
 import com.manjaniq.core.EngineRepository
@@ -329,8 +331,13 @@ class AetherService : Service() {
                 team = teamJson
             )
             if (openRes.isFailure) {
-                val err = openRes.exceptionOrNull()?.message ?: "identity open failed"
-                failed(err)
+                // aether_identity_open itself refused the payload, before any job existed
+                failed(
+                    AetherRegistrationOutcome.report(
+                        openRes.exceptionOrNull()?.message,
+                        AetherJobPolling.identityTimeoutMs()
+                    )
+                )
                 stopForegroundAndSelf()
                 return@launch
             }
@@ -342,12 +349,51 @@ class AetherService : Service() {
                 stopForegroundAndSelf()
                 return@launch
             }
-            AetherRepository.log("INFO", "Waiting for identity job $jobId...")
-            val openDone = pollJob(jobId)
+            // The engine's own schedule bounds registration: API_ATTEMPTS attempts of
+            // API_TIMEOUT each with backoff, plus any Retry-After it is told to sleep
+            // (account.rs:248-260, 293-304). A shorter app deadline would free - and so
+            // cancel - a job that is still legitimately retrying, and then report the
+            // app's timeout instead of the engine's answer.
+            // Publish the identity job as the active one, as the scan and tunnel blocks
+            // do. Without this `stopAether()` and `onDestroy()` find `currentJobId` null
+            // while registration is in flight, so a Stop leaves the engine running its
+            // five attempts in the background and the job is never freed.
+            AetherRepository.setActiveJob(jobId)
+            synchronized(this@AetherService) { currentJobId = jobId }
+            val identityTimeout = AetherJobPolling.identityTimeoutMs()
+            AetherRepository.log(
+                "INFO",
+                "Waiting for identity job $jobId (Aether allows " +
+                    "${AetherJobPolling.API_ATTEMPTS} attempts of " +
+                    "${AetherJobPolling.API_ATTEMPT_TIMEOUT_MS / 1000}s with backoff and any " +
+                    "Retry-After wait, so this can take up to ${identityTimeout / 1000}s)"
+            )
+            val openDone = pollJob(jobId, identityTimeout)
             if (openDone == null || openDone.isFailure) {
-                val errMsg = openDone?.exceptionOrNull()?.message ?: "identity job timed out"
-                failed(errMsg)
+                val rawFailure = openDone?.exceptionOrNull()?.message
+                // When registration could not reach the API, say what this device could
+                // see at that moment: read-only platform facts, no connection of our own.
+                when (AetherRegistrationOutcome.classify(rawFailure)) {
+                    AetherRegistrationOutcome.Failure.NO_ANSWER,
+                    AetherRegistrationOutcome.Failure.TLS,
+                    AetherRegistrationOutcome.Failure.ECH,
+                    AetherRegistrationOutcome.Failure.TIMEOUT -> {
+                        val facts = AetherNetworkCheck.factsOf(applicationContext)
+                        AetherRepository.log("INFO", AetherNetworkCheck.summarize(facts))
+                        if (facts != null && !AetherNetworkCheck.looksReachable(facts)) {
+                            AetherRepository.log(
+                                "WARN",
+                                "The device itself was not on a usable network, so this is not an " +
+                                    "Aether fault: bring the device online and start again"
+                            )
+                        }
+                    }
+                    else -> Unit
+                }
+                failed(AetherRegistrationOutcome.report(rawFailure, identityTimeout))
                 AetherBridge.jobFree(jobId)
+                synchronized(this@AetherService) { if (currentJobId == jobId) currentJobId = null }
+                AetherRepository.setActiveJob(null)
                 stopForegroundAndSelf()
                 return@launch
             }
@@ -357,14 +403,26 @@ class AetherService : Service() {
             if (identityId == -1L) {
                 failed("identity open failed: $openResult")
                 AetherBridge.jobFree(jobId)
+                synchronized(this@AetherService) { if (currentJobId == jobId) currentJobId = null }
+                AetherRepository.setActiveJob(null)
                 stopForegroundAndSelf()
                 return@launch
             }
-            // Summary includes lastconn_path
             AetherRepository.setIdentity(identityId)
             currentIdentityId = identityId
             AetherBridge.jobFree(jobId)
-            AetherRepository.log("OK", "Identity ready id=$identityId summary=${openResult.optJSONObject("summary")}")
+            synchronized(this@AetherService) { if (currentJobId == jobId) currentJobId = null }
+            AetherRepository.setActiveJob(null)
+            // open_identity derives the file it writes from the configured path and the
+            // transport (api.rs:256-264: aether_identity -> aether_identity-masque), so
+            // log the paths the engine reports rather than only the configured one.
+            val derivedPath = openResult.optString("path").ifEmpty { identityPath }
+            val lastconn = openResult.optString("lastconn_path").ifEmpty { "not reported" }
+            val claimedModel = openResult.optString("model").ifEmpty { "engine default" }
+            AetherRepository.log(
+                "OK",
+                "Identity ready id=$identityId at $derivedPath (lastconn $lastconn, model $claimedModel)"
+            )
 
             // Determine peer: if cfg.peer empty, we must scan first else direct tunnel
             val tunnelPeer = cfg.peer.trim().ifEmpty { null }
