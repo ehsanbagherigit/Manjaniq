@@ -105,6 +105,55 @@ class AetherCapabilitiesTest {
     }
 
     @Test
+    fun aTransportIsSelectableExactlyWhenThisBuildCanDispatchIt() {
+        // `api::Transport` has only Masque and WireGuard (api.rs:13-16) and its
+        // `parse` maps every other id to Masque, so gool and mim are reachable
+        // only through `aether_core_start` (ffi.rs:507 -> lib.rs `run_with` ->
+        // AETHER_PROTOCOL), which nothing in this app calls. `selectable` drives
+        // both the chip's clickability and `validate()`, so the UI and the start
+        // path can never disagree about what is dispatchable.
+        AetherTransportChoice.ALL.forEach { choice ->
+            val dispatchable = choice.id == "masque" || choice.id == "wg"
+            assertEquals(choice.id, dispatchable, choice.selectable)
+            assertEquals(choice.id, dispatchable, AetherTransportChoice.isSelectable(choice.id))
+            val message = AetherConfig.DEFAULT.copy(transport = choice.id).validate()
+            if (dispatchable) {
+                assertNull("${choice.id} must be startable", message)
+            } else {
+                // Refused before any FFI call, and the message says what would
+                // otherwise have run instead of the requested protocol.
+                assertNotNull("${choice.id} must not reach the FFI", message)
+                assertTrue(message!!.contains(choice.id))
+                assertTrue(message!!.contains("MASQUE"))
+            }
+        }
+        assertEquals(listOf("masque", "wg"), AetherTransportChoice.SELECTABLE_IDS)
+    }
+
+    @Test
+    fun allFourFragmentingKeysAreRecordedOnlyAndNeverForwarded() {
+        // The values are persisted, validated and mapped onto real CLI flags by
+        // toAetherArgs(), but that argv belongs to AetherBridge.coreStart, which
+        // has no caller: aether_tunnel_start's payload (ffi.rs TunnelPayload) has
+        // no fragmenting field. This classification is what the UI renders, and
+        // it is why the panel shows the values read-only with the reason.
+        listOf("fragmentEnabled", "fragmentSize", "fragmentDelay", "fragmentSniSplit").forEach { key ->
+            assertEquals(key, AetherReach.NotForwarded, AetherCapabilities.reachOf(key))
+            assertFalse(key, AetherCapabilities.isForwarded(key))
+            assertNotNull(key, AetherCapabilities.of(key))
+            assertTrue("$key must carry a reason", AetherCapabilities.of(key)!!.reasonRes != 0)
+        }
+        // And fragmenting is not a per-route setting group any more: no route
+        // lists it, so it can never read as a working per-route switch.
+        AetherProfile.ALL.forEach { profile ->
+            val titles = getSectionsForProfile(profile).map { it.titleRes }
+            assertFalse("$profile must not own a fragmenting section", titles.contains(R.string.section_fragmenting))
+            val keys = getSectionsForProfile(profile).flatMap { it.keys }
+            assertFalse("$profile must not offer fragment keys as settings", keys.contains("fragmentEnabled"))
+        }
+    }
+
+    @Test
     fun scanModesMatchProberScanMode() {
         assertEquals(
             listOf("turbo", "balanced", "thorough", "verified", "ironclad"),

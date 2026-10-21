@@ -140,10 +140,25 @@ The app follows the *documented* defaults (`off`, `16-32`, `2-10`) and records t
 conflict instead of picking a side. `AetherFragmenting.DEFAULT_*` and
 `AetherConfig.DEFAULT` carry them; `AetherCapabilitiesTest` pins them.
 
-**What the UI does.** The Fragmenting group is listed for every route that can
-carry MASQUE (`getSectionsForProfile` → `profileSupportsFragmenting`), shows the
-stored values, names the four variables Aether reads, and states plainly that
-they are *recorded, not applied in this build*. The values are persisted
+**What the UI does.** Fragmenting is reported **once**, in a single
+informational card near the bottom of the Aether screen — immediately before the
+operational log, which stays last so the newest real event is always at the very
+bottom — and not as a per-route settings group. It was a per-route group before;
+that placement read as "this route can do fragmenting", which is not true of any
+route in this build, and it repeated the same explanation four times.
+`AetherFragmentingInfo` (in `ui/screens/AetherPanel.kt`) shows, in this order:
+the title and the status *Recorded, not applied in this build*; what fragmenting
+is; **the exact carrier it would apply to** (MASQUE over HTTP/2, which is itself
+off unless `AETHER_MASQUE_HTTP2` is set — never HTTP/3 MASQUE, never WireGuard,
+never gool or mim); the reach note from `AetherCapabilities`; whose values these
+are (the selected route, named); the four stored values read-only; the four
+environment variables Aether reads; and how they could be changed. There is no
+switch, because a switch here would change nothing at runtime.
+
+`getSectionsForProfile` no longer lists a fragmenting section for any route, and
+`profileSupportsFragmenting` now answers the question it is actually asked —
+"can this route carry MASQUE at all" — by delegating to
+`profileUsesAetherGateway`. The values are still per-route: they are persisted
 (`AetherConfig.toJson`/`fromJson`), validated against Aether's own limits
 (`AetherFragmenting.validateRange`, max 1500 bytes / 5000 ms), exported in the
 route's JSON and mapped onto the real CLI flags by `toAetherArgs()`
@@ -183,6 +198,9 @@ this task's scope, so it is reported rather than done):
 | l | A route's settings could never be collapsed. | `expandedMap = expandedMap + (id to true)` — the map could only ever gain `true`. | A single `settingsOpen` flag toggled by tapping the already-selected route. |
 | m | `--noize off` was dropped from the CLI mapping. | `toAetherArgs` emitted the flag only for non-"off" values, so choosing "off" silently left Aether on its own default. | `--noize` is emitted for every non-blank profile. |
 | n | A dead read in the profile-store migration. | `val oldJson = prefs.getString("aether_config_json", null)` read a key that does not exist in that preferences file, with a comment saying "check". | Removed; the comment now names the file that does own the key. |
+| o | A **successful** scan still failed the tunnel start, and its endpoint was thrown away. | `aether_scan_start` finishes with `{"endpoint":{"ip":..,"port":..,"rtt_ms":..},"ok":true}` (`ffi.rs:418-424`, `api.rs:340-345`); the service read that member with `optString`, which stringifies the object, and passed the JSON text to `aether_tunnel_start`, where `socket_of` (`ffi.rs:269-273`) rejects it as `the peer address '…' is not an address:port`. | New pure `core/AetherScanOutcome.endpointFrom` builds `ip:port` (bracketing IPv6 the way `SocketAddr::from_str` needs it) and accepts only text that really parses as an address, so a mis-shaped reply fails here with a clear message instead. |
+| p | `thorough` and `ironclad` scans could never succeed through the app. | The scan poll used the flat `DEFAULT_TIMEOUT_MS` (120 s) while Aether's own budget is per transport and per mode: `prober::ScanMode::strategy` gives thorough 300 s / ironclad 180 s and `wg_prober::WgScanMode::strategy` 250 s / 180 s. The deadline expired first, then `aether_job_free` cancelled the still-working scan (`ffi.rs:318-330`). | `AetherJobPolling.scanBudgetFor` / `scanTimeoutFor` carry the engine's ten budgets (with the engine's own fallbacks: unknown transport → MASQUE, unknown mode → balanced) plus a 20 s margin for in-flight probes and FFI round trips; the service polls with that. |
+| q | A stored or imported transport this build cannot dispatch silently ran as MASQUE. | `api::Transport::parse` maps every id that is not `wg` to Masque, while `validate()` accepted all four ids, so `transport = "gool"` started plain MASQUE with only a WARN in the log. | `validate()` rejects any id outside `AetherTransportChoice.SELECTABLE_IDS` (`masque`, `wg`) and names what would otherwise have run. `AetherService` calls `validate()` before touching the FFI, so the start fails with that message instead of mislabelling the connection. |
 
 `aether_reach_*` strings, `AetherCapabilities` and `AetherCapabilitiesTest` keep
 the matrix above executable: if a field is ever added to the FFI payloads, the
@@ -198,6 +216,11 @@ Listed so nothing is mistaken for missing when it is only unwired:
 * `AetherBridge.verifyStart` → `aether_verify_start` (`ffi.rs:450`) — dials a
   candidate and performs a real request; this is what `scanMode = ironclad` does
   inside the scan, so the separate call is redundant here.
+* `AetherBridge.pollUntilDone` — a second, older copy of the poll loop with a
+  flat 30 s timeout and a blocking `Thread.sleep`. It has no callers; the service
+  uses its own `pollJob` over `AetherJobPolling`. Left in place (removing it is
+  not needed for any fix), but noted so nobody reaches for it: 30 s is shorter
+  than every scan budget Aether has.
 * `AetherProfileStore.loadAll` / `exportAllJson` / `importAllJson` — all-route
   export/import. Per-route export/import *is* in the UI; the all-route variant is
   code-only.

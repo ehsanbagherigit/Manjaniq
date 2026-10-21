@@ -137,6 +137,20 @@ class AetherJobPollingTest {
     }
 
     @Test
+    fun aLongerScanWaitDoesNotMakeCancellationSlower() {
+        // Cancellation is not a deadline: it goes through jobFree/jobCancel, and
+        // the poll loop's granularity only bounds how quickly the loop itself can
+        // notice anything. Waiting longer for Aether's own budget must not make a
+        // stop less responsive, and the wait must stay bounded.
+        assertTrue(AetherJobPolling.POLL_INTERVAL_MS <= 1_000L)
+        val longest = AetherJobPolling.scanTimeoutFor("masque", "thorough")
+        assertTrue("the wait stays bounded: $longest", longest <= 400_000L)
+        // The deadline is exclusive, so the loop stops at it instead of spinning on.
+        assertFalse(AetherJobPolling.shouldKeepPolling(longest, longest))
+        assertTrue(AetherJobPolling.shouldKeepPolling(longest - 1, longest))
+    }
+
+    @Test
     fun boundsAreSaneForAForegroundService() {
         assertTrue(AetherJobPolling.DEFAULT_TIMEOUT_MS >= 30_000L)
         assertTrue(AetherJobPolling.DEFAULT_TIMEOUT_MS <= 600_000L)

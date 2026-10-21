@@ -208,16 +208,18 @@ fun AetherPanel(
             isNativeLoaded = ui.isNativeLoaded
         )
 
+        // Near the bottom, immediately before the log: informational only, and
+        // labelled as not applied. The operational log stays last, so the newest
+        // real Aether event is always the bottom thing on the screen.
+        AetherFragmentingInfo(
+            config = profileConfig?.base ?: legacyConfig,
+            routeName = selectedProfile?.let { stringResource(it.titleRes) }
+        )
+
         AetherLogPanel(
             logs = logs,
             state = ui.state,
             onClear = onClearLogs
-        )
-
-        // Last, after the log: informational only, labelled as not applied.
-        AetherFragmentingInfo(
-            config = profileConfig?.base ?: legacyConfig,
-            routeName = selectedProfile?.let { stringResource(it.titleRes) }
         )
     }
 }
@@ -922,9 +924,10 @@ private fun AetherSetting(
 /**
  * The single informational Fragmenting area.
  *
- * It sits at the bottom of the Aether screen, after the operational log, and it
- * is deliberately not a per-route setting: fragmenting belongs to one carrier,
- * not to a route, and this build cannot apply it at all.
+ * It sits near the bottom of the Aether screen, immediately before the
+ * operational log (which stays last), and it is deliberately not a per-route
+ * setting: fragmenting belongs to one carrier, not to a route, and this build
+ * cannot apply it at all.
  *
  * What the repository establishes:
  *  - `third_party/Aether/aether/src/fragment.rs` implements it

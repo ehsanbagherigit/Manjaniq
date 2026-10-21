@@ -220,49 +220,77 @@ collapsed; `--noize off` dropped from the CLI mapping; a dead preferences read.
 
 ## 5. Tests and build — exact commands, actual results
 
-### Ran in this workspace
+### What this sandbox can run
 
 | Command | Result |
 |---|---|
+| `command -v java javac gradle kotlinc cargo go adb sdkmanager` | all `(not found)`; `python3` is the only toolchain present |
 | `./gradlew :app:compileDebugKotlin --offline` | **exit 1** — `ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH.` |
 | `./gradlew :app:testDebugUnitTest --tests "com.manjaniq.Aether*" --offline` | **exit 1** — same JAVA_HOME error |
 | `python3 scripts/check_assets.py` | **exit 0 — ASSET CHECK PASSED** (25 raster files; `ic_aether_logo.png` matches the original, mean diff 0.03) |
 | `bash native/verify_aether_lib.sh` | **exit 0**, `SKIP: …/jniLibs/arm64-v8a/libaether.so not found (local build without Rust - CI must build it). This is expected in sandbox.` |
-| `command -v java javac gradle kotlinc cargo go adb sdkmanager` | all `(not found)`; `python3` is the only toolchain present |
 
 `scripts/check_assets.py` needed `Pillow`, installed with
 `python3 -m pip install --break-system-packages Pillow` (Pillow 13.0.0) — an
 environment change only, nothing in the repository.
 
-So: **no compilation and no test execution happened.** There is no JDK, no Gradle
-distribution (`gradle/wrapper` can't fetch one without Java), no Android SDK, and
-no `libaether.so`, so the JNI path cannot be exercised at all. This is not a
-pre-existing failure versus a regression — nothing was runnable before my changes
-either.
+There is no JDK, no Gradle distribution, no Android SDK and no `libaether.so`
+here, so **the compiler and the test runner for this work are GitHub Actions**,
+which the repository already runs on every push
+(`.github/workflows/build-debug.yml` → `scripts/ci/gradle_step.sh`:
+`:app:compileDebugKotlin`, `:app:compileDebugUnitTestKotlin`,
+`:app:compileDebugAndroidTestKotlin`, then `:app:testDebugUnitTest`,
+`:app:assembleDebug`, an APK check, the Go engine tests, the Rust
+`libaether.so` build and an `emulator-smoke` job).
 
-### What was verified instead
+### Actual CI runs on this branch
 
-1. **Brace/paren/bracket balance** over all 23 changed and new Kotlin files
-   (string- and comment-aware scanner): all balanced.
-2. **Resource resolution**: every `R.string.*` reference in `app/src/main`,
-   `app/src/test` and `app/src/androidTest` (472 references, 339 distinct names)
-   resolves against the 382 defined strings; **0 missing**. Every `R.drawable.*`
-   resolves; **0 missing**.
-3. **XML validity**: `strings_aether.xml` parses with `xml.dom.minidom`; no
-   duplicate names; no unescaped apostrophes.
-4. **Identifier cross-reference**: every `Object.member` reference to the Aether
-   types (`AetherTestTags`, `AetherCapabilities`, `AetherFragmenting`, the four
-   choice enums, `AetherJobPolling`, `AetherLogSanitizer`, `AetherRepository`,
-   `AetherProfile*`, `AetherConfig`, `TestTags`, `AetherBridge`) resolves to a real
-   declaration; every capitalised call in the new UI files resolves to an import, a
-   same-package declaration or the stdlib.
-5. **Manual reads** of the whole of `AetherPanel.kt`, `AetherFlowControls.kt`,
-   `AetherLogPanel.kt` and the modified regions of `AetherService.kt`,
-   `AetherRepository.kt`, `AetherConfig.kt`, `AetherProfile.kt`,
-   `AetherStatusCard.kt`, `AetherProfileCard.kt`, `HomeScreen.kt`.
-6. **Diff review** (§7): `git status --porcelain` and `git diff -U0` on
-   `HomeScreen.kt` confirm the shared-file edits stay inside the Aether branch
-   (hunks at old lines 175, 278 and 303 only; lines 1-174 untouched).
+| Commit | Run | Result |
+|---|---|---|
+| `7f61c7e` | 39502681867 | **failure** — `compileDebugUnitTestKotlin`: unresolved references in `AetherPanelUiTest.kt` (`onAllNodes` is a rule member, not an import) and a bad `typeInto` helper |
+| `6bf1ae3` | 39505418108 | **failure** — `testDebugUnitTest`: `70 tests completed, 9 failed`; all nine were test-side (`hasText` matches exactly by default, `assertIsDisplayed` is viewport-dependent under Robolectric, a sample port tripped the socks == http rule) |
+| `7fef57c` | 39508147489 | **failure** — `compileDebugUnitTestKotlin`: `Unresolved reference 'boundsInRoot'`; compose-ui-test does not export it. The ordering assertion was dropped |
+| `6029c55` | 39509804264 | **success** — build (compile ×3, unit tests, `assembleDebug`, APK verification) and `emulator-smoke` both green |
+| `edfacb8` | 39519495879 | **PENDING_PASS2** |
+
+No failure in that table came from product code; all three red runs were test or
+test-helper mistakes, fixed in the commit above them.
+
+Workflow logs and artifacts cannot be downloaded from this sandbox (the storage
+hosts are unreachable), so failures were read from check-run annotations:
+
+```
+JOB=$(gh run view 39505418108 --json jobs -q '.jobs[]|select(.name=="build")|.databaseId')
+gh api "repos/ehsanbagherigit/Manjaniq/check-runs/$JOB/annotations?per_page=100" \
+  -q '.[]|select(.annotation_level=="failure")|.message'
+gh run view 39509804264 --json status,conclusion,jobs \
+  -q '.jobs[].steps[]|"\(.number):\(.status)/\(.conclusion)"'
+```
+
+One failure-level annotation survives on **green** runs:
+`error[E0308] … --> src/lib.rs:38:74` from the x86_64 Rust build, which step 16
+of the workflow deliberately tolerates — the arm64 `libaether.so` the APK needs is
+verified separately in step 17. It is a pre-existing CI artifact, present on the
+base commit's runs too, not a regression from this work.
+
+### What the executed tests cover
+
+Nine test classes under `app/src/test/java/com/manjaniq/`, all Aether-only:
+
+| Class | Runner | Covers |
+|---|---|---|
+| `AetherJobPollingTest` | plain JUnit | deadline arithmetic, the `Long.MAX_VALUE` overflow, and the ten engine scan budgets plus their fallbacks |
+| `AetherLogSanitizerTest` | plain JUnit | PEM / JWT / URL-userinfo / key-value redaction at the logging boundary |
+| `AetherScanOutcomeTest` | Robolectric | scan reply parsing (IPv4, bracketed IPv6, mis-shaped replies) and classification of every Aether scan error string from fixtures |
+| `AetherScanStateTest` | Robolectric | what the panel is told after each outcome: success, no clean endpoint, timeout, cancellation, stop during startup, retry after both |
+| `AetherConfigLogicTest` | Robolectric | `validate()`, the transport dispatch guard, port and loopback rules, CLI mapping |
+| `AetherConfigJsonTest` | Robolectric | persistence round-trips, including every fragmenting field |
+| `AetherCapabilitiesTest` | Robolectric | the capability matrix, the choice enums against the Rust parsers, fragmenting scope per route |
+| `AetherPanelValidationTest` | Robolectric | per-field validation messages and the section/tag vocabulary |
+| `AetherPanelUiTest` | Robolectric + Compose | the real `MainActivity`: progressive disclosure, collapsed groups, disabled choices, redaction, the log filter, scan-outcome display, small-input marking |
+
+Nothing in them touches a network, a device or `libaether.so`. The scan tests use
+fixtures shaped exactly like the core's replies.
 
 ### Commands to run where a JDK and the Android SDK exist
 
@@ -273,44 +301,50 @@ either.
 ./gradlew :app:assembleDebug
 ./gradlew :app:connectedDebugAndroidTest  # LaunchSmokeTest, NavigationTest, EngineLifecycleTest, AppLaunch
 ```
-These are the same steps `.github/workflows/build-debug.yml` runs through
-`scripts/ci/gradle_step.sh`.
-
-The 7 new test classes are **written but never executed**. The riskiest
-assumptions a compiler would confirm or reject: Compose Material3 signatures used
-by `AetherFlowControls`/`AetherLogPanel` (`Card(onClick=…)`, `FilterChip`,
-`HorizontalDivider`, `OutlinedTextField(minLines=…)`), `internal` visibility from
-the unit-test source set (`sectionKey`, `aetherBindError`, `MAX_RENDERED_LINES`),
-and Robolectric's Compose viewport behaviour in `AetherPanelUiTest`
-(`performScrollTo` before `performClick`, `performTextClearance`).
+These are the same steps CI runs.
 
 ---
 
 ## 6. Unresolved items
 
-1. **Nothing was compiled or run here.** Highest priority: run the commands in §5.
-2. **Fragmenting cannot be applied** without either starting Aether through
+1. **Fragmenting cannot be applied** without either starting Aether through
    `aether_core_start` or adding an `aether-wrapper` export that sets the
    `AETHER_MASQUE_H2_FRAGMENT*` variables and `AETHER_MASQUE_HTTP2`. Both need
    approval: the first changes the connection path, the second adds native surface
    that cannot be built or tested in this workspace.
-3. **gool / mim** need the same decision (they are CLI-only protocols on the
+2. **gool / mim** need the same decision (they are CLI-only protocols on the
    `aether_core_start` path).
-4. **DNS / upstream / quick reconnect** likewise — `TunnelSpec` has no fields for
+3. **DNS / upstream / quick reconnect** likewise — `TunnelSpec` has no fields for
    them. Today they are recorded, shown with the reason, and warned about in the
    operational log.
-5. **Zero Trust enrolment** is incomplete by design: the six `aether_team_*`
+4. **Zero Trust enrolment** is incomplete by design: the six `aether_team_*`
    exports are wrapped but uncallable from any screen, and a team name without a
    token or one-time code cannot enrol. Needs a product decision (a token entry
    screen) before any UI can honestly offer it.
-6. **Fragmenting default conflict upstream** (`fragment.rs` vs `cli.rs` vs
+5. **Fragmenting default conflict upstream** (`fragment.rs` vs `cli.rs` vs
    `Docs/GUIDE.en.md`) — reported, not guessed at.
-7. **`AETHER_MASQUE_HTTP2` carrier** has no control; adding one without a working
+6. **`AETHER_MASQUE_HTTP2` carrier** has no control; adding one without a working
    fragmenting path would be a switch that changes nothing.
-8. **All-route export/import** exists in `AetherProfileStore` and is still not
+7. **All-route export/import** exists in `AetherProfileStore` and is still not
    surfaced.
-9. The legacy `AetherSettingsForm` chip rows can overflow horizontally (unreachable
+8. The legacy `AetherSettingsForm` chip rows can overflow horizontally (unreachable
    fallback path; see §4).
+9. **The scan budgets are a copy of upstream constants.** `AetherJobPolling`
+   carries the ten `overall_deadline` values from `prober.rs` and `wg_prober.rs`.
+   If Aether is re-vendored with different budgets, that table must be updated
+   too; nothing in Kotlin can check it automatically. `AetherJobPollingTest` pins
+   the current values so a change is at least deliberate.
+10. **A thorough MASQUE scan now waits up to 320 s.** That is what Aether itself
+    needs, and the wait happens in a foreground service with a notification, but
+    it is a visible product decision: the alternative was the old behaviour,
+    where the mode could never complete. There is no cancel-scan affordance other
+    than Stop, which does cancel it and now reports that as a cancellation.
+11. **`ip = v6` on a host without an IPv6 route fails at once** with
+    `prober: no clean endpoint found` (`prober.rs:277`, `wg_prober.rs:162`).
+    Pre-checking that in the app would need connectivity/network-capability APIs
+    that are shared and outside this scope, so it is reported here instead: the
+    message is now explained on screen, but the root cause (no IPv6 route) is not
+    detected.
 
 ---
 
@@ -348,3 +382,157 @@ test files, and 2 new documents.
   fragmenting, Psiphon and Tor settings are all still reachable, and the ones this
   build cannot forward say so on screen.
 * No dependency was added or updated.
+
+---
+
+## 8. Refinement pass — colour, fragmenting placement, dispatch, scan
+
+A second Aether-only pass over the work above, with the same boundary: only files
+Aether owns exclusively. Findings **o**, **p** and **q** in §4 and the fragmenting
+placement in §3 come from this pass.
+
+### 8.1 Colour
+
+The amber and cyan accents that marked *selection, highlights and indicators*
+inside Aether-owned components are now the purple this app already uses for
+Aether. `ui/theme/Color.kt` was not touched: `ui/AetherAccent.kt` (new,
+Aether-only) holds three aliases over purple tokens that already existed.
+
+| Alias | Existing token | Value | Contrast on `#080808` / `#15141A` | Used for |
+|---|---|---|---|---|
+| `AetherAccent` | `ManjaniqPurpleNeon` | `#A66BFF` | 5.9:1 / 5.4:1 | selected borders, indicator dots, chevrons, short labels, section titles |
+| `AetherAccentSoft` | `ManjaniqPurpleSoft` | `#C5A4FF` | 9.7:1 / 8.8:1 | small explanatory text, selected titles, reach notes, read-only values |
+| `AetherAccentDeep` | `ManjaniqPurpleDeep` | `#251735` | fill | tinted surface behind a selection or a read-only block |
+
+Both text colours clear WCAG AA (4.5:1) on the surfaces they sit on, and
+`AetherAccentSoft` clears AAA. Text on an `AetherAccentDeep` fill measures 8.1:1
+(soft) and 4.9:1 (accent), so the tinted blocks stay readable. Disabled content
+keeps `onSurfaceVariant` and 70 % alpha rather than a purple that would read as
+selected.
+
+State mapping after the change:
+
+| State | Treatment |
+|---|---|
+| selected | `AetherAccentDeep` fill + `AetherAccent` border (1.5 dp) + `AetherAccentSoft` label |
+| expanded | `AetherAccent` at 45-50 % border + `AetherAccentSoft` title + purple chevron |
+| unselected | `ManjaniqBorder` hairline, `onSurface`/`onSurfaceVariant` text |
+| disabled / not forwardable | no click action at all, `onSurfaceVariant`, and the reason on screen in `AetherAccentSoft` |
+| loading | `busy` in the state model: the Start control shows its progress state and is not clickable |
+| success / running / starting / error | `StatusRunning`, `StatusStarting`, `StatusError` and the status dot — **unchanged** |
+
+Deliberately not recoloured, because in each case the colour carries meaning
+rather than decoration:
+
+* the operational log keeps `AetherCyan` on `Color.Black` (its specified
+  identity, 11.2:1);
+* `StatusStarting` amber stays where it means *starting* — the status dot, the
+  STARTING/STOPPING log indicators and the WARN log level. Purple there would
+  have made "starting" indistinguishable from "selected";
+* the Start/Stop button colours (neon blue to start, purple to stop) are the
+  pre-existing theme spec, not an Aether selection state.
+
+### 8.2 Fragmenting
+
+Moved out of the per-route settings groups into one informational card near the
+bottom of the screen, **immediately before the operational log**. The log panel
+stays the last element on the screen, so the newest real Aether event is always
+at the very bottom and the fragmenting report can never be mistaken for the live
+output. (An earlier pass had the two the other way round; the current order is
+the one asked for.) See `AETHER_CAPABILITIES.md` §3 for the full trace and the exact
+carrier scope; the card states that scope on screen ("MASQUE over HTTP/2 … never
+to WireGuard, gool or mim"), names the reason it is not applied, shows the values
+recorded with the selected route read-only, and offers no switch.
+`getSectionsForProfile` no longer lists a fragmenting section for any route, so
+it can never read as a per-route or all-transport control.
+
+### 8.3 Transport availability and dispatch
+
+The full path was traced: chip → `AetherConfig.transport` → `validateForProfile`
+→ `AetherProfileStore.saveFor` → `AetherService.startAether` →
+`AetherBridge.tunnelStart` → `aether_tunnel_start` → `TunnelPayload.transport` →
+`tunnel_spec_of` → `api::Transport::parse` → `api::connect` →
+`run_masque_tunnel` / the WireGuard tunnel.
+
+* **MASQUE** and **WireGuard** are implemented end to end on that path and are
+  the only two the FFI can dispatch (`api.rs:13-26`, `transport_of`).
+* **Gool** (WG-in-MASQUE) and **MIM** (MASQUE-in-MASQUE) exist in the core
+  (`cli.rs` flags, `api::Transport`), but only `aether_core_start` — the CLI path
+  — can select them. `aether_tunnel_start` has no way to ask for them, and
+  `AetherBridge.coreStart` has no caller. The UI marks them unavailable with that
+  reason, which is evidence, not assumption.
+* `api::Transport::parse` maps every id that is not `wg` to Masque, so a stored or
+  imported `transport = "gool"` used to start plain MASQUE with only a WARN in
+  the log. `validate()` now rejects it (finding **q**), and because
+  `AetherService.startAether` calls `validate()` before any FFI call, the start
+  fails with a message that names the transport and what would otherwise have
+  run. No entry point outside Aether was needed, so nothing was escalated.
+* A transport is selectable in the UI only when the whole startup path exists:
+  `AetherTransportChoice.selectable` drives both the chip's clickability and the
+  validation guard, and `AetherCapabilitiesTest` pins it to `masque|wg`.
+
+### 8.4 The two reported scan failures
+
+**`Scan failed: prober: no clean endpoint found`** (reported for a WireGuard run
+and for a MASQUE run) is Aether's own `AetherError::NoCleanEndpoint`
+(`error.rs:23`), raised at `prober.rs:374` / `wg_prober.rs:264` when the budget
+runs out with no verified candidate, and at `prober.rs:277` / `wg_prober.rs:162`
+when an IPv6-only scan meets a host with no IPv6 route. It means *zero candidates
+passed verification*, which is a reachability result, not a code fault:
+
+* every candidate must pass `verify_one` — pinned certificate
+  (`consts::MASQUE_PINS`), optional ECH injection, noize before the handshake;
+* and, because `data_check_enabled()` is true unless `AETHER_MASQUE_NO_DATA_CHECK`
+  is set (`quic.rs:88-90`), **two** successful DNS probe round-trips through the
+  tunnel (`DATA_PROBE_REQUIRED_SUCCESSES = 2`). `--no-data-check`
+  (`cli.rs:586-588`) is CLI/env-only, so the app always runs the strict path and
+  cannot relax it;
+* with ECH on, `job_ech` (`ffi.rs:179-188`) fails the whole MASQUE scan job if the
+  ECH config cannot be fetched — a network-dependent step before any probing.
+
+So for those two runs the verdict is **environment/network**, with one app-side
+contributor that is now fixed: the WireGuard `balanced` budget is 80 s and the
+MASQUE `balanced` budget is 120 s, while the app's poll deadline was a flat 120 s
+— a race on MASQUE and an outright cut-off for `thorough`/`ironclad`
+(finding **p**). What the app could not do is decide that no endpoint was
+reachable; only the probe can.
+
+**`Aether stopped while starting: Scan failed: cancelled`** is a stop the user
+asked for during startup: `stopAether()` frees the job, `aether_job_free` cancels
+it (`ffi.rs:318-330`), Aether answers `Cancelled`, and the per-attempt
+cancellation flag added in the first pass reports it as INFO + STOPPED with no
+error instead of ERROR. That behaviour is correct and is now pinned by
+`AetherScanStateTest`. The message text goes through `AetherScanOutcome.report`,
+so a cancellation reads as a cancellation.
+
+**Tracing that surfaced a real defect:** even when a scan *did* choose an
+endpoint, the service read it with `optString("endpoint")`, which stringified
+`{"ip":…,"port":…,"rtt_ms":…}` and passed that JSON text to `aether_tunnel_start`,
+where `socket_of` rejected it (finding **o**). Every scan-selected start therefore
+failed at the tunnel step, and the endpoint the scan had verified was discarded.
+
+Recoverability: each failure path frees the job, closes the identity, stops the
+foreground service and publishes ERROR (or STOPPED for a cancellation) with
+`busy = false` and no endpoint, so the next Start begins clean and Aether is never
+shown as running. `AetherScanStateTest` asserts that for seven failure messages,
+for cancellation, for a stop during startup and for a retry after both.
+
+### 8.5 Files changed in this pass
+
+New: `ui/AetherAccent.kt`, `core/AetherScanOutcome.kt`,
+`test/AetherScanOutcomeTest.kt`, `test/AetherScanStateTest.kt`.
+
+Modified: `ui/components/AetherProfileCard.kt`, `ui/components/AetherFlowControls.kt`,
+`ui/screens/AetherPanel.kt`, `ui/AetherTestTags.kt`, `core/models/AetherProfile.kt`,
+`core/models/AetherConfig.kt`, `core/AetherJobPolling.kt`,
+`service/AetherService.kt`, `res/values/strings_aether.xml`,
+`test/AetherPanelUiTest.kt`, `test/AetherConfigLogicTest.kt`,
+`test/AetherJobPollingTest.kt`, `AETHER_CAPABILITIES.md`, `AETHER_PHASE_REPORT.md`.
+
+Every one of those is Aether-owned by name and by content. `ui/theme/Color.kt`,
+`ui/components/ManjaniqApp.kt`, `ui/screens/HomeScreen.kt`, the navigation, the
+other engine's files, the shared tag vocabulary in `ui/TestTags.kt`,
+`res/values/strings.xml` and both Gradle files are untouched in this pass; no new
+dependency was added. `ui/components/AetherLogPanel.kt` keeps its cyan-on-black
+text on purpose (§8.1).
+

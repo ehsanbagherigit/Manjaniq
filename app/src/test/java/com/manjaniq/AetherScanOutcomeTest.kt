@@ -53,6 +53,26 @@ class AetherScanOutcomeTest {
     }
 
     @Test
+    fun endpointsReachTunnelStartInTheFormatSocketOfParses() {
+        // `aether_tunnel_start` hands its `peer` to `socket_of`, i.e.
+        // `str::parse::<SocketAddr>()`. MASQUE gateways answer on 443 and
+        // WireGuard endpoints on 2408 (`api::Transport::assigned_port`), and an
+        // IPv6 literal must be bracketed because `IpAddr`'s Display does not.
+        listOf(
+            Triple("198.51.100.7", 443, "198.51.100.7:443"),
+            Triple("203.0.113.9", 2408, "203.0.113.9:2408"),
+            Triple("2001:db8::7", 443, "[2001:db8::7]:443"),
+            Triple("2001:db8::7", 2408, "[2001:db8::7]:2408")
+        ).forEach { (ip, port, expected) ->
+            val endpoint = AetherScanOutcome.endpointFrom(scanReply(ip = ip, port = port))
+            assertEquals(expected, endpoint)
+            assertTrue("$endpoint must parse as a SocketAddr", AetherScanOutcome.isSocketAddress(endpoint))
+        }
+        // rtt_ms is scan information, not part of the address the core parses.
+        assertFalse(AetherScanOutcome.endpointFrom(scanReply())!!.contains("rtt"))
+    }
+
+    @Test
     fun readingTheEndpointMemberAsAStringIsRejected() {
         // This is the shape that used to reach `aether_tunnel_start`: `optString`
         // on an object member stringifies it, and the core then answers

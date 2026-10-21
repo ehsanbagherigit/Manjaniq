@@ -40,6 +40,12 @@ class AetherScanStateTest {
         AetherRepository.clearLogs()
         AetherRepository.clearError()
         AetherRepository.updateState(AetherState.STOPPED)
+        // AetherRepository is a Kotlin object: Robolectric resets the Application
+        // but not object state, and JUnit's method order is not the source order,
+        // so the endpoint an earlier test published would still be sitting here.
+        // Restoring the values AetherUiState ships with keeps these tests
+        // order-independent - a failed scan must publish no endpoint at all.
+        AetherRepository.setEndpoint("", "127.0.0.1:1819")
     }
 
     @After
@@ -212,6 +218,30 @@ class AetherScanStateTest {
             assertEquals("$raw must not publish an endpoint", "", ui.endpoint)
             assertTrue("$raw must say what happened: ${ui.lastError}", !ui.lastError.isNullOrBlank())
         }
+    }
+
+    @Test
+    fun theRepositoryIsRestoredToItsShippedStateBetweenOutcomes() {
+        // AetherRepository is a Kotlin object, so everything one test publishes
+        // survives into the next unless it is put back. This is the contract
+        // resetState() implements, and the reason three assertions about "no
+        // endpoint published" used to fail depending on JUnit's method order.
+        begin()
+        succeed(scanReply())
+        val dirty = AetherRepository.uiState.value
+        assertEquals(AetherState.RUNNING, dirty.state)
+        assertEquals("198.51.100.7:443", dirty.endpoint)
+        assertTrue(AetherRepository.logs.value.isNotEmpty())
+
+        resetState()
+
+        val ui = AetherRepository.uiState.value
+        assertEquals(AetherState.STOPPED, ui.state)
+        assertFalse("no transition may survive", ui.busy)
+        assertNull("no failure may survive", ui.lastError)
+        assertEquals("no endpoint may survive", "", ui.endpoint)
+        assertEquals("127.0.0.1:1819", ui.socksEndpoint)
+        assertTrue("no log entry may survive", AetherRepository.logs.value.isEmpty())
     }
 
     @Test
