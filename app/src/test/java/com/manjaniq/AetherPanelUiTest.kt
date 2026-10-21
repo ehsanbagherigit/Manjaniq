@@ -14,6 +14,8 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.manjaniq.core.AetherRepository
+import com.manjaniq.core.AetherScanOutcome
+import com.manjaniq.core.models.AetherState
 import com.manjaniq.ui.AetherTestTags
 import com.manjaniq.ui.components.MAX_RENDERED_LINES
 import com.manjaniq.ui.TestTags
@@ -46,6 +48,9 @@ class AetherPanelUiTest {
     fun cleanUp() {
         AetherRepository.clearLogs()
         AetherRepository.clearError()
+        // AetherRepository is a singleton and Robolectric does not reset Kotlin
+        // objects, so a state one test published would leak into the next.
+        AetherRepository.updateState(AetherState.STOPPED)
     }
 
     /** Selects the Aether core and waits for the panel to be on screen. */
@@ -230,15 +235,52 @@ class AetherPanelUiTest {
     }
 
     @Test
+    fun scanOutcomesAreDisplayedAsSuccessFailureOrCancellation() {
+        openAether()
+        AetherRepository.clearLogs()
+
+        // Failure: the exact text AetherService publishes when a scan verifies
+        // candidates and none of them pass.
+        val report = AetherScanOutcome.report("prober: no clean endpoint found", 140_000L)
+        AetherRepository.log("ERROR", report)
+        AetherRepository.updateState(AetherState.ERROR, report)
+
+        waitForText("no clean endpoint", present = true)
+        // Aether must never read as connected when no endpoint was chosen.
+        waitForText("Tunnel up", present = false)
+
+        // Cancellation: no error banner at all, and the state reads as down. The
+        // failure entry logged above stays out of the way so this really asserts
+        // the banner is gone.
+        AetherRepository.clearLogs()
+        AetherRepository.clearError()
+        AetherRepository.updateState(AetherState.STOPPED)
+        waitForText("no clean endpoint", present = false)
+        waitForText("Tunnel down", present = true)
+
+        // Retry: the panel goes back to its starting state with no stale failure.
+        AetherRepository.updateState(AetherState.STARTING)
+        waitForText("Connecting", present = true)
+        AetherRepository.onServiceActionFinished(null, AetherState.RUNNING)
+        waitForText("Tunnel up", present = true)
+        waitForText("no clean endpoint", present = false)
+    }
+
+    @Test
     fun settingsAreRevealedPerGroupAndCanBeHiddenAgain() {
         openAether()
         // Step 2 opens with the first group only: the protocol choices.
         compose.onNodeWithTag(AetherTestTags.section("gateway")).assertExists()
         compose.onNodeWithTag(AetherTestTags.transportChip("masque")).assertExists()
         // The other groups are present as headers, their settings are not composed.
-        listOf("tunnel", "fragmenting", "advanced").forEach { key ->
+        listOf("tunnel", "advanced").forEach { key ->
             compose.onNodeWithTag(AetherTestTags.section(key)).assertExists()
         }
+        // Fragmenting is not a per-route group any more: it belongs to one
+        // carrier rather than to a route, so it is reported once, in its own
+        // collapsed area at the bottom of the screen.
+        compose.onAllNodes(hasTestTag(AetherTestTags.section("fragmenting"))).assertCountEquals(0)
+        compose.onNodeWithTag(AetherTestTags.FRAGMENT_SECTION).assertExists()
         listOf(
             "aether_socks_field", "aether_dns_field",
             AetherTestTags.FRAGMENT_SIZE, "aether_ech_toggle"
@@ -272,13 +314,18 @@ class AetherPanelUiTest {
         }
         compose.onNodeWithTag("aether_peer_field").assertExists()
 
-        toggle(AetherTestTags.sectionToggle("fragmenting"))
-        // Fragmenting: implemented upstream, shown with its real status.
+        // Fragmenting lives in its own area at the bottom, not in a route group.
+        toggle(AetherTestTags.FRAGMENT_SECTION_TOGGLE)
+        // Implemented upstream, shown with its real status and its real scope.
         waitForNode(AetherTestTags.FRAGMENT_TOGGLE, present = true)
         compose.onNodeWithTag(AetherTestTags.FRAGMENT_SIZE).assertExists()
         compose.onNodeWithTag(AetherTestTags.FRAGMENT_DELAY).assertExists()
         compose.onNodeWithTag(AetherTestTags.FRAGMENT_SNI).assertExists()
         waitForText("AETHER_MASQUE_H2_FRAGMENT", present = true)
+        // Which transports it would apply to is stated, so it can never be read
+        // as a global "all transports" control.
+        waitForText("MASQUE over HTTP/2", present = true)
+        waitForText("never to WireGuard", present = true)
 
         toggle(AetherTestTags.sectionToggle("tunnel"))
         waitForNode("aether_socks_field", present = true)
@@ -314,7 +361,7 @@ class AetherPanelUiTest {
         // The reason is on screen next to them, not in a manual somewhere.
         waitForText("aether_tunnel_start", present = true)
 
-        toggle(AetherTestTags.sectionToggle("fragmenting"))
+        toggle(AetherTestTags.FRAGMENT_SECTION_TOGGLE)
         waitForNode(AetherTestTags.FRAGMENT_SIZE, present = true)
         // Recorded, shown, and honestly not an interactive control.
         compose.onNodeWithTag(AetherTestTags.FRAGMENT_SIZE).assert(hasNoClickAction())

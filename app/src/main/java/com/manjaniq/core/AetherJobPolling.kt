@@ -48,4 +48,66 @@ object AetherJobPolling {
     /** Whether another poll attempt is allowed at [nowMs]. */
     fun shouldKeepPolling(nowMs: Long, deadlineMs: Long?): Boolean =
         deadlineMs == null || nowMs < deadlineMs
+
+    /**
+     * Slack added on top of Aether's own scan budget before the app gives up.
+     *
+     * `overall_deadline` bounds how long the prober keeps *starting* probes; a
+     * probe already in flight may still run for its `per_probe_timeout` (up to
+     * 15 s, ironclad) and the result then has to cross the FFI. Waiting only as
+     * long as the engine would cut off a scan that was about to answer.
+     */
+    const val SCAN_MARGIN_MS: Long = 20_000L
+
+    /**
+     * Aether's own scan budget per mode, in milliseconds: the `overall_deadline`
+     * of `prober::ScanMode::strategy` (MASQUE) and `wg_prober::WgScanMode::strategy`
+     * (WireGuard) in third_party/Aether/aether/src.
+     *
+     * | mode     | MASQUE | WireGuard |
+     * |----------|-------:|----------:|
+     * | turbo    |  45 s  |     30 s  |
+     * | balanced | 120 s  |     80 s  |
+     * | thorough | 300 s  |    250 s  |
+     * | verified |  60 s  |     60 s  |
+     * | ironclad | 180 s  |    180 s  |
+     *
+     * Three of these are longer than the flat [DEFAULT_TIMEOUT_MS] the scan poll
+     * used to apply, so `thorough` and `ironclad` could never succeed through the
+     * app: the poll expired first and `aether_job_free` then cancelled the scan
+     * that was still working, which the user saw as a scan failure.
+     */
+    private val MASQUE_SCAN_BUDGET_MS = mapOf(
+        "turbo" to 45_000L,
+        "balanced" to 120_000L,
+        "thorough" to 300_000L,
+        "verified" to 60_000L,
+        "ironclad" to 180_000L
+    )
+
+    private val WIREGUARD_SCAN_BUDGET_MS = mapOf(
+        "turbo" to 30_000L,
+        "balanced" to 80_000L,
+        "thorough" to 250_000L,
+        "verified" to 60_000L,
+        "ironclad" to 180_000L
+    )
+
+    /**
+     * How long Aether itself will spend scanning [scanMode] over [transport].
+     *
+     * The fallbacks mirror the engine's: `api::Transport::parse` treats every id
+     * other than "wg" as MASQUE, and `ScanMode::parse` / `WgScanMode::parse` treat
+     * every unrecognised mode as `balanced` (they also accept aliases such as
+     * "fast", "deep", "pro", "stealth" and "guaranteed", which are not offered by
+     * this app and therefore not budgeted here).
+     */
+    fun scanBudgetFor(transport: String, scanMode: String): Long {
+        val budgets = if (transport == "wg") WIREGUARD_SCAN_BUDGET_MS else MASQUE_SCAN_BUDGET_MS
+        return budgets[scanMode.trim().lowercase()] ?: budgets.getValue("balanced")
+    }
+
+    /** The scan poll deadline: Aether's budget plus [SCAN_MARGIN_MS]. */
+    fun scanTimeoutFor(transport: String, scanMode: String): Long =
+        scanBudgetFor(transport, scanMode) + SCAN_MARGIN_MS
 }

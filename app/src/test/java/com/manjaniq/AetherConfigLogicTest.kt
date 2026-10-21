@@ -31,6 +31,25 @@ class AetherConfigLogicTest {
     }
 
     @Test
+    fun aTransportThisBuildCannotDispatchIsRejectedInsteadOfSilentlyRunningMasque() {
+        // api::Transport::parse maps every id that is not "wg" to Masque, so
+        // forwarding gool or mim would run plain MASQUE while the stored
+        // configuration claims something else. Both entry points refuse instead:
+        // AetherService calls validate() before touching the FFI, and the panel
+        // shows the same message before a start is even requested.
+        listOf("gool", "mim").forEach { id ->
+            val message = AetherConfig.DEFAULT.copy(transport = id).validate()
+            assertNotNull("transport '$id' must not validate", message)
+            assertTrue("names the rejected transport: $message", message!!.contains(id))
+            assertTrue("names what would otherwise have run: $message", message.contains("MASQUE"))
+            assertTrue("offers the ids that do work: $message", message.contains("masque or wg"))
+        }
+        // The two ids aether_tunnel_start can dispatch stay valid.
+        assertNull(AetherConfig.DEFAULT.copy(transport = "masque").validate())
+        assertNull(AetherConfig.DEFAULT.copy(transport = "wg").validate())
+    }
+
+    @Test
     fun unknownChoiceValuesAreRejected() {
         assertNotNull(AetherConfig.DEFAULT.copy(transport = "quic").validate())
         assertNotNull(AetherConfig.DEFAULT.copy(scanMode = "yolo").validate())

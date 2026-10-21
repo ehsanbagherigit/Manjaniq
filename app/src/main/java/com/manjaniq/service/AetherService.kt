@@ -15,6 +15,7 @@ import com.manjaniq.R
 import com.manjaniq.core.AetherConfigStore
 import com.manjaniq.core.AetherJobPolling
 import com.manjaniq.core.AetherRepository
+import com.manjaniq.core.AetherScanOutcome
 import com.manjaniq.core.EngineRepository
 import com.manjaniq.core.models.AetherState
 import com.manjaniq.core.models.Result
@@ -402,31 +403,48 @@ class AetherService : Service() {
                     stopForegroundAndSelf()
                     return@launch
                 }
+                // Aether's own scan budget is per transport and per mode, and
+                // three of the ten combinations are longer than the flat 120 s
+                // this poll used to apply, so `thorough` and `ironclad` could
+                // never succeed through the app: the deadline expired, the job was
+                // freed, and `aether_job_free` cancels the scan it removes.
+                val scanTimeoutMs = AetherJobPolling.scanTimeoutFor(cfg.transport, cfg.scanMode)
+                AetherRepository.log("INFO", "Scan wait budget: ${scanTimeoutMs / 1000}s for ${cfg.transport}/${cfg.scanMode}")
                 AetherRepository.setActiveJob(scanJobId)
                 synchronized(this@AetherService) { currentJobId = scanJobId }
-                val scanDone = pollJob(scanJobId)
+                val scanDone = pollJob(scanJobId, scanTimeoutMs)
                 AetherBridge.jobFree(scanJobId)
                 synchronized(this@AetherService) { if (currentJobId == scanJobId) currentJobId = null }
                 AetherRepository.setActiveJob(null)
 
                 if (scanDone == null || scanDone.isFailure) {
-                    val err = scanDone?.exceptionOrNull()?.message ?: "scan timed out"
-                    failed("Scan failed: $err")
+                    // `null` is this app's own deadline expiring; otherwise the
+                    // message is an `AetherError` Display string from the core.
+                    // Either way the state ends up STOPPED or ERROR with the job
+                    // freed and the identity closed, so a retry starts clean.
+                    failed(AetherScanOutcome.report(scanDone?.exceptionOrNull()?.message, scanTimeoutMs))
                     cleanupIdentity(identityId)
                     stopForegroundAndSelf()
                     return@launch
                 }
                 val scanResult = scanDone.getOrNull()!!
-                // endpoint is under "endpoint" key per api.rs scan() → Endpoint
-                chosenPeer = scanResult.optString("endpoint", "").ifEmpty { scanResult.optString("peer", "") }
-                if (chosenPeer.isEmpty()) {
-                    failed("Scan returned no endpoint: $scanResult")
+                // A successful scan replies
+                //   {"endpoint": {"ip": ..., "port": ..., "rtt_ms": ...}, "ok": true}
+                // (ffi.rs `aether_scan_start` + api.rs `Endpoint`). Reading the
+                // "endpoint" member as a string returned that object's JSON text,
+                // which `aether_tunnel_start`'s `socket_of` then rejected with
+                // "the peer address ... is not an address:port" - so the endpoint
+                // the scan had chosen was discarded even when the scan worked.
+                val endpoint = AetherScanOutcome.endpointFrom(scanResult)
+                if (endpoint == null) {
+                    failed("Scan finished without a usable endpoint (Aether replied: $scanResult)")
                     cleanupIdentity(identityId)
                     stopForegroundAndSelf()
                     return@launch
                 }
-                AetherRepository.log("OK", "Scan chose endpoint $chosenPeer")
-                AetherRepository.setEndpoint(chosenPeer, cfg.socksBind)
+                chosenPeer = endpoint
+                AetherRepository.log("OK", "Scan chose endpoint $endpoint")
+                AetherRepository.setEndpoint(endpoint, cfg.socksBind)
             }
 
             // Tunnel start

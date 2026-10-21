@@ -171,14 +171,14 @@ fun getSectionsForProfile(profile: AetherProfile): List<SettingSection> {
         R.string.section_gateway,
         listOf("transport", "scanMode", "ipVersion", "peer")
     )
-    val fragmenting = SettingSection(
-        R.string.section_fragmenting,
-        listOf("fragmentEnabled", "fragmentSize", "fragmentDelay", "fragmentSniSplit")
-    )
+    // Fragmenting is deliberately NOT a per-route section: it belongs to one
+    // carrier (MASQUE over HTTP/2) rather than to a route, and this build's
+    // aether_tunnel_start path cannot apply it at all. It is reported once, in a
+    // single informational area at the bottom of the Aether screen, so it can
+    // never read as a working per-route setting. See AETHER_CAPABILITIES.md.
     return when (profile) {
         AetherProfile.WARP_DIRECT -> listOf(
             gateway,
-            fragmenting,
             SettingSection(R.string.section_tunnel, listOf("socksBind", "httpProxyBind", "dns", "upstream")),
             SettingSection(
                 R.string.section_advanced,
@@ -187,7 +187,6 @@ fun getSectionsForProfile(profile: AetherProfile): List<SettingSection> {
         )
         AetherProfile.AETHER_PSIPHON -> listOf(
             gateway,
-            fragmenting,
             SettingSection(R.string.section_psiphon, listOf("psiphonEnabled", "psiphonEndpoint", "psiphonRegion")),
             SettingSection(R.string.section_tunnel, listOf("socksBind", "httpProxyBind", "dns", "upstream")),
             SettingSection(
@@ -202,7 +201,6 @@ fun getSectionsForProfile(profile: AetherProfile): List<SettingSection> {
         )
         AetherProfile.AETHER_TOR -> listOf(
             gateway,
-            fragmenting,
             SettingSection(R.string.section_tor, listOf("torSocks", "torBridges", "torUseBridges")),
             SettingSection(R.string.section_tunnel, listOf("socksBind", "httpProxyBind", "dns", "upstream")),
             SettingSection(
@@ -219,7 +217,6 @@ fun getSectionsForProfile(profile: AetherProfile): List<SettingSection> {
         AetherProfile.TOR_AETHER -> listOf(
             SettingSection(R.string.section_tor, listOf("torSocks", "torBridges", "torUseBridges")),
             gateway,
-            fragmenting,
             SettingSection(R.string.section_tunnel, listOf("socksBind", "httpProxyBind", "dns", "upstream")),
             SettingSection(
                 R.string.section_advanced,
@@ -236,9 +233,13 @@ fun getSectionsForProfile(profile: AetherProfile): List<SettingSection> {
 fun profileUsesAetherGateway(profile: AetherProfile): Boolean =
     getSectionsForProfile(profile).any { it.titleRes == R.string.section_gateway }
 
-/** True when [profile] can carry MASQUE and therefore honour fragmenting. */
-fun profileSupportsFragmenting(profile: AetherProfile): Boolean =
-    getSectionsForProfile(profile).any { it.titleRes == R.string.section_fragmenting }
+/**
+ * True when [profile] can carry MASQUE at all, which is the only thing
+ * fragmenting can ever apply to: `masque_h2.rs` is its single consumer, so a
+ * Tor-only route can never reach it. The fragmenting values are still stored per
+ * route; this only decides whether reporting them for that route is meaningful.
+ */
+fun profileSupportsFragmenting(profile: AetherProfile): Boolean = profileUsesAetherGateway(profile)
 
 object AetherProfileManager {
     var selectedProfile: AetherProfile = AetherProfile.WARP_DIRECT

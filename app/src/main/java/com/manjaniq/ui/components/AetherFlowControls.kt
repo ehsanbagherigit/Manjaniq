@@ -29,10 +29,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.manjaniq.R
 import com.manjaniq.core.models.AetherReach
-import com.manjaniq.ui.theme.AetherCyan
-import com.manjaniq.ui.theme.AetherSurface
+import com.manjaniq.ui.AetherAccent
+import com.manjaniq.ui.AetherAccentDeep
+import com.manjaniq.ui.AetherAccentSoft
 import com.manjaniq.ui.theme.ManjaniqBorder
-import com.manjaniq.ui.theme.StatusStarting
 
 /**
  * Building blocks of the progressive Aether flow.
@@ -74,7 +74,7 @@ fun AetherSection(
             .testTag(tag),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, if (expanded) AetherCyan.copy(alpha = 0.45f) else ManjaniqBorder)
+        border = BorderStroke(1.dp, if (expanded) AetherAccent.copy(alpha = 0.5f) else ManjaniqBorder)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Card(
@@ -96,7 +96,7 @@ fun AetherSection(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = title.uppercase(),
-                            color = if (expanded) AetherCyan else MaterialTheme.colorScheme.onSurface,
+                            color = if (expanded) AetherAccentSoft else MaterialTheme.colorScheme.onSurface,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                             letterSpacing = 1.1.sp
@@ -113,7 +113,7 @@ fun AetherSection(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = if (expanded) "▲" else "▼",
-                        color = AetherCyan,
+                        color = AetherAccent,
                         fontSize = 10.sp
                     )
                 }
@@ -185,10 +185,10 @@ fun AetherOptionRow(
                 .testTag(tag),
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(
-                containerColor = if (selected) AetherSurface
+                containerColor = if (selected) AetherAccentDeep
                 else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
             ),
-            border = BorderStroke(if (selected) 1.5.dp else 1.dp, if (selected) AetherCyan else ManjaniqBorder)
+            border = BorderStroke(if (selected) 1.5.dp else 1.dp, if (selected) AetherAccent else ManjaniqBorder)
         ) { AetherOptionRowBody(option, selected) }
     } else {
         // A choice that cannot be made here keeps its own card so the reason stays
@@ -220,7 +220,7 @@ private fun AetherOptionRowBody(option: AetherOption, selected: Boolean) {
     ) {
         Text(
             text = if (selected) "\u25CF" else "\u25CB",
-            color = if (selected && !blocked) AetherCyan else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (selected && !blocked) AetherAccent else MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 12.sp,
             modifier = Modifier.width(18.dp)
         )
@@ -229,7 +229,7 @@ private fun AetherOptionRowBody(option: AetherOption, selected: Boolean) {
                 text = option.label,
                 color = when {
                     blocked -> MaterialTheme.colorScheme.onSurfaceVariant
-                    selected -> AetherCyan
+                    selected -> AetherAccentSoft
                     else -> MaterialTheme.colorScheme.onSurface
                 },
                 fontSize = 13.sp,
@@ -239,7 +239,7 @@ private fun AetherOptionRowBody(option: AetherOption, selected: Boolean) {
             if (detail.isNotEmpty()) {
                 Text(
                     text = detail,
-                    color = if (noteShown) StatusStarting else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (noteShown) AetherAccentSoft else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp,
                     lineHeight = 14.sp
                 )
@@ -249,12 +249,12 @@ private fun AetherOptionRowBody(option: AetherOption, selected: Boolean) {
             Spacer(Modifier.width(8.dp))
             Box(
                 modifier = Modifier
-                    .background(StatusStarting.copy(alpha = 0.16f), RoundedCornerShape(6.dp))
+                    .background(AetherAccent.copy(alpha = 0.18f), RoundedCornerShape(6.dp))
                     .padding(horizontal = 6.dp, vertical = 3.dp)
             ) {
                 Text(
                     text = stringResource(R.string.aether_choice_unavailable),
-                    color = StatusStarting,
+                    color = AetherAccentSoft,
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -285,7 +285,7 @@ fun AetherReachNote(reach: AetherReach, reasonRes: Int, modifier: Modifier = Mod
                 .width(6.dp)
                 .height(6.dp)
                 .background(
-                    if (reach == AetherReach.Partial) StatusStarting else MaterialTheme.colorScheme.onSurfaceVariant,
+                    if (reach == AetherReach.Partial) AetherAccent else MaterialTheme.colorScheme.onSurfaceVariant,
                     RoundedCornerShape(3.dp)
                 )
         )
@@ -293,7 +293,7 @@ fun AetherReachNote(reach: AetherReach, reasonRes: Int, modifier: Modifier = Mod
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = prefix,
-                color = if (reach == AetherReach.Partial) StatusStarting else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (reach == AetherReach.Partial) AetherAccentSoft else MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 0.4.sp

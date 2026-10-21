@@ -38,6 +38,8 @@ object AetherTestTags {
     fun scanChip(id: String) = "aether_scan_$id"
     fun ipChip(id: String) = "aether_ip_$id"
     fun noizeChip(id: String) = "aether_noize_$id"
+    const val FRAGMENT_SECTION = "aether_fragment_section"
+    const val FRAGMENT_SECTION_TOGGLE = "aether_fragment_section_toggle"
     const val FRAGMENT_TOGGLE = "aether_fragment_enabled"
     const val FRAGMENT_SIZE = "aether_fragment_size"
     const val FRAGMENT_DELAY = "aether_fragment_delay"

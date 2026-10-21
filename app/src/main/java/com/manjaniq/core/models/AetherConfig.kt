@@ -86,6 +86,16 @@ data class AetherConfig(
             }
         }
         if (transport !in AetherTransportChoice.IDS) return "Invalid transport"
+        // `aether_tunnel_start` parses only "wg" and "masque", and
+        // `api::Transport::parse` (api.rs) maps every other string to Masque.
+        // Forwarding a transport this build cannot dispatch would therefore run
+        // plain MASQUE while the stored configuration claims something else - a
+        // silent fallback. Refuse instead, with the ids that do work.
+        if (!AetherTransportChoice.isSelectable(transport)) {
+            return "Transport '$transport' cannot be started by this build (Aether would " +
+                "run MASQUE instead); choose " +
+                AetherTransportChoice.SELECTABLE_IDS.joinToString(" or ")
+        }
         if (scanMode !in AetherScanChoice.IDS) return "Invalid scan mode"
         // Empty means "let Aether pick its own default" and was accepted before
         // these two were checked at all; only a value Aether cannot parse is an error.

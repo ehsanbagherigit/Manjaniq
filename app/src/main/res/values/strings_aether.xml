@@ -211,6 +211,9 @@
     <string name="aether_fragment_sni">Split inside the server name</string>
     <string name="aether_fragment_sni_desc">AETHER_MASQUE_H2_FRAGMENT_SNI: put the split in the middle of the SNI host name instead of at a random offset. Environment-only upstream, it has no CLI flag.</string>
     <string name="aether_fragment_status_blocked">Recorded, not applied in this build</string>
+    <string name="aether_fragment_scope">One carrier only: MASQUE over HTTP/2. It never applies to the HTTP/3 MASQUE path this build uses by default, and never to WireGuard, gool or mim. The HTTP/2 carrier itself is off unless AETHER_MASQUE_HTTP2 is set, which this app cannot do.</string>
+    <string name="aether_fragment_recorded_for">Values recorded with the selected route (%1$s):</string>
+    <string name="aether_fragment_recorded_none">No route is selected, so these are the values recorded with the stored Aether configuration:</string>
     <string name="aether_psiphon_enable">Chain through Psiphon</string>
         <string name="aether_fragment_how_to_change">These values are stored with the route and appear in its exported JSON. They are shown read-only because editing them here would change nothing until Aether is started through its CLI path.</string>
     <string name="aether_fragment_env_label">Aether reads: %1$s</string>

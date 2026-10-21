@@ -56,6 +56,87 @@ class AetherJobPollingTest {
     }
 
     @Test
+    fun scanBudgetsMatchTheEnginesOwnDeadlines() {
+        // prober::ScanMode::strategy (MASQUE) and wg_prober::WgScanMode::strategy
+        // (WireGuard) in third_party/Aether/aether/src.
+        val masque = mapOf(
+            "turbo" to 45_000L, "balanced" to 120_000L, "thorough" to 300_000L,
+            "verified" to 60_000L, "ironclad" to 180_000L
+        )
+        val wireguard = mapOf(
+            "turbo" to 30_000L, "balanced" to 80_000L, "thorough" to 250_000L,
+            "verified" to 60_000L, "ironclad" to 180_000L
+        )
+        masque.forEach { (mode, budget) ->
+            assertEquals("masque/$mode", budget, AetherJobPolling.scanBudgetFor("masque", mode))
+        }
+        wireguard.forEach { (mode, budget) ->
+            assertEquals("wg/$mode", budget, AetherJobPolling.scanBudgetFor("wg", mode))
+        }
+    }
+
+    @Test
+    fun theScanWaitIsNeverShorterThanTheScanItself() {
+        listOf("masque", "wg").forEach { transport ->
+            listOf("turbo", "balanced", "thorough", "verified", "ironclad").forEach { mode ->
+                val budget = AetherJobPolling.scanBudgetFor(transport, mode)
+                val timeout = AetherJobPolling.scanTimeoutFor(transport, mode)
+                assertTrue(
+                    "$transport/$mode must wait at least as long as Aether scans",
+                    timeout >= budget
+                )
+                assertEquals(budget + AetherJobPolling.SCAN_MARGIN_MS, timeout)
+                // The modes that used to be cut off by the flat 120 s default.
+                if (budget > AetherJobPolling.DEFAULT_TIMEOUT_MS) {
+                    assertTrue(
+                        "$transport/$mode outlives the old flat default",
+                        timeout > AetherJobPolling.DEFAULT_TIMEOUT_MS
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun thoroughAndIroncladAreNoLongerImpossible() {
+        // With the flat DEFAULT_TIMEOUT_MS these two could never succeed: the poll
+        // expired first and `aether_job_free` cancelled the scan that was working.
+        listOf("thorough", "ironclad").forEach { mode ->
+            assertTrue(AetherJobPolling.scanBudgetFor("masque", mode) > AetherJobPolling.DEFAULT_TIMEOUT_MS)
+            assertTrue(AetherJobPolling.scanBudgetFor("wg", mode) > AetherJobPolling.DEFAULT_TIMEOUT_MS)
+        }
+    }
+
+    @Test
+    fun unknownTransportsAndModesFallBackTheWayTheCoreDoes() {
+        // api::Transport::parse: anything that is not "wg" is MASQUE.
+        assertEquals(
+            AetherJobPolling.scanBudgetFor("masque", "balanced"),
+            AetherJobPolling.scanBudgetFor("gool", "balanced")
+        )
+        assertEquals(
+            AetherJobPolling.scanBudgetFor("masque", "balanced"),
+            AetherJobPolling.scanBudgetFor("", "balanced")
+        )
+        // ScanMode::parse / WgScanMode::parse: an unrecognised mode is Balanced.
+        listOf("masque", "wg").forEach { transport ->
+            assertEquals(
+                AetherJobPolling.scanBudgetFor(transport, "balanced"),
+                AetherJobPolling.scanBudgetFor(transport, "yolo")
+            )
+            assertEquals(
+                AetherJobPolling.scanBudgetFor(transport, "balanced"),
+                AetherJobPolling.scanBudgetFor(transport, "")
+            )
+            // The parsers lowercase and trim their input.
+            assertEquals(
+                AetherJobPolling.scanBudgetFor(transport, "turbo"),
+                AetherJobPolling.scanBudgetFor(transport, "  TURBO ")
+            )
+        }
+    }
+
+    @Test
     fun boundsAreSaneForAForegroundService() {
         assertTrue(AetherJobPolling.DEFAULT_TIMEOUT_MS >= 30_000L)
         assertTrue(AetherJobPolling.DEFAULT_TIMEOUT_MS <= 600_000L)
