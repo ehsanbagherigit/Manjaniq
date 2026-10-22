@@ -297,7 +297,11 @@ class AetherEngineOptionsTest {
         // here is that the scan form replaces the explicit list, not the whole model.
         assertEquals(listOf("--mim-scan"), AetherMimOptions(scanPeers = true).toArgs())
         assertEquals(
-            listOf("--mim-inner", "198.51.100.20:2408", "--mim-scan"),
+            listOf(
+                "--mim-inner", "198.51.100.20:2408",
+                "--mim-outer", "198.51.100.21:443",
+                "--mim-scan"
+            ),
             mim.copy(scanPeers = true, peers = "").toArgs()
         )
     }
