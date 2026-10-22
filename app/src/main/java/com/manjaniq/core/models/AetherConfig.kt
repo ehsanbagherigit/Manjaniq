@@ -51,10 +51,19 @@ data class AetherConfig(
     val fragmentDelay: String = AetherFragmenting.DEFAULT_DELAY,
     /**
      * Split inside the SNI host name instead of at a random offset
-     * (`AETHER_MASQUE_H2_FRAGMENT_SNI`). Environment-only upstream: there is no
-     * `--fragment-sni` CLI flag, so [toAetherArgs] cannot express it.
+     * (`AETHER_MASQUE_H2_FRAGMENT_SNI`). Upstream has no `--fragment-sni` flag, so
+     * [toAetherArgs] cannot express it; it reaches the engine through
+     * `AetherBridge.fragmentingApply`, which writes the variable directly.
      */
-    val fragmentSniSplit: Boolean = AetherFragmenting.DEFAULT_SNI_SPLIT
+    val fragmentSniSplit: Boolean = AetherFragmenting.DEFAULT_SNI_SPLIT,
+    /**
+     * Everything else the core accepts, modelled against `aether/src/cli.rs`.
+     *
+     * One field rather than a hundred: the families are grouped, each renders its own
+     * flags, and a default renders nothing at all so the engine keeps its own value.
+     * See [AetherEngineOptions].
+     */
+    val engine: AetherEngineOptions = AetherEngineOptions()
 ) {
     fun validate(): String? {
         // socksBind must be loopback
@@ -114,6 +123,23 @@ data class AetherConfig(
             return "Fragmenting needs the MASQUE transport: Aether applies it only on the " +
                 "MASQUE-over-HTTP/2 carrier, so '$transport' would ignore it"
         }
+        engine.validate()?.let { return it }
+        // psiphon.rs:749 spawns psiphon-tunnel-core and bridges.rs:301 spawns a Tor
+        // pluggable transport. This build ships neither, so asking for them without
+        // naming an executable would fail deep inside the engine with no explanation.
+        // Naming a path is accepted: the check is about the missing binary, not about
+        // the feature.
+        if (engine.psiphon.isEnabled() && engine.psiphon.bin.isBlank()) {
+            return "Psiphon needs the ${AetherEngineOptions.HELPER_PSIPHON} executable, which this " +
+                "build does not ship: set its path, or ship it as a native library (see " +
+                "AETHER_CAPABILITIES.md §6)"
+        }
+        if (engine.tor.needsHelperBinary() && engine.tor.pt.isEmpty() && engine.tor.ptDir.isEmpty()) {
+            return "These Tor bridges need a pluggable-transport executable such as " +
+                "${AetherEngineOptions.HELPER_TOR_PT}, which this build does not ship: name one with " +
+                "the PT or PT directory setting, or ship it as a native library (see " +
+                "AETHER_CAPABILITIES.md §6)"
+        }
         return null
     }
 
@@ -144,6 +170,7 @@ data class AetherConfig(
         put("fragmentSize", fragmentSize)
         put("fragmentDelay", fragmentDelay)
         put("fragmentSniSplit", fragmentSniSplit)
+        put("engine", engine.toJson())
     }.toString()
 
     /**
@@ -196,9 +223,11 @@ data class AetherConfig(
         if (upstream.isNotEmpty()) {
             args += "--upstream"; args += upstream
         }
-        // ech
-        if (echEnabled) {
-            args += "--ech"; args += "auto"
+        // ech. `echEnabled` keeps meaning what it always meant - ask for the key over
+        // DoH - unless the engine options name one, in which case that more specific
+        // setting owns the flag and this stays out of its way.
+        if (echEnabled && engine.ech.value.isBlank()) {
+            args += "--ech"; args += AetherEchOptions.AUTO
         }
         // dns
         if (dns.isNotEmpty()) {
@@ -235,6 +264,9 @@ data class AetherConfig(
         args += "--config"; args += fullPath
         // quick reconnect
         if (quickReconnect) args += "--quick-reconnect" else args += "--no-quick-reconnect"
+        // Every remaining family the core accepts (cli.rs:469-647), each emitting
+        // nothing when it is left at the engine's own default.
+        args += engine.toArgs()
         return args
     }
 
@@ -261,7 +293,8 @@ data class AetherConfig(
                     fragmentEnabled = o.optBoolean("fragmentEnabled", AetherFragmenting.DEFAULT_ENABLED),
                     fragmentSize = o.optString("fragmentSize", AetherFragmenting.DEFAULT_SIZE),
                     fragmentDelay = o.optString("fragmentDelay", AetherFragmenting.DEFAULT_DELAY),
-                    fragmentSniSplit = o.optBoolean("fragmentSniSplit", AetherFragmenting.DEFAULT_SNI_SPLIT)
+                    fragmentSniSplit = o.optBoolean("fragmentSniSplit", AetherFragmenting.DEFAULT_SNI_SPLIT),
+                    engine = AetherEngineOptions.fromJson(o.optJSONObject("engine"))
                 )
             } catch (e: Exception) { null }
         }
