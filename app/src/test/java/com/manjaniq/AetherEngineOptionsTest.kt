@@ -293,7 +293,13 @@ class AetherEngineOptionsTest {
         )
         assertNull(mim.validate())
         assertNotNull(mim.copy(scanPeers = true).validate())
-        assertEquals(listOf("--mim-scan"), mim.copy(scanPeers = true, peers = "").toArgs())
+        // A fresh instance: copy() would keep the inner and outer peers, and the point
+        // here is that the scan form replaces the explicit list, not the whole model.
+        assertEquals(listOf("--mim-scan"), AetherMimOptions(scanPeers = true).toArgs())
+        assertEquals(
+            listOf("--mim-inner", "198.51.100.20:2408", "--mim-scan"),
+            mim.copy(scanPeers = true, peers = "").toArgs()
+        )
     }
 
     @Test
@@ -372,8 +378,16 @@ class AetherEngineOptionsTest {
         // Naming a transport or a directory asks for one explicitly.
         assertTrue(AetherTorOptions(pt = listOf("obfs4")).needsHelperBinary())
         assertTrue(AetherTorOptions(ptDir = listOf("/data/local/tmp/pt")).needsHelperBinary())
-        // A bridge file's contents are unknown here, so it is treated as needing one.
-        assertTrue(AetherTorOptions(bridgeFile = "/sdcard/bridges.txt").needsHelperBinary())
+        // A bridge file's contents are unknown here, so it is treated as needing one -
+        // and it is emitted whatever the bridge mode is, so the two must agree.
+        listOf(AetherTorBridges.DEFAULT, AetherTorBridges.AUTO, AetherTorBridges.OFF).forEach { mode ->
+            val withFile = AetherTorOptions(bridges = mode, bridgeFile = "/sdcard/bridges.txt")
+            assertTrue(
+                "a bridge file with bridges=$mode still sends --tor-bridge-file: ${withFile.toArgs()}",
+                withFile.toArgs().contains("--tor-bridge-file")
+            )
+            assertTrue("...so it must be reported as needing a helper", withFile.needsHelperBinary())
+        }
         // No bridges at all means plain relays, which the core fetches itself.
         assertFalse(AetherTorOptions(mode = AetherTorMode.CHAIN).needsHelperBinary())
         assertFalse(AetherTorOptions().needsHelperBinary())

@@ -568,9 +568,13 @@ data class AetherTorOptions(
      */
     fun needsHelperBinary(): Boolean {
         if (pt.isNotEmpty() || ptDir.isNotEmpty()) return true
+        // A bridge file is handed to the engine whatever the bridge mode is
+        // (`toArgs` emits --tor-bridge-file on its own), and its contents are unknown
+        // here, so it is treated as needing one. Reporting "no helper needed" while
+        // still sending the file would let a start through that then fails inside Tor.
+        if (bridgeFile.isNotBlank()) return true
         if (bridges == AetherTorBridges.AUTO) return true
         if (bridges == AetherTorBridges.CUSTOM) {
-            if (bridgeFile.isNotBlank()) return true
             return bridgeLines.any { line -> line.trim().substringBefore(' ') in PLUGGABLE_TRANSPORTS }
         }
         return false
