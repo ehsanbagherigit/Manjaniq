@@ -107,8 +107,24 @@ data class AetherConfig(
             ?.let { return "Fragment size: $it" }
         AetherFragmenting.validateRange(fragmentDelay, AetherFragmenting.MAX_DELAY_MS.toLong())
             ?.let { return "Fragment delay: $it" }
+        // fragment.rs has exactly one consumer, masque_h2.rs, so a transport other
+        // than MASQUE would ignore fragmenting entirely. Refusing says so up front
+        // instead of starting a tunnel that quietly does something else.
+        if (fragmentEnabled && transport != AetherTransportChoice.MASQUE.id) {
+            return "Fragmenting needs the MASQUE transport: Aether applies it only on the " +
+                "MASQUE-over-HTTP/2 carrier, so '$transport' would ignore it"
+        }
         return null
     }
+
+    /**
+     * Whether this configuration asks for the HTTP/2 MASQUE carrier.
+     *
+     * Fragmenting is written into the ClientHello of that carrier and nowhere else
+     * (`fragment.rs` → `masque_h2.rs:239, 284, 402`), so asking for fragments asks for
+     * the carrier too. QUIC MASQUE and WireGuard are untouched when this is false.
+     */
+    fun usesHttp2Carrier(): Boolean = fragmentEnabled && transport == AetherTransportChoice.MASQUE.id
 
     fun toJson(): String = JSONObject().apply {
         put("identityPath", identityPath)
@@ -137,8 +153,12 @@ data class AetherConfig(
      * NOTE: `AetherService` currently drives Aether through the granular
      * `identity_open` / `scan_start` / `tunnel_start` FFI calls instead, so this
      * mapping is not what runs today. It is kept complete and correct because it
-     * is the only path that can express gool, mim, DNS, upstream, quick
-     * reconnect and fragmenting; see AETHER_CAPABILITIES.md.
+     * is the only path that can express gool, mim, DNS, upstream and quick
+     * reconnect. Fragmenting reaches the engine today through
+     * [AetherBridge.fragmentingApply] (`AetherService.applyFragmenting`), which
+     * writes the variables Aether reads; these flags carry the same decision for
+     * the `aether_core_start` path so the two never disagree. See
+     * AETHER_CAPABILITIES.md §3.
      */
     fun toAetherArgs(contextFilesDir: String): List<String> {
         val args = mutableListOf<String>()
@@ -184,10 +204,20 @@ data class AetherConfig(
         if (dns.isNotEmpty()) {
             args += "--dns"; args += dns
         }
+        // Carrier. Fragmenting lives only on the HTTP/2 MASQUE carrier, so the carrier
+        // flag travels with it (--h2 / --h3 → AETHER_MASQUE_HTTP2, cli.rs:579-580).
+        // It is emitted for every MASQUE start, on or off: select_masque_transport asks
+        // interactively when the variable is unset (lib.rs:3255-3268), and a service has
+        // no way to answer a prompt.
+        if (transport == AetherTransportChoice.MASQUE.id) {
+            args += if (usesHttp2Carrier()) "--h2" else "--h3"
+        }
         // TLS ClientHello fragmenting (MASQUE over HTTP/2 only).
         // --fragment / --no-fragment / --fragment-size / --fragment-delay exist in
-        // aether/src/cli.rs. The SNI split is environment-only upstream
-        // (AETHER_MASQUE_H2_FRAGMENT_SNI) and has no flag, so it is not emitted.
+        // aether/src/cli.rs:602-605. The SNI split has no CLI flag upstream
+        // (AETHER_MASQUE_H2_FRAGMENT_SNI is read in fragment.rs:49 and set by nothing),
+        // so on the FFI path it travels through AetherBridge.fragmentingApply, which the
+        // JNI bridge turns into that variable; this argument list cannot express it.
         if (fragmentEnabled) {
             args += "--fragment"
             if (fragmentSize.trim().isNotEmpty()) {

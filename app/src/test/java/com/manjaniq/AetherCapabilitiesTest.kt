@@ -68,15 +68,21 @@ class AetherCapabilitiesTest {
                 assertEquals(key, AetherReach.Applied, AetherCapabilities.reachOf(key))
                 assertTrue(key, AetherCapabilities.isForwarded(key))
             }
-        // Forwarded, but honoured only on part of the path.
-        listOf("echEnabled", "noizeProfile", "teamName").forEach { key ->
+        // Forwarded, but honoured only on part of the path. Fragmenting is in this
+        // group because AetherService writes it into the engine's environment before
+        // the scan (AetherBridge.fragmentingApply) and fragment.rs has exactly one
+        // consumer, masque_h2.rs: it applies on the MASQUE-over-HTTP/2 carrier and on
+        // nothing else.
+        listOf(
+            "echEnabled", "noizeProfile", "teamName", "fragmentEnabled", "fragmentSize",
+            "fragmentDelay", "fragmentSniSplit"
+        ).forEach { key ->
             assertEquals(key, AetherReach.Partial, AetherCapabilities.reachOf(key))
             assertTrue(key, AetherCapabilities.isForwarded(key))
         }
         // No field on the FFI path in use: environment- or CLI-only upstream.
         listOf(
-            "dns", "upstream", "quickReconnect", "fragmentEnabled", "fragmentSize",
-            "fragmentDelay", "fragmentSniSplit", "psiphonEnabled", "psiphonEndpoint",
+            "dns", "upstream", "quickReconnect", "psiphonEnabled", "psiphonEndpoint",
             "psiphonRegion", "torSocks", "torBridges", "torUseBridges"
         ).forEach { key ->
             assertEquals(key, AetherReach.NotForwarded, AetherCapabilities.reachOf(key))
@@ -131,20 +137,26 @@ class AetherCapabilitiesTest {
     }
 
     @Test
-    fun allFourFragmentingKeysAreRecordedOnlyAndNeverForwarded() {
-        // The values are persisted, validated and mapped onto real CLI flags by
-        // toAetherArgs(), but that argv belongs to AetherBridge.coreStart, which
-        // has no caller: aether_tunnel_start's payload (ffi.rs TunnelPayload) has
-        // no fragmenting field. This classification is what the UI renders, and
-        // it is why the panel shows the values read-only with the reason.
+    fun allFourFragmentingKeysAreAppliedThroughTheBridge() {
+        // aether_tunnel_start's payload (ffi.rs:246-260) still has no fragmenting
+        // field, and that is not how the values travel any more: AetherService calls
+        // AetherBridge.fragmentingApply before the scan, whose JNI side writes the
+        // five variables fragment.rs and masque_h2::enabled() read. Partial rather
+        // than Applied, because one carrier is affected and the others are not.
         listOf("fragmentEnabled", "fragmentSize", "fragmentDelay", "fragmentSniSplit").forEach { key ->
-            assertEquals(key, AetherReach.NotForwarded, AetherCapabilities.reachOf(key))
-            assertFalse(key, AetherCapabilities.isForwarded(key))
+            assertEquals(key, AetherReach.Partial, AetherCapabilities.reachOf(key))
+            assertTrue(key, AetherCapabilities.isForwarded(key))
             assertNotNull(key, AetherCapabilities.of(key))
             assertTrue("$key must carry a reason", AetherCapabilities.of(key)!!.reasonRes != 0)
         }
-        // And fragmenting is not a per-route setting group any more: no route
-        // lists it, so it can never read as a working per-route switch.
+        // The SNI split keeps its own reason: upstream has no --fragment-sni flag, so
+        // the bridge is the only way it reaches Aether at all.
+        assertTrue(
+            AetherCapabilities.reasonResFor("fragmentSniSplit") !=
+                AetherCapabilities.reasonResFor("fragmentSize")
+        )
+        // Fragmenting is still not a per-route setting group: it belongs to one
+        // carrier, so it is edited once, for whichever route is selected.
         AetherProfile.ALL.forEach { profile ->
             val titles = getSectionsForProfile(profile).map { it.titleRes }
             assertFalse("$profile must not own a fragmenting section", titles.contains(R.string.section_fragmenting))
@@ -185,9 +197,13 @@ class AetherCapabilitiesTest {
     }
 
     @Test
-    fun fragmentingIsEnvironmentOnlyUpstream() {
+    fun fragmentingIsEnvironmentOnlyUpstreamAndTheBridgeWritesThoseVariables() {
+        // The carrier variable is listed with them because fragmenting cannot run
+        // without it: masque_h2.rs is fragment.rs's only consumer, and
+        // masque_h2::enabled() reads AETHER_MASQUE_HTTP2 (masque_h2.rs:141-149).
         assertEquals(
             listOf(
+                "AETHER_MASQUE_HTTP2",
                 "AETHER_MASQUE_H2_FRAGMENT",
                 "AETHER_MASQUE_H2_FRAGMENT_SIZE",
                 "AETHER_MASQUE_H2_FRAGMENT_DELAY",
@@ -195,7 +211,15 @@ class AetherCapabilitiesTest {
             ),
             AetherFragmenting.ENV_VARS
         )
-        assertEquals(AetherReach.NotForwarded, AetherCapabilities.reachOf("fragmentEnabled"))
+        assertEquals(AetherReach.Partial, AetherCapabilities.reachOf("fragmentEnabled"))
+        assertEquals(
+            R.string.aether_reach_partial_fragment,
+            AetherCapabilities.reasonResFor("fragmentEnabled")
+        )
+        assertEquals(
+            R.string.aether_reach_partial_fragment_sni,
+            AetherCapabilities.reasonResFor("fragmentSniSplit")
+        )
     }
 
     @Test

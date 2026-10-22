@@ -45,6 +45,19 @@ object AetherTestTags {
     const val FRAGMENT_DELAY = "aether_fragment_delay"
     const val FRAGMENT_SNI = "aether_fragment_sni"
 
+    /** The switch inside the fragmenting row: clickable, unlike the row around it. */
+    const val FRAGMENT_TOGGLE_SWITCH = "aether_fragment_enabled_switch"
+    const val FRAGMENT_SNI_SWITCH = "aether_fragment_sni_switch"
+
+    /** Saves the fragmenting values with the route. */
+    const val FRAGMENT_SAVE = "aether_fragment_save"
+
+    /** Shown instead of controls when the transport has no HTTP/2 carrier. */
+    const val FRAGMENT_UNAVAILABLE = "aether_fragment_unavailable"
+
+    /** The carrier consequence, shown while fragmenting is on. */
+    const val FRAGMENT_CARRIER_NOTE = "aether_fragment_carrier_note"
+
     /** Save / reset / export / import of the selected route. */
     const val SAVE = "aether_save_settings"
     const val RESET = "aether_reset_settings"

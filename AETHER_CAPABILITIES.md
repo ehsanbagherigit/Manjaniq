@@ -23,7 +23,9 @@ that establishes it, or says explicitly that it could not be established.
 `tunnel_spec_of` (`ffi.rs:430-447`) maps that payload onto `api::TunnelSpec`
 (`api.rs:449-459`), whose complete field list is `transport`, `socks`, `http`,
 `ech`, `aethernoize`, `keepalive`, `verify_timeout`. There is **no** field for
-DNS, an upstream proxy, quick reconnect, Tor, Psiphon or fragmenting.
+DNS, an upstream proxy, quick reconnect, Tor, Psiphon or fragmenting. Fragmenting
+nonetheless reaches the engine, because Aether reads it from its environment when it
+makes the connection rather than from this spec — see §3.
 
 `api::connect` (`api.rs:546-572`) then:
 
@@ -101,8 +103,11 @@ Route-level (`AetherProfile`) statuses are unchanged and still truthful:
 
 So fragmenting affects **the MASQUE-over-HTTP/2 carrier only** — never HTTP/3
 (QUIC), never WireGuard. That carrier is itself opt-in: `masque_h2::enabled()`
-reads `AETHER_MASQUE_HTTP2` (`masque_h2.rs:141-142`), default off, and this build
-never sets it.
+reads `AETHER_MASQUE_HTTP2` (`masque_h2.rs:141-149`), default off, and it is
+consulted at connection time by the tunnel (`lib.rs:1530-1544`), by the scanner's
+verification (`prober.rs:414-431`) and by the CLI's own transport question
+(`lib.rs:3255-3268`). This build now sets it — see below — and pairs it with
+fragmenting, because fragments have nowhere to be written without it.
 
 **Configured only through the environment / CLI.**
 
@@ -117,15 +122,49 @@ never sets it.
 (`AETHER_API_FRAGMENT`, `cli.rs:372`, `cli.rs:558`) — "reach the warp api only
 over the fragmented route". It is a different feature and is not exposed here.
 
-**Why it cannot be applied from this build.** The service calls
-`aether_tunnel_start`, whose payload (`ffi.rs:246-260`) and spec mapping
-(`ffi.rs:430-447`) contain no fragmenting field, and whose MASQUE branch
-(`api.rs:557-561`) goes to `run_masque_tunnel` (`lib.rs:1612-1666`) — not through
-`masque_h2::connect_tls` with a caller-supplied config. The only paths that could
-apply it are `aether_core_start` (which runs the CLI and sets the variables
-itself) or a new export in `aether-wrapper/src/lib.rs`. Both are outside the
-scope of a UI/logic fix: the first changes how the tunnel is started, the second
-adds native surface that cannot be built or verified here.
+**How it is applied from this build.** `aether_tunnel_start`'s payload
+(`ffi.rs:246-260`) still has no fragmenting field, and that is not how the values
+travel. Aether reads them from its own environment when it makes the connection
+(`FragmentConfig::from_env` at `masque_h2.rs:284` and `:402`), so the bridge writes
+them there:
+
+`AetherFragmentingControl` (UI) → `AetherConfig.fragmentEnabled/Size/Delay/SniSplit`
+→ saved with the route → `AetherService.applyFragmenting()` before the scan →
+`AetherBridge.fragmentingApply()` → JNI
+`Java_com_manjaniq_AetherBridge_nativeAetherFragmentingApply`
+(`aether-wrapper/src/lib.rs`) → `AETHER_MASQUE_HTTP2`,
+`AETHER_MASQUE_H2_FRAGMENT`, `_SIZE`, `_DELAY`, `_SNI` → `masque_h2::enabled()` and
+`FragmentConfig::from_env()` → `FragmentingStream` around the carrier's TCP stream.
+
+Why the environment and not a payload field: the vendored engine is not modified,
+and its own CLI applies these settings exactly this way — `--h2` and `--fragment*`
+are `set(...)` calls (`cli.rs:579-580`, `:602-605`) — as does the engine itself at
+runtime for tor/psiphon (`lib.rs:198`, `:226`) and for the HTTP proxy
+(`api.rs:553`). The JNI function takes a fixed payload and writes only those five
+variables, so it is not a general environment setter; it validates the two range
+specs against the same limits the UI uses and refuses the write otherwise, and it
+answers with the values read back from the environment so the log reports what was
+set rather than what was asked for.
+
+Ordering matters: it runs **before the scan**, because the scanner's verification
+follows the same carrier choice (`prober.rs:414-431`), and a later write would
+leave the scan and the tunnel disagreeing. Turning fragmenting **off** is written
+too — `AETHER_MASQUE_H2_FRAGMENT=0` with the carrier and chunk variables removed —
+because this environment outlives one tunnel and a stale value would otherwise keep
+fragmenting a route that no longer asks for it.
+
+`toAetherArgs()` carries the same decision as CLI flags for the `aether_core_start`
+path: `--h2` when fragmenting is on and `--h3` when it is off (emitted for every
+MASQUE start, because `select_masque_transport` prompts interactively when the
+variable is unset — `lib.rs:3255-3268` — and a service cannot answer a prompt),
+plus `--fragment`/`--no-fragment`/`--fragment-size`/`--fragment-delay`. The SNI
+split has no flag upstream, so it travels only through the bridge.
+
+`AetherConfig.usesHttp2Carrier()` is the single pairing rule
+(`fragmentEnabled && transport == "masque"`), and `validate()` refuses fragmenting
+on any other transport instead of letting it be stored and ignored — WireGuard has
+no HTTP/2 carrier at all (`api.rs:562-570`), and gool/mim are refused earlier by
+the transport rule.
 
 **Upstream default conflict (reported, not guessed).**
 
@@ -140,43 +179,58 @@ The app follows the *documented* defaults (`off`, `16-32`, `2-10`) and records t
 conflict instead of picking a side. `AetherFragmenting.DEFAULT_*` and
 `AetherConfig.DEFAULT` carry them; `AetherCapabilitiesTest` pins them.
 
-**What the UI does.** Fragmenting is reported **once**, in a single
-informational card near the bottom of the Aether screen — immediately before the
-operational log, which stays last so the newest real event is always at the very
-bottom — and not as a per-route settings group. It was a per-route group before;
-that placement read as "this route can do fragmenting", which is not true of any
-route in this build, and it repeated the same explanation four times.
-`AetherFragmentingInfo` (in `ui/screens/AetherPanel.kt`) shows, in this order:
-the title and the status *Recorded, not applied in this build*; what fragmenting
-is; **the exact carrier it would apply to** (MASQUE over HTTP/2, which is itself
-off unless `AETHER_MASQUE_HTTP2` is set — never HTTP/3 MASQUE, never WireGuard,
-never gool or mim); the reach note from `AetherCapabilities`; whose values these
-are (the selected route, named); the four stored values read-only; the four
-environment variables Aether reads; and how they could be changed. There is no
-switch, because a switch here would change nothing at runtime.
+**What the UI does.** Fragmenting is edited **once**, in a single card near the
+bottom of the Aether screen — immediately before the operational log, which stays
+last so the newest real event is always at the very bottom — and not as a per-route
+settings group: it belongs to one carrier, so a per-route group would read as
+"this route can do fragmenting" and would repeat the same explanation four times.
+`AetherFragmentingControl` (in `ui/screens/AetherPanel.kt`) shows, in this order:
+the title and a status line that names the carrier the stored value implies
+(*Applied — this route runs MASQUE over HTTP/2* / *Off — this route runs MASQUE over
+HTTP/3 (QUIC)*); what fragmenting is; **the exact carrier it applies to**; the reach
+note from `AetherCapabilities` (*Partly applied*, with the reason); whose values
+these are (the selected route, named); then the controls — a switch for fragmenting,
+the carrier consequence next to it while it is on, chunk size and delay as validated
+fields, a switch for the SNI split — an unsaved-changes hint, inline errors, and a
+Save button that is enabled only for a dirty, valid draft and asks about a restart
+when Aether is RUNNING. The environment variables Aether reads and how the values
+reach it are stated at the bottom.
 
-`getSectionsForProfile` no longer lists a fragmenting section for any route, and
-`profileSupportsFragmenting` now answers the question it is actually asked —
-"can this route carry MASQUE at all" — by delegating to
-`profileUsesAetherGateway`. The values are still per-route: they are persisted
+When the selected route's transport is not MASQUE, **no controls are rendered**:
+there is no HTTP/2 carrier to fragment on, so a switch there would change nothing.
+The card says why (`aether_fragment_needs_masque`, naming the transport) and keeps
+the stored values visible read-only, so nothing is hidden and nothing pretends to
+work. `validate()` refuses the same combination at start time, so a stored value
+cannot be applied to a transport that ignores it either.
+
+`getSectionsForProfile` still lists no fragmenting section for any route, and
+`profileSupportsFragmenting` still answers "can this route carry MASQUE at all" by
+delegating to `profileUsesAetherGateway`. The values remain per-route: persisted
 (`AetherConfig.toJson`/`fromJson`), validated against Aether's own limits
-(`AetherFragmenting.validateRange`, max 1500 bytes / 5000 ms), exported in the
-route's JSON and mapped onto the real CLI flags by `toAetherArgs()`
-(`--fragment`, `--no-fragment`, `--fragment-size`, `--fragment-delay`; never a
-`--fragment-sni`, because that flag does not exist). They are **not** offered as
-editable switches, because a switch that changes nothing at runtime would be a
-decorative control.
+(`AetherFragmenting.validateRange`, max 1500 bytes / 5000 ms, matching
+`FRAGMENT_MAX_SIZE`/`FRAGMENT_MAX_DELAY` in `aether-wrapper/src/lib.rs`), exported in
+the route's JSON, and mapped onto the real CLI flags by `toAetherArgs()`.
 
-To make it live, one of these is needed (each is a behavioural change outside
-this task's scope, so it is reported rather than done):
+**What is still not verified, and what was deliberately not done.**
 
-1. start Aether through `AetherBridge.coreStart(cfg.toAetherArgs(filesDir))`
-   instead of the three granular calls — this also unlocks gool, mim, DNS,
-   upstream and quick reconnect, and gives up the per-step job polling the
-   current flow depends on; or
-2. add an export to `aether-wrapper/src/lib.rs` that sets the four
-   `AETHER_MASQUE_H2_FRAGMENT*` variables before `aether_tunnel_start` and
-   enables `AETHER_MASQUE_HTTP2`, then rebuild `libaether.so`.
+* No device or emulator with a reachable WARP API was available, so the fragmenting
+  path has not been observed carrying a tunnel: CI compiles the JNI function into
+  `libaether.so` for arm64 and the emulator gate installs and exercises the UI, but
+  neither runs a MASQUE-over-HTTP/2 connection. What is tested is the app's side —
+  the arguments, the pairing rule, the validation, the classification, the screen.
+* The engine's own `fragment.rs` unit tests are upstream and are not run by this
+  repository's CI (no `cargo test` step, and the host Rust build of the vendored
+  crate is not part of the workflow).
+* `aether_core_start` is still not used, so gool, mim, DNS, upstream and quick
+  reconnect remain unwired exactly as before; enabling fragmenting did not change
+  how the tunnel is started, only what the engine's environment holds when it does.
+* A separate carrier choice (HTTP/2 without fragmenting, for a network that blocks
+  QUIC) is now one field away — the bridge payload already carries `http2`
+  separately — but it was not added, because it is a new setting rather than part of
+  wiring fragmenting.
+* `--api-fragment` (`AETHER_API_FRAGMENT`, `cli.rs:65`, `:372`, `:558`) is a
+  different feature — reaching the WARP API over the fragmented route — and is still
+  not exposed.
 
 ---
 
@@ -205,6 +259,7 @@ this task's scope, so it is reported rather than done):
 | s | A registration failure reached the user as a raw nested engine string, with no attempt count, no elapsed time and no way to tell reachability from refusal. | Nothing classified identity/registration failures — unlike scans, which `core/AetherScanOutcome` interprets. The reported run showed only `api: registration: api: api.cloudflareclient.com did not answer within 20s`. | New pure `core/AetherRegistrationOutcome` classifies the engine's own message (NO_ANSWER, REFUSED_BY_API, IDENTITY_REFUSED, BAD_RESPONSE, STORAGE, TLS, ECH, CANCELLED, TIMEOUT, OTHER) and keeps that message **verbatim** in front of one factual sentence: what was tried, that no identity was registered and no tunnel started, and the recoveries the engine itself names (`account.rs:379-392`). A timeout is never dressed as a success and no check is ever suggested to be weakened. `core/AetherNetworkCheck` adds the platform's read-only connectivity facts beside a reachability failure. |
 | t | A successful registration logged `summary=null`. | `aether_identity_open` replies with `id`, `job`, `path`, `lastconn_path`, `model` and `locale` (`ffi.rs:356-365`) — there is no `summary` member, which only `aether_identity_summary` returns. | The log now prints the identity path the engine derived (`api::identity_path` → `…-masque`, `api.rs:256-264`, `lib.rs:840-852`), the lastconn path and the model the registration claimed. |
 | u | Stop during registration left the engine working and leaked the job. | The identity block polled its job without ever publishing it: `currentJobId` stayed null, so `stopAether()` found nothing to `jobCancel`/`jobFree` and `onDestroy()` freed nothing before `scope.cancel()` killed the poll — the engine kept running its five attempts after the user pressed Stop, and the job stayed in the FFI map for the process lifetime. The scan (`AetherService`:471) and tunnel (`:539`) blocks both publish their job; the identity block did not. | The identity job is now published with `setActiveJob` + `currentJobId` before the poll and cleared on all three exit paths (failure, no identity id, success), so Stop cancels it, `onDestroy` frees it, and the panel shows the job that is really in flight. A poll that answers `there is no job N` — the job the app just freed — is classified as a cancellation, not as a refusal. |
+| v | Fragmenting was stored, validated, exported and shown — and never applied. | `aether_tunnel_start`'s payload (`ffi.rs:246-260`) has no fragmenting field, and Aether reads these settings from its environment (`fragment.rs:32-61`, `masque_h2.rs:141-149`), which nothing in the app wrote. `toAetherArgs()` did map them onto real CLI flags, but that argv belongs to `AetherBridge.coreStart`, which has no caller. | The JNI bridge gained one purpose-built export, `nativeAetherFragmentingApply` (`aether-wrapper/src/lib.rs`), which writes `AETHER_MASQUE_HTTP2` and the four `AETHER_MASQUE_H2_FRAGMENT*` variables and nothing else, validates the two range specs against the UI's own limits, and answers with the values read back. `AetherService.applyFragmenting()` calls it before the scan, logs what the environment then holds, and refuses to start when fragmenting was asked for and could not be put in effect. `AetherConfig.usesHttp2Carrier()` pairs fragmenting with the carrier, `validate()` refuses it on any other transport, `toAetherArgs()` now emits `--h2`/`--h3` too, and the panel's card became editable (see §3). |
 
 `aether_reach_*` strings, `AetherCapabilities` and `AetherCapabilitiesTest` keep
 the matrix above executable: if a field is ever added to the FFI payloads, the
@@ -240,9 +295,11 @@ Listed so nothing is mistaken for missing when it is only unwired:
   *not* swapped in when the native library is missing, because
   `compose.waitForTag(AETHER_TOGGLE)` would then time out on such a build.
   Aether-specific tags live in `ui/AetherTestTags.kt`.
-* The MASQUE-over-HTTP/2 carrier (`AETHER_MASQUE_HTTP2`, `masque_h2.rs:141`) —
-  no control was added, because enabling fragmenting without it would still do
-  nothing, and enabling it changes the carrier the tunnel uses.
+* The MASQUE-over-HTTP/2 carrier (`AETHER_MASQUE_HTTP2`, `masque_h2.rs:141-149`) —
+  it is now written, but only as a consequence of fragmenting: there is still no
+  independent carrier control, so a network that blocks QUIC cannot ask for HTTP/2
+  while keeping fragmenting off. The bridge payload already carries `http2`
+  separately from `enabled`, so adding that control needs no native change.
 * `AETHER_ENROLL_ADDRESS` (`account.rs:423-434`) — dials a named address or
   address:port for enrollment instead of resolving the API's own name, keeping the
   API's name for SNI and the HTTP host. Environment-only: `aether_identity_open`

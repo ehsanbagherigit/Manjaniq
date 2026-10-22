@@ -208,12 +208,24 @@ fun AetherPanel(
             isNativeLoaded = ui.isNativeLoaded
         )
 
-        // Near the bottom, immediately before the log: informational only, and
-        // labelled as not applied. The operational log stays last, so the newest
-        // real Aether event is always the bottom thing on the screen.
-        AetherFragmentingInfo(
-            config = profileConfig?.base ?: legacyConfig,
-            routeName = selectedProfile?.let { stringResource(it.titleRes) }
+        // Near the bottom, immediately before the log. The operational log stays
+        // last, so the newest real Aether event is always the bottom thing on the
+        // screen. These controls edit the same configuration the route settings do:
+        // the selected route's when there is one, the stored configuration otherwise.
+        val fragmentConfig = profileConfig?.base ?: legacyConfig
+        val fragmentProfileConfig = profileConfig
+        val saveProfileConfig = onSaveProfileConfig
+        AetherFragmentingControl(
+            config = fragmentConfig,
+            routeName = selectedProfile?.let { stringResource(it.titleRes) },
+            aetherState = ui.state,
+            onSave = { updated, restart ->
+                if (fragmentProfileConfig != null && saveProfileConfig != null) {
+                    saveProfileConfig(fragmentProfileConfig.copy(base = updated), restart)
+                } else {
+                    onSaveLegacyConfig(updated, restart)
+                }
+            }
         )
 
         AetherLogPanel(
@@ -922,33 +934,61 @@ private fun AetherSetting(
 }
 
 /**
- * The single informational Fragmenting area.
+ * The Fragmenting area: editable, and applied.
  *
- * It sits near the bottom of the Aether screen, immediately before the
- * operational log (which stays last), and it is deliberately not a per-route
- * setting: fragmenting belongs to one carrier, not to a route, and this build
- * cannot apply it at all.
+ * It sits near the bottom of the Aether screen, immediately before the operational
+ * log (which stays last), and it is deliberately not a per-route setting group:
+ * fragmenting belongs to one carrier rather than to a route, so it is shown once,
+ * for whichever route is selected.
  *
  * What the repository establishes:
- *  - `third_party/Aether/aether/src/fragment.rs` implements it
- *    (`FragmentConfig`, `FragmentingStream`, with its own unit tests);
- *  - `masque_h2.rs` is its only consumer, so it applies to MASQUE over HTTP/2
- *    and to nothing else - not to the HTTP/3 MASQUE path, not to WireGuard;
- *  - that HTTP/2 carrier is itself opt-in through `AETHER_MASQUE_HTTP2`
- *    (`masque_h2.rs:141`), off by default;
- *  - configuration is environment- or CLI-only (`AETHER_MASQUE_H2_FRAGMENT*`,
- *    `--fragment` / `--no-fragment` / `--fragment-size` / `--fragment-delay`;
- *    the SNI split has no flag at all), and `aether_tunnel_start`'s payload
- *    (`ffi.rs:246-260`) has no field for any of it.
+ *  - `third_party/Aether/aether/src/fragment.rs` implements it (`FragmentConfig`,
+ *    `FragmentingStream`, `sni_host_range`, with its own unit tests);
+ *  - `masque_h2.rs` is its only consumer (:239, :284, :402), so it applies to
+ *    MASQUE over HTTP/2 and to nothing else - not to the HTTP/3 (QUIC) MASQUE path,
+ *    not to WireGuard, not to gool or mim;
+ *  - that carrier is chosen at connection time from `AETHER_MASQUE_HTTP2`
+ *    (`masque_h2::enabled()`, `masque_h2.rs:141-149`), which the tunnel
+ *    (`lib.rs:1530-1544`), the scanner's verification (`prober.rs:414-431`) and the
+ *    CLI's own transport question (`lib.rs:3255-3268`) all consult;
+ *  - configuration is environment-only upstream (`AETHER_MASQUE_H2_FRAGMENT*`),
+ *    written by the CLI flags `--fragment`, `--no-fragment`, `--fragment-size` and
+ *    `--fragment-delay` (`cli.rs:602-605`); the SNI split has no flag at all
+ *    (`fragment.rs:49` reads it and nothing sets it);
+ *  - `aether_tunnel_start`'s payload (`ffi.rs:246-260`) has no field for any of it,
+ *    which is why the bridge writes those variables itself
+ *    (`AetherBridge.fragmentingApply` → `aether-wrapper/src/lib.rs`) before the scan
+ *    starts, and why enabling fragmenting also selects the carrier: without
+ *    `AETHER_MASQUE_HTTP2` the fragments would have nowhere to be written.
  *
- * So there is no switch here. A control that cannot change what Aether does
- * would be a lie; instead the recorded values, the carrier they would apply to
- * and the reason they are not applied are all stated, and the values stay
- * persisted, validated and exported with the route.
+ * So the controls here are real. What they cannot do is apply to a transport that
+ * has no HTTP/2 carrier, and in that case no switch is shown at all - a control that
+ * changes nothing would be a lie - while the stored values stay visible, persisted
+ * and exported with the route.
  */
 @Composable
-private fun AetherFragmentingInfo(config: AetherConfig, routeName: String?) {
+private fun AetherFragmentingControl(
+    config: AetherConfig,
+    routeName: String?,
+    aetherState: AetherState,
+    onSave: ((AetherConfig, Boolean) -> Unit)?
+) {
     var expanded by remember { mutableStateOf(false) }
+    var draft by remember(config) { mutableStateOf(config) }
+    var errorText by remember { mutableStateOf<String?>(null) }
+    var infoRes by remember { mutableStateOf<Int?>(null) }
+    var pendingRestart by remember { mutableStateOf<AetherConfig?>(null) }
+
+    // The carrier fragmenting needs. `AetherConfig.usesHttp2Carrier()` pairs the two
+    // for the engine; this is the same condition, for the screen.
+    val applies = draft.transport == AetherTransportChoice.MASQUE.id
+    val dirty = draft.fragmentEnabled != config.fragmentEnabled ||
+        draft.fragmentSize != config.fragmentSize ||
+        draft.fragmentDelay != config.fragmentDelay ||
+        draft.fragmentSniSplit != config.fragmentSniSplit
+    val sizeError = aetherFragmentSizeError(draft.fragmentSize)
+    val delayError = aetherFragmentDelayError(draft.fragmentDelay)
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -982,8 +1022,16 @@ private fun AetherFragmentingInfo(config: AetherConfig, routeName: String?) {
                             fontWeight = FontWeight.SemiBold,
                             letterSpacing = 1.1.sp
                         )
+                        // The status line reports what is stored, and the carrier that
+                        // comes with it, rather than a bare on/off.
                         Text(
-                            text = stringResource(R.string.aether_fragment_status_blocked),
+                            text = stringResource(
+                                if (config.fragmentEnabled && applies) {
+                                    R.string.aether_fragment_status_on
+                                } else {
+                                    R.string.aether_fragment_status_off
+                                }
+                            ),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 12.sp,
                             maxLines = 2
@@ -1016,8 +1064,8 @@ private fun AetherFragmentingInfo(config: AetherConfig, routeName: String?) {
                         fontSize = 11.sp,
                         lineHeight = 15.sp
                     )
-                    // Which carrier this would apply to, stated before any value,
-                    // so the numbers can never be read as global.
+                    // Which carrier this applies to, stated before any value, so the
+                    // numbers can never be read as global.
                     Text(
                         text = stringResource(R.string.aether_fragment_scope),
                         color = AetherAccentSoft,
@@ -1038,34 +1086,174 @@ private fun AetherFragmentingInfo(config: AetherConfig, routeName: String?) {
                         fontSize = 11.sp,
                         lineHeight = 15.sp
                     )
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(AetherAccentDeep, RoundedCornerShape(12.dp))
-                            .padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        AetherReadOnlyRow(
-                            labelRes = R.string.aether_fragment_enable,
-                            value = onOffLabel(config.fragmentEnabled),
-                            tag = AetherTestTags.FRAGMENT_TOGGLE
+
+                    if (!applies) {
+                        // No controls: this transport has no HTTP/2 carrier, so nothing
+                        // here could reach Aether. The stored values stay visible.
+                        Text(
+                            text = stringResource(
+                                R.string.aether_fragment_needs_masque,
+                                stringResource(
+                                    AetherTransportChoice.byId(draft.transport)?.labelRes
+                                        ?: R.string.aether_transport_masque
+                                )
+                            ),
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                            modifier = Modifier.testTag(AetherTestTags.FRAGMENT_UNAVAILABLE)
                         )
-                        AetherReadOnlyRow(
-                            labelRes = R.string.aether_fragment_size,
-                            value = config.fragmentSize.ifBlank { AetherFragmenting.DEFAULT_SIZE },
-                            tag = AetherTestTags.FRAGMENT_SIZE
-                        )
-                        AetherReadOnlyRow(
-                            labelRes = R.string.aether_fragment_delay,
-                            value = config.fragmentDelay.ifBlank { AetherFragmenting.DEFAULT_DELAY },
-                            tag = AetherTestTags.FRAGMENT_DELAY
-                        )
-                        AetherReadOnlyRow(
-                            labelRes = R.string.aether_fragment_sni,
-                            value = onOffLabel(config.fragmentSniSplit),
-                            tag = AetherTestTags.FRAGMENT_SNI
-                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(AetherAccentDeep, RoundedCornerShape(12.dp))
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            AetherReadOnlyRow(
+                                labelRes = R.string.aether_fragment_enable,
+                                value = onOffLabel(config.fragmentEnabled),
+                                tag = AetherTestTags.FRAGMENT_TOGGLE
+                            )
+                            AetherReadOnlyRow(
+                                labelRes = R.string.aether_fragment_size,
+                                value = config.fragmentSize.ifBlank { AetherFragmenting.DEFAULT_SIZE },
+                                tag = AetherTestTags.FRAGMENT_SIZE
+                            )
+                            AetherReadOnlyRow(
+                                labelRes = R.string.aether_fragment_delay,
+                                value = config.fragmentDelay.ifBlank { AetherFragmenting.DEFAULT_DELAY },
+                                tag = AetherTestTags.FRAGMENT_DELAY
+                            )
+                            AetherReadOnlyRow(
+                                labelRes = R.string.aether_fragment_sni,
+                                value = onOffLabel(config.fragmentSniSplit),
+                                tag = AetherTestTags.FRAGMENT_SNI
+                            )
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(AetherAccentDeep, RoundedCornerShape(12.dp))
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            AetherFragmentSwitchRow(
+                                titleRes = R.string.aether_fragment_enable,
+                                descRes = R.string.aether_fragment_enable_desc,
+                                checked = draft.fragmentEnabled,
+                                onCheckedChange = { v -> draft = draft.copy(fragmentEnabled = v) },
+                                rowTag = AetherTestTags.FRAGMENT_TOGGLE,
+                                switchTag = AetherTestTags.FRAGMENT_TOGGLE_SWITCH
+                            )
+                            if (draft.fragmentEnabled) {
+                                // The consequence of the switch, next to the switch:
+                                // fragments are written into this carrier's ClientHello,
+                                // so asking for them changes the carrier.
+                                Text(
+                                    text = stringResource(R.string.aether_fragment_carrier_switch),
+                                    color = AetherAccentSoft,
+                                    fontSize = 10.sp,
+                                    lineHeight = 14.sp,
+                                    modifier = Modifier.testTag(AetherTestTags.FRAGMENT_CARRIER_NOTE)
+                                )
+                            }
+                            AetherField(
+                                value = draft.fragmentSize,
+                                onValueChange = { v -> draft = draft.copy(fragmentSize = v) },
+                                labelRes = R.string.aether_fragment_size,
+                                hintRes = R.string.aether_fragment_size_hint,
+                                errorText = sizeError,
+                                tag = AetherTestTags.FRAGMENT_SIZE
+                            )
+                            AetherField(
+                                value = draft.fragmentDelay,
+                                onValueChange = { v -> draft = draft.copy(fragmentDelay = v) },
+                                labelRes = R.string.aether_fragment_delay,
+                                hintRes = R.string.aether_fragment_delay_hint,
+                                errorText = delayError,
+                                tag = AetherTestTags.FRAGMENT_DELAY
+                            )
+                            AetherFragmentSwitchRow(
+                                titleRes = R.string.aether_fragment_sni,
+                                descRes = R.string.aether_fragment_sni_desc,
+                                checked = draft.fragmentSniSplit,
+                                onCheckedChange = { v -> draft = draft.copy(fragmentSniSplit = v) },
+                                rowTag = AetherTestTags.FRAGMENT_SNI,
+                                switchTag = AetherTestTags.FRAGMENT_SNI_SWITCH
+                            )
+                        }
+
+                        if (errorText != null) {
+                            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                                Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = errorText!!,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    TextButton(onClick = { errorText = null }) {
+                                        Text(stringResource(R.string.dismiss))
+                                    }
+                                }
+                            }
+                        }
+                        if (infoRes != null) {
+                            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                                Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = stringResource(infoRes!!),
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    TextButton(onClick = { infoRes = null }) {
+                                        Text(stringResource(R.string.dismiss))
+                                    }
+                                }
+                            }
+                        }
+                        if (dirty) {
+                            Text(
+                                text = stringResource(R.string.aether_unsaved_hint),
+                                color = AetherAccentSoft,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                        if (onSave != null) {
+                            Button(
+                                onClick = {
+                                    errorText = null
+                                    infoRes = null
+                                    // Refuse here rather than let Aether fall back to a
+                                    // default nobody asked for: fragment.rs:93-113 parses
+                                    // anything it does not understand away silently.
+                                    val problem = sizeError?.let { "Fragment size: $it" }
+                                        ?: delayError?.let { "Fragment delay: $it" }
+                                        ?: draft.validate()
+                                    if (problem != null) {
+                                        errorText = problem
+                                        return@Button
+                                    }
+                                    if (aetherState == AetherState.RUNNING) {
+                                        pendingRestart = draft
+                                    } else {
+                                        onSave(draft, false)
+                                        infoRes = R.string.aether_fragment_saved
+                                    }
+                                },
+                                enabled = dirty,
+                                colors = ButtonDefaults.buttonColors(containerColor = ManjaniqPurple),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag(AetherTestTags.FRAGMENT_SAVE)
+                            ) { Text(stringResource(R.string.save_settings), fontSize = 12.sp) }
+                        }
                     }
+
                     Text(
                         text = stringResource(
                             R.string.aether_fragment_env_label,
@@ -1085,6 +1273,81 @@ private fun AetherFragmentingInfo(config: AetherConfig, routeName: String?) {
                 }
             }
         }
+    }
+
+    if (pendingRestart != null && onSave != null) {
+        AlertDialog(
+            onDismissRequest = { pendingRestart = null },
+            title = { Text(stringResource(R.string.restart_engine_title)) },
+            text = { Text(stringResource(R.string.aether_restart_question)) },
+            confirmButton = {
+                Button(onClick = {
+                    val next = pendingRestart
+                    pendingRestart = null
+                    if (next != null) {
+                        onSave(next, true)
+                        infoRes = R.string.aether_fragment_saved_restart
+                    }
+                }) { Text(stringResource(R.string.save_and_restart)) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    val next = pendingRestart
+                    pendingRestart = null
+                    if (next != null) {
+                        onSave(next, false)
+                        infoRes = R.string.aether_fragment_saved
+                    }
+                }) { Text(stringResource(R.string.save_only)) }
+            }
+        )
+    }
+}
+
+/**
+ * One fragmenting switch. The row carries the tag the screen has always used and the
+ * switch carries its own, so a test can click the control itself rather than the row
+ * around it.
+ */
+@Composable
+private fun AetherFragmentSwitchRow(
+    titleRes: Int,
+    descRes: Int,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    rowTag: String,
+    switchTag: String
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .testTag(rowTag)
+    ) {
+        Column(
+            Modifier
+                .weight(1f)
+                .padding(end = 8.dp)
+        ) {
+            Text(
+                text = stringResource(titleRes),
+                fontWeight = FontWeight.Medium,
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = stringResource(descRes),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp,
+                lineHeight = 14.sp
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier.testTag(switchTag)
+        )
     }
 }
 

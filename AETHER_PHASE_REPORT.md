@@ -100,15 +100,19 @@ never be closed again.
   (turbo…ironclad), IP version (v4/v6/both), Peer override. Scan mode and IP
   version are hidden while a peer is set, because `AetherService` skips the scan
   entirely in that case; the panel says so ("Scan skipped: a fixed peer is set").
-* `Fragmenting` — only for routes that can carry MASQUE.
+* `Fragmenting` — only for routes that can carry MASQUE. *(Superseded twice since:
+  §8.2 moved it out of the per-route groups into one area before the log, and §10 made
+  it an applied, editable control.)*
 * `Tor`, `Psiphon` — only for the routes that own them.
 * `Local proxy` — SOCKS5 bind, HTTP proxy bind, DNS, upstream proxy.
 * `Advanced` — obfuscation profile, ECH, quick reconnect, Zero Trust team,
   identity file.
 
 Each collapsed group shows a one-line summary of what it currently holds
-(`MASQUE · balanced · IPv4 only`, `127.0.0.1:1819`, `Off · Recorded, not applied in
-this build`), so the whole route stays scannable without opening anything.
+(`MASQUE · balanced · IPv4 only`, `127.0.0.1:1819`), so the whole route stays
+scannable without opening anything. *(The fragmenting summary once read `Off ·
+Recorded, not applied in this build`; the fragmenting area now reports the carrier the
+stored value implies — see §10.)*
 
 **States are visually distinct.** Selected choice = filled cyan dot, cyan border,
 `AetherSurface` fill. Unselected = hollow dot, thin border. Unavailable = 70 %
@@ -447,17 +451,19 @@ rather than decoration:
 
 ### 8.2 Fragmenting
 
-Moved out of the per-route settings groups into one informational card near the
-bottom of the screen, **immediately before the operational log**. The log panel
-stays the last element on the screen, so the newest real Aether event is always
-at the very bottom and the fragmenting report can never be mistaken for the live
-output. (An earlier pass had the two the other way round; the current order is
-the one asked for.) See `AETHER_CAPABILITIES.md` §3 for the full trace and the exact
-carrier scope; the card states that scope on screen ("MASQUE over HTTP/2 … never
-to WireGuard, gool or mim"), names the reason it is not applied, shows the values
-recorded with the selected route read-only, and offers no switch.
-`getSectionsForProfile` no longer lists a fragmenting section for any route, so
-it can never read as a per-route or all-transport control.
+Moved out of the per-route settings groups into one card near the bottom of the
+screen, **immediately before the operational log**. The log panel stays the last
+element on the screen, so the newest real Aether event is always at the very
+bottom and the fragmenting area can never be mistaken for the live output. (An
+earlier pass had the two the other way round; the current order is the one asked
+for.) `getSectionsForProfile` lists no fragmenting section for any route, so it
+can never read as a per-route or all-transport control.
+
+At this point the card was informational and read-only, because nothing in the app
+could apply the values. **That part is superseded by §10**: the card is in the same
+place, but it is now an editable control and the values really are applied. What
+§8.2 decided and §10 kept is the placement — one area, before the log, not a
+per-route group.
 
 ### 8.3 Transport availability and dispatch
 
@@ -771,3 +777,166 @@ All are Aether-owned by name and by content. `AndroidManifest.xml` was **not**
 touched — `ACCESS_NETWORK_STATE` was already declared (line 6). No shared
 component, theme, navigation, string resource, Gradle file, CI workflow, other
 engine file or vendored `third_party` file changed, and no dependency was added.
+
+---
+
+## 10. Fragmenting pass — from "recorded, not applied" to applied
+
+The task: find out why Fragmenting was marked *Recorded, not applied*, make the
+controls interactive, and wire the values down to the engine's startup path.
+
+### 10.1 Root cause
+
+Three facts, each read from the source, and together they are the whole reason:
+
+1. **Aether reads fragmenting from its environment, not from a payload.**
+   `FragmentConfig::from_env` (`fragment.rs:32-61`) reads
+   `AETHER_MASQUE_H2_FRAGMENT`, `_SIZE`, `_DELAY` and `_SNI`, and it is called when
+   a connection is made (`masque_h2.rs:284`, `:402`).
+2. **The FFI path the app uses has no field for it.** `TunnelPayload`
+   (`ffi.rs:246-260`) carries `peer`, `transport`, `socks`, `http`, `profile`,
+   `keepalive` and `ech`; `tunnel_spec_of` (`ffi.rs:430-447`) maps those onto
+   `api::TunnelSpec` (`api.rs:449-459`), which has no fragmenting member either.
+   So no value the app could put in a payload would have been read.
+3. **`toAetherArgs()` did map the values onto real CLI flags** (`--fragment`,
+   `--no-fragment`, `--fragment-size`, `--fragment-delay`, `cli.rs:602-605`), but
+   that argv belongs to `AetherBridge.coreStart` → `aether_core_start`, which has
+   **no caller**: the service starts a tunnel through
+   identity → scan → `aether_tunnel_start`. The flags were therefore built and
+   dropped.
+
+An Android process cannot set the environment of a library it has already loaded
+from Kotlin, which is why the earlier passes reported the gap instead of closing
+it. The engine's own CLI closes it the same way it can — by writing the variables
+(`cli.rs:579-580`, `:602-605`) — and the engine itself does this at runtime too
+(`lib.rs:198`, `:226` for tor/psiphon, `api.rs:553` for the HTTP proxy).
+
+One more fact shaped the design: `fragment.rs` has exactly **one** consumer,
+`masque_h2.rs` (`:16`, `:239`, `:284`, `:402`), and that carrier is selected by
+`masque_h2::enabled()` reading `AETHER_MASQUE_HTTP2` (`masque_h2.rs:141-149`),
+consulted by the tunnel (`lib.rs:1530-1544`), by the scanner's verification
+(`prober.rs:414-431`) and by the CLI's transport question (`lib.rs:3255-3268`).
+Fragmenting without that carrier does nothing at all, so the two have to travel
+together — the engine's own CLI pairs `--h2` with `--fragment` for the same reason.
+
+### 10.2 What was implemented
+
+**Native bridge** (`aether-wrapper/src/lib.rs`, the Aether JNI crate that CI builds
+into `libaether.so`): one new export,
+`Java_com_manjaniq_AetherBridge_nativeAetherFragmentingApply`. It takes a fixed JSON
+payload `{enabled, http2, sniSplit, size, delay}`, and
+
+* writes only `AETHER_MASQUE_HTTP2`, `AETHER_MASQUE_H2_FRAGMENT`,
+  `AETHER_MASQUE_H2_FRAGMENT_SIZE`, `AETHER_MASQUE_H2_FRAGMENT_DELAY` and
+  `AETHER_MASQUE_H2_FRAGMENT_SNI` — names never come from the payload, so it is not
+  a general environment setter;
+* validates both range specs (`n` or `a-b`, whole numbers, ≤ 1500 bytes / ≤ 5000 ms,
+  the same limits the UI uses) **before** writing anything, and refuses the whole
+  write otherwise;
+* removes the chunk variables when fragmenting is off, so a previous route's values
+  cannot survive into a tunnel that did not ask for them — this environment outlives
+  one tunnel, and `from_env` is read per connection;
+* answers with the values **read back** from the environment, so the app can log what
+  was set rather than what was requested.
+
+It touches no certificate, pin, fingerprint, ALPN or validation setting: it selects a
+carrier the engine already implements and the chunk sizes `fragment.rs` already
+parses.
+
+**Kotlin** — `AetherBridge.fragmentingApply(...)` wraps the export through the same
+`safeJsonCall` boundary as every other call. `AetherConfig` gained
+`usesHttp2Carrier()` (`fragmentEnabled && transport == "masque"`) as the single
+pairing rule, `validate()` now refuses fragmenting on any other transport instead of
+storing a value the engine would ignore, and `toAetherArgs()` emits the carrier flag
+too — `--h2` with fragmenting, `--h3` without, for every MASQUE start, because
+`select_masque_transport` prompts interactively when the variable is unset and a
+service cannot answer a prompt.
+
+`AetherService.applyFragmenting()` runs **before the scan** (the scanner's
+verification follows the same carrier choice), logs what the environment then holds
+in both directions, and returns a reason to refuse the start when fragmenting was
+asked for and could not be put in effect — including when the bridge's read-back says
+the carrier or the fragment flag is not set. Starting anyway would have run an
+unfragmented tunnel while the route asked for fragments, which is the same silent
+substitution the transport guard already refuses. A failure while fragmenting is off
+is a WARN, and says that the engine keeps whatever its environment already held.
+`logUnforwardedSettings` no longer lists fragmenting as unapplied.
+
+**UI** — `AetherFragmentingInfo` became `AetherFragmentingControl`, in the same place
+( immediately before the log panel, which stays last). It has a switch for
+fragmenting, the carrier consequence beside it while it is on, validated chunk-size
+and delay fields, a switch for the SNI split, an unsaved-changes hint, inline errors,
+and a Save button enabled only for a dirty, valid draft that asks about a restart when
+Aether is RUNNING. The status line names the carrier the stored value implies. When
+the selected route's transport is not MASQUE, **no controls are rendered** — the card
+says why and keeps the stored values visible read-only, because a switch that cannot
+reach Aether would be a lie. `AetherCapabilities` reclassifies the four keys from
+`NotForwarded` to `Partial` (applied, on one carrier), with a reason string that says
+so, and the SNI split keeps its own reason because upstream has no flag for it.
+
+### 10.3 Tests
+
+`test/AetherFragmentingWiringTest.kt` (new, Robolectric) pins both serialisations and
+the rule that keeps them honest: `--h2` with fragmenting and `--h3` without, a carrier
+flag for every MASQUE start so the CLI can never prompt, size and delay as their own
+flags, a blank spec leaving Aether's default alone, no carrier flag for WireGuard,
+`usesHttp2Carrier()` across transport × enabled, fragmenting refused on `wg`, gool and
+mim still refused earlier by the transport rule, eleven unusable specs rejected
+(`abc`, `1-2-3`, `16..32`, `-5`, `16-`, `1-99999`, `99999`, …) while the usable ones
+(including a reversed range, which `fragment.rs` swaps) are accepted, the UI limits
+equal to the bridge's, the SNI split persisted but absent from the argument list, and
+— with no native library present — `fragmentingApply` reporting failure rather than
+pretending.
+
+`test/AetherPanelUiTest.kt`: `fragmentingIsEditableAndNamesTheCarrierItChanges` drives
+the real `MainActivity` — switch on, carrier note appears, Save becomes enabled,
+editing marks the draft dirty, `abc` is refused inline and Save will not store it,
+`24-48` saves and the card then reports the route as running MASQUE over HTTP/2.
+`fragmentingSaysWhyItIsUnavailableOnAWireGuardRoute` stores a WireGuard route and
+asserts the explanation appears, the values stay visible and no Save button exists.
+The gool/mim test keeps asserting *Recorded only* for a setting that genuinely is not
+forwarded (`dns`), which is now a different row from fragmenting.
+
+`test/AetherCapabilitiesTest.kt`: the four keys are `Partial` and forwarded, the SNI
+split has its own reason, `ENV_VARS` includes the carrier variable, and fragmenting is
+still not a per-route section for any profile.
+
+### 10.4 What was not verified, and why
+
+No device or emulator with a reachable WARP API exists in this sandbox, and no JDK,
+Android SDK, Rust or Go toolchain can be installed here, so **no fragmented connection
+was observed**. CI compiles the new JNI export into the arm64 `libaether.so` and the
+emulator gate installs that exact APK and exercises the UI, but neither runs a
+MASQUE-over-HTTP/2 tunnel. The engine's own `fragment.rs` unit tests are upstream and
+this repository's CI runs no `cargo test`, and the wrapper's new function has no Rust
+test either: environment mutation is process-global, so parallel `cargo test` threads
+would race on it, and the workflow is shared infrastructure that this task may not
+change. What is verified is the app's side of the contract — arguments, pairing,
+validation, classification and screen behaviour — plus compilation of the native side.
+
+Also unchanged, deliberately: `aether_core_start` is still not used, so gool, mim,
+DNS, upstream and quick reconnect stay unwired; no independent carrier control was
+added (the bridge payload already separates `http2` from `enabled`, so it needs no
+native change); `--api-fragment` remains unexposed.
+
+### 10.5 Files changed in this pass
+
+New: `test/AetherFragmentingWiringTest.kt`.
+
+Modified: `aether-wrapper/src/lib.rs`, `app/src/main/java/com/manjaniq/AetherBridge.kt`,
+`core/models/AetherConfig.kt`, `core/models/AetherCapabilities.kt`,
+`core/models/AetherProfile.kt`, `service/AetherService.kt`, `ui/AetherTestTags.kt`,
+`ui/screens/AetherPanel.kt`, `res/values/strings_aether.xml`,
+`test/AetherCapabilitiesTest.kt`, `test/AetherPanelUiTest.kt`,
+`AETHER_CAPABILITIES.md`, `AETHER_PHASE_REPORT.md`.
+
+Every one is Aether-owned by name and by content: the JNI crate exists only to bridge
+Aether (`aether-jni`, "Manjaniq JNI wrapper for Aether v2.3.0"), and the strings file,
+test tags, capability model, service, panel and tests are all Aether-specific.
+`third_party/Aether/**` was **not** modified — the vendored engine is unchanged, which
+is why the wiring goes through the bridge's environment write rather than a new
+payload field. `AndroidManifest.xml`, both Gradle files, the CI workflow,
+`ui/theme/*`, `ui/components/ManjaniqApp.kt`, `ui/screens/HomeScreen.kt`, the
+navigation, `res/values/strings.xml`, the other engine's files (`engine/`, `native/`,
+`service/EngineService.kt`, `core/EngineRepository.kt`) and `NativeBridge.kt` are
+untouched in this pass, and no dependency was added.

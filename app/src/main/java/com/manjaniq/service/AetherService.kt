@@ -109,12 +109,100 @@ class AetherService : Service() {
         }
         if (cfg.upstream.isNotBlank()) skipped += "upstream"
         if (!cfg.quickReconnect) skipped += "quick-reconnect"
-        if (cfg.fragmentEnabled) skipped += "fragmenting"
+        // Fragmenting is no longer in this list: it is applied to the engine's
+        // environment before the scan (see applyFragmenting), on the MASQUE HTTP/2
+        // carrier it belongs to.
         if (skipped.isNotEmpty()) {
             AetherRepository.log(
                 "WARN",
                 "Saved but not applied on this path (no FFI payload field): ${skipped.joinToString(", ")}"
             )
+        }
+    }
+
+    /**
+     * Writes this route's fragmenting settings - and the carrier they need - into the
+     * engine's environment, then says what the environment actually holds.
+     *
+     * `fragment.rs` has exactly one consumer, `masque_h2.rs` (:239, :284, :402), so the
+     * MASQUE-over-HTTP/2 carrier has to be selected for fragments to exist at all;
+     * `AetherConfig.usesHttp2Carrier()` pairs the two and `validate()` refuses
+     * fragmenting on any other transport. The CLI does the same pairing with `--h2` and
+     * `--fragment` (cli.rs:579, :602-605).
+     *
+     * Returns the reason the start must not go on, or null to carry on: fragmenting was
+     * asked for and could not be put in effect. Starting anyway would run an unfragmented
+     * tunnel while the route asks for fragments, which is exactly the silent substitution
+     * this service refuses elsewhere. A failure while fragmenting is *off* is only a WARN -
+     * but it is still logged, because the environment outlives one tunnel and an
+     * unrefreshed one could still hold an earlier route's values. The caller reports the
+     * returned message through the start attempt's own `failed()`, which knows whether a
+     * stop turned this into a cancellation.
+     */
+    private suspend fun applyFragmenting(
+        cfg: com.manjaniq.core.models.AetherConfig,
+        attempt: StartAttempt
+    ): String? {
+        val applied = AetherBridge.fragmentingApply(
+            enabled = cfg.fragmentEnabled,
+            size = cfg.fragmentSize,
+            delay = cfg.fragmentDelay,
+            sniSplit = cfg.fragmentSniSplit,
+            http2Carrier = cfg.usesHttp2Carrier()
+        )
+        if (applied.isFailure) {
+            val why = applied.exceptionOrNull()?.message ?: "the bridge did not answer"
+            if (cfg.fragmentEnabled) {
+                return "Fragmenting could not be applied ($why), so Aether was not started: " +
+                    "it would have run without the ClientHello fragmenting this route asks for"
+            }
+            AetherRepository.log(
+                "WARN",
+                "Fragmenting state could not be refreshed ($why); the engine keeps whatever " +
+                    "carrier and chunk settings its environment already held"
+            )
+            return null
+        }
+
+        val values = applied.getOrNull()!!
+        val description = describeFragmenting(values, cfg.fragmentEnabled)
+        val carrierOn = values.optString("carrier", "") == "1"
+        val fragmentOn = values.optString("fragment", "") == "1"
+        if (cfg.fragmentEnabled && (!carrierOn || !fragmentOn)) {
+            return "Fragmenting was asked for but the engine reports $description, so Aether " +
+                "was not started rather than run unfragmented"
+        }
+        if (attempt.cancelled) {
+            return "fragmenting was applied but no tunnel was started"
+        }
+        AetherRepository.log("INFO", description)
+        return null
+    }
+
+    /**
+     * What the bridge read back from the engine's environment, worded the same way
+     * whether fragmenting is on or off, so the log cannot claim more than was set.
+     */
+    private fun describeFragmenting(values: JSONObject, enabled: Boolean): String {
+        fun value(name: String, unset: String) =
+            values.optString(name, "").ifEmpty { unset }
+        val carrier = value("carrier", "unset")
+        val fragment = value("fragment", "unset")
+        val size = value("size", "Aether's own default")
+        val delay = value("delay", "Aether's own default")
+        val sni = value("sniSplit", "unset")
+        val carrierText = when (carrier) {
+            "1" -> "HTTP/2 over TCP"
+            "0" -> "HTTP/3 (QUIC)"
+            else -> "not set, so HTTP/3 (QUIC)"
+        }
+        return if (enabled) {
+            "Fragmenting on: MASQUE carrier $carrierText, ClientHello chunks $size bytes, " +
+                "delay $delay ms, SNI split ${if (sni == "1") "on" else "off"} " +
+                "(AETHER_MASQUE_HTTP2=$carrier, AETHER_MASQUE_H2_FRAGMENT=$fragment)"
+        } else {
+            "Fragmenting off: MASQUE carrier $carrierText " +
+                "(AETHER_MASQUE_H2_FRAGMENT=$fragment, chunk size and delay left to Aether)"
         }
     }
 
@@ -310,6 +398,18 @@ class AetherService : Service() {
                 val v = verRes.getOrNull()?.optString("version", "") ?: ""
                 AetherRepository.setVersion(v)
                 AetherRepository.log("INFO", "Aether version $v")
+            }
+
+            // Fragmenting and the carrier it needs, applied before anything dials:
+            // Aether reads both from its environment when a connection is made
+            // (fragment.rs:32-61, masque_h2.rs:141-149) and the scanner's verification
+            // follows the same carrier choice (prober.rs:414-431), so a later write
+            // would leave the scan and the tunnel disagreeing.
+            val fragmentProblem = applyFragmenting(cfg, attempt)
+            if (fragmentProblem != null) {
+                failed(fragmentProblem)
+                stopForegroundAndSelf()
+                return@launch
             }
 
             // Identity handling: open or create via FFI

@@ -4,6 +4,8 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -361,11 +363,83 @@ class AetherPanelUiTest {
         // The reason is on screen next to them, not in a manual somewhere.
         waitForText("aether_tunnel_start", present = true)
 
-        toggle(AetherTestTags.FRAGMENT_SECTION_TOGGLE)
-        waitForNode(AetherTestTags.FRAGMENT_SIZE, present = true)
-        // Recorded, shown, and honestly not an interactive control.
-        compose.onNodeWithTag(AetherTestTags.FRAGMENT_SIZE).assert(hasNoClickAction())
+        // A setting this build really cannot forward still says so: dns and upstream
+        // are environment-only upstream and have no field on any payload in use.
+        toggle(AetherTestTags.sectionToggle("tunnel"))
+        waitForNode("aether_dns_field", present = true)
         waitForText(NOT_FORWARDED_LABEL, present = true)
+    }
+
+    /**
+     * Fragmenting is applied now, so its controls are real: the switch states the
+     * carrier it changes, the fields validate inline, Save is enabled only for a
+     * dirty and valid draft, and saving changes what the card reports.
+     */
+    @Test
+    fun fragmentingIsEditableAndNamesTheCarrierItChanges() {
+        openAether()
+        toggle(AetherTestTags.FRAGMENT_SECTION_TOGGLE)
+        waitForNode(AetherTestTags.FRAGMENT_TOGGLE, present = true)
+
+        // Off by default, so no carrier consequence is claimed and there is nothing
+        // to save yet.
+        compose.onAllNodes(hasTestTag(AetherTestTags.FRAGMENT_CARRIER_NOTE)).assertCountEquals(0)
+        compose.onNodeWithTag(AetherTestTags.FRAGMENT_SAVE).assertIsNotEnabled()
+
+        // The switch is clickable and states what it changes: fragments are written
+        // into the HTTP/2 carrier's ClientHello, so the carrier comes with them.
+        toggle(AetherTestTags.FRAGMENT_TOGGLE_SWITCH)
+        waitForNode(AetherTestTags.FRAGMENT_CARRIER_NOTE, present = true)
+        waitForText("MASQUE carrier from HTTP/3 (QUIC) to HTTP/2 (TCP)", present = true)
+        compose.onNodeWithTag(AetherTestTags.FRAGMENT_SAVE).assertIsEnabled()
+
+        // Editing a value marks the draft dirty.
+        typeInto(AetherTestTags.FRAGMENT_SIZE, "24-48")
+        waitForText(UNSAVED_HINT, present = true)
+
+        // An unusable spec is refused inline, and Save will not store it: Aether's
+        // own parser would quietly fall back to a default nobody chose.
+        typeInto(AetherTestTags.FRAGMENT_SIZE, "abc")
+        waitForText("Use n or a-b", present = true)
+        toggle(AetherTestTags.FRAGMENT_SAVE)
+        waitForText("Fragment size", present = true)
+
+        // A usable one saves: the host stores it with the route, the card says so,
+        // its header then names the carrier the stored value implies, and there is
+        // nothing left to save.
+        typeInto(AetherTestTags.FRAGMENT_SIZE, "24-48")
+        toggle(AetherTestTags.FRAGMENT_SAVE)
+        waitForText("Fragmenting saved with the route", present = true)
+        // The header sits inside the clickable section toggle, so it is read from the
+        // unmerged tree rather than assumed to be a node of its own.
+        compose.onAllNodes(
+            hasText("this route runs MASQUE over HTTP/2", substring = true),
+            useUnmergedTree = true
+        ).assertCountEquals(1)
+        compose.onNodeWithTag(AetherTestTags.FRAGMENT_SAVE).assertIsNotEnabled()
+    }
+
+    /**
+     * A route whose transport has no HTTP/2 carrier gets an explanation instead of a
+     * switch: a control that could not reach Aether would be a lie, and the stored
+     * values stay visible.
+     */
+    @Test
+    fun fragmentingSaysWhyItIsUnavailableOnAWireGuardRoute() {
+        openAether()
+        // Point the selected route at WireGuard and store it. The gateway group is the
+        // one that starts open, so its chips are already on screen.
+        waitForNode(AetherTestTags.transportChip("wg"), present = true)
+        toggle(AetherTestTags.transportChip("wg"))
+        toggle(AetherTestTags.SAVE)
+
+        toggle(AetherTestTags.FRAGMENT_SECTION_TOGGLE)
+        waitForNode(AetherTestTags.FRAGMENT_UNAVAILABLE, present = true)
+        waitForText("Fragmenting needs the MASQUE transport", present = true)
+        // The stored values are still shown, read-only, so nothing is hidden.
+        compose.onNodeWithTag(AetherTestTags.FRAGMENT_SIZE).assertExists()
+        compose.onAllNodes(hasTestTag(AetherTestTags.FRAGMENT_SAVE)).assertCountEquals(0)
+        compose.onAllNodes(hasTestTag(AetherTestTags.FRAGMENT_TOGGLE_SWITCH)).assertCountEquals(0)
     }
 
     @Test
@@ -433,6 +507,9 @@ class AetherPanelUiTest {
 
         /** `R.string.aether_choice_not_forwarded`. */
         const val NOT_FORWARDED_LABEL = "Recorded only"
+
+        /** `R.string.aether_choice_partial`. */
+        const val PARTIAL_LABEL = "Partly applied"
 
         /** `R.string.aether_unsaved_hint`. */
         const val UNSAVED_HINT = "Unsaved changes"

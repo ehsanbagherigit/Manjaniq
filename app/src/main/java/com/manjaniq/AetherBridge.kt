@@ -89,6 +89,7 @@ object AetherBridge {
     private external fun nativeAetherVerifyStart(identityId: Long, payload: String): String
     private external fun nativeAetherTunnelStart(identityId: Long, payload: String): String
     private external fun nativeAetherCoreStart(argsJson: String): String
+    private external fun nativeAetherFragmentingApply(payload: String): String
     private external fun nativeAetherTeamSignIn(payload: String): String
     private external fun nativeAetherTeamCodeRequest(payload: String): String
     private external fun nativeAetherTeamCodeResend(session: Long): String
@@ -210,6 +211,40 @@ object AetherBridge {
      * Low-level core start: args as JSON array of strings, e.g. ["--bind","127.0.0.1:1819","--masque"]
      * Use empty string for default args.
      */
+    /**
+     * Applies the TLS ClientHello fragmenting configuration to the engine.
+     *
+     * Aether reads fragmenting from its environment (`FragmentConfig::from_env`,
+     * `fragment.rs:32-61`) and picks the carrier the same way
+     * (`masque_h2::enabled()` → `AETHER_MASQUE_HTTP2`, `masque_h2.rs:141-149`), which
+     * the tunnel (`lib.rs:1530`), the scanner's verification (`prober.rs:414`) and the
+     * CLI's own transport question (`lib.rs:3255`) all consult. `fragment.rs` has one
+     * consumer, `masque_h2.rs`, so fragmenting only exists on the MASQUE-over-HTTP/2
+     * carrier: [http2Carrier] travels with [enabled] rather than letting fragments be
+     * asked for on a carrier that ignores them.
+     *
+     * The JNI side writes those five variables and nothing else, and answers with what
+     * the environment holds afterwards, so the caller can log the applied values
+     * instead of the requested ones. A blank [size] or [delay] removes that variable
+     * and leaves Aether's own default in place.
+     */
+    fun fragmentingApply(
+        enabled: Boolean,
+        size: String,
+        delay: String,
+        sniSplit: Boolean,
+        http2Carrier: Boolean = enabled
+    ): Result<JSONObject> {
+        val payload = JSONObject().apply {
+            put("enabled", enabled)
+            put("http2", http2Carrier)
+            put("sniSplit", sniSplit)
+            put("size", size.trim())
+            put("delay", delay.trim())
+        }
+        return safeJsonCall { nativeAetherFragmentingApply(payload.toString()) }
+    }
+
     fun coreStart(args: List<String> = emptyList()): Result<JSONObject> {
         val json = if (args.isEmpty()) "[]" else org.json.JSONArray(args).toString()
         return safeJsonCall { nativeAetherCoreStart(json) }

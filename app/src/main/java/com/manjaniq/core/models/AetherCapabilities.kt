@@ -60,15 +60,21 @@ object AetherCapabilities {
         AetherSettingInfo("echEnabled", AetherReach.Partial, R.string.aether_reach_partial_ech),
         AetherSettingInfo("noizeProfile", AetherReach.Partial, R.string.aether_reach_partial_noize),
         AetherSettingInfo("teamName", AetherReach.Partial, R.string.aether_reach_partial_team),
+        // Fragmenting reaches Aether through the bridge's environment write
+        // (`AetherService.applyFragmenting` → `AetherBridge.fragmentingApply`), which
+        // is where Aether reads it (`fragment.rs:32-61`) - not through a payload field.
+        // Partial rather than Applied because `fragment.rs` has exactly one consumer,
+        // `masque_h2.rs`: it applies on the MASQUE-over-HTTP/2 carrier only, and the
+        // SNI split has no CLI flag upstream at all.
+        AetherSettingInfo("fragmentEnabled", AetherReach.Partial, R.string.aether_reach_partial_fragment),
+        AetherSettingInfo("fragmentSize", AetherReach.Partial, R.string.aether_reach_partial_fragment),
+        AetherSettingInfo("fragmentDelay", AetherReach.Partial, R.string.aether_reach_partial_fragment),
+        AetherSettingInfo("fragmentSniSplit", AetherReach.Partial, R.string.aether_reach_partial_fragment_sni),
 
         // ---- Not forwarded: no field on identity_open / scan_start / tunnel_start ----
         AetherSettingInfo("dns", AetherReach.NotForwarded, R.string.aether_reach_missing_env_only),
         AetherSettingInfo("upstream", AetherReach.NotForwarded, R.string.aether_reach_missing_env_only),
         AetherSettingInfo("quickReconnect", AetherReach.NotForwarded, R.string.aether_reach_missing_cli_flow),
-        AetherSettingInfo("fragmentEnabled", AetherReach.NotForwarded, R.string.aether_reach_missing_fragment),
-        AetherSettingInfo("fragmentSize", AetherReach.NotForwarded, R.string.aether_reach_missing_fragment),
-        AetherSettingInfo("fragmentDelay", AetherReach.NotForwarded, R.string.aether_reach_missing_fragment),
-        AetherSettingInfo("fragmentSniSplit", AetherReach.NotForwarded, R.string.aether_reach_missing_fragment),
         AetherSettingInfo("psiphonEnabled", AetherReach.NotForwarded, R.string.aether_reach_missing_external),
         AetherSettingInfo("psiphonEndpoint", AetherReach.NotForwarded, R.string.aether_reach_missing_external),
         AetherSettingInfo("psiphonRegion", AetherReach.NotForwarded, R.string.aether_reach_missing_external),
@@ -186,15 +192,28 @@ enum class AetherNoizeChoice(val id: String, val labelRes: Int, val detailRes: I
  * in a `FragmentingStream`. It therefore only affects the MASQUE-over-HTTP/2
  * carrier, never HTTP/3 (QUIC) or WireGuard.
  *
- * Configuration is environment-only: `AETHER_MASQUE_H2_FRAGMENT`,
+ * Configuration is environment-only upstream: `AETHER_MASQUE_H2_FRAGMENT`,
  * `AETHER_MASQUE_H2_FRAGMENT_SIZE`, `AETHER_MASQUE_H2_FRAGMENT_DELAY`,
- * `AETHER_MASQUE_H2_FRAGMENT_SNI`, set by the CLI flags `--fragment`,
- * `--no-fragment`, `--fragment-size` and `--fragment-delay`. The SNI split has
- * no CLI flag at all.
+ * `AETHER_MASQUE_H2_FRAGMENT_SNI`, which the CLI flags `--fragment`,
+ * `--no-fragment`, `--fragment-size` and `--fragment-delay` write
+ * (`cli.rs:602-605`). The SNI split has no CLI flag at all.
  *
- * Defaults recorded here are the documented CLI defaults
- * (size `16-32`, delay `2-10`, off unless asked for — `Docs/GUIDE.en.md`
- * §"AETHER_MASQUE_H2_FRAGMENT … Off by default").
+ * This app writes the same variables through `AetherBridge.fragmentingApply`, whose
+ * JNI side (`aether-wrapper/src/lib.rs`) accepts a fixed payload and touches those
+ * five variables and the carrier's `AETHER_MASQUE_HTTP2` (`cli.rs:579`) and nothing
+ * else - an Android process cannot set the environment of a library it loaded from
+ * Kotlin. Because `fragment.rs` is consumed only by `masque_h2.rs`, enabling
+ * fragmenting necessarily selects that carrier, which is why
+ * `AetherConfig.usesHttp2Carrier()` pairs the two and `validate()` refuses
+ * fragmenting on any other transport.
+ *
+ * Defaults recorded here are the documented CLI defaults (size `16-32`, delay
+ * `2-10`, off unless asked for — `Docs/GUIDE.en.md` §"AETHER_MASQUE_H2_FRAGMENT …
+ * Off by default"). Note that upstream disagrees with itself: `fragment.rs:37-44`
+ * falls back to `8-16` for a blank size and to off for a blank
+ * `AETHER_MASQUE_H2_FRAGMENT`, while `cli.rs:133` and the guide say `16-32` and
+ * "default on". The app sends its values explicitly, so the engine's fallback is
+ * only reached for a field left blank.
  */
 object AetherFragmenting {
 
@@ -209,8 +228,12 @@ object AetherFragmenting {
     /** Longest inter-fragment delay the UI accepts, in milliseconds. */
     const val MAX_DELAY_MS = 5_000
 
-    /** Environment variables Aether reads for fragmenting (documented, not settable here). */
+    /**
+     * Environment variables Aether reads for fragmenting, written on this app's behalf
+     * by `AetherBridge.fragmentingApply` plus the carrier variable they need.
+     */
     val ENV_VARS: List<String> = listOf(
+        "AETHER_MASQUE_HTTP2",
         "AETHER_MASQUE_H2_FRAGMENT",
         "AETHER_MASQUE_H2_FRAGMENT_SIZE",
         "AETHER_MASQUE_H2_FRAGMENT_DELAY",

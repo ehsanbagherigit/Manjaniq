@@ -171,11 +171,13 @@ fun getSectionsForProfile(profile: AetherProfile): List<SettingSection> {
         R.string.section_gateway,
         listOf("transport", "scanMode", "ipVersion", "peer")
     )
-    // Fragmenting is deliberately NOT a per-route section: it belongs to one
-    // carrier (MASQUE over HTTP/2) rather than to a route, and this build's
-    // aether_tunnel_start path cannot apply it at all. It is reported once, in a
-    // single informational area at the bottom of the Aether screen, so it can
-    // never read as a working per-route setting. See AETHER_CAPABILITIES.md.
+    // Fragmenting is deliberately NOT a per-route section: it belongs to one carrier
+    // (MASQUE over HTTP/2) rather than to a route, so it is edited once, in its own
+    // area at the bottom of the Aether screen, for whichever route is selected - and
+    // refused there when the selected transport has no HTTP/2 carrier to fragment on.
+    // aether_tunnel_start has no field for it (ffi.rs:246-260); AetherService applies
+    // it through AetherBridge.fragmentingApply before the scan starts.
+    // See AETHER_CAPABILITIES.md §3.
     return when (profile) {
         AetherProfile.WARP_DIRECT -> listOf(
             gateway,

@@ -203,19 +203,24 @@
     <string name="aether_fragment_title">Fragment the TLS ClientHello</string>
     <string name="aether_fragment_desc">Aether splits the ClientHello of the MASQUE HTTP/2 carrier into small pieces with a delay between them, so a firewall that resets a whole ClientHello whose SNI ends in cloudflareclient.com does not see one. Implemented in aether/src/fragment.rs.</string>
     <string name="aether_fragment_enable">Fragmenting on</string>
-    <string name="aether_fragment_enable_desc">Off by default in Aether. Applies to the HTTP/2 carrier only, never to QUIC or WireGuard.</string>
+    <string name="aether_fragment_enable_desc">Off by default in Aether. Applies to the HTTP/2 carrier only, never to QUIC or WireGuard, so turning it on also selects that carrier.</string>
     <string name="aether_fragment_size">Chunk size (bytes)</string>
     <string name="aether_fragment_size_hint">n or a-b, for example 16-32 (the Aether default)</string>
     <string name="aether_fragment_delay">Delay between fragments (ms)</string>
     <string name="aether_fragment_delay_hint">n or a-b, for example 2-10 (the Aether default)</string>
     <string name="aether_fragment_sni">Split inside the server name</string>
-    <string name="aether_fragment_sni_desc">AETHER_MASQUE_H2_FRAGMENT_SNI: put the split in the middle of the SNI host name instead of at a random offset. Environment-only upstream, it has no CLI flag.</string>
-    <string name="aether_fragment_status_blocked">Recorded, not applied in this build</string>
-    <string name="aether_fragment_scope">One carrier only: MASQUE over HTTP/2. It never applies to the HTTP/3 MASQUE path this build uses by default, and never to WireGuard, gool or mim. The HTTP/2 carrier itself is off unless AETHER_MASQUE_HTTP2 is set, which this app cannot do.</string>
-    <string name="aether_fragment_recorded_for">Values recorded with the selected route (%1$s):</string>
-    <string name="aether_fragment_recorded_none">No route is selected, so these are the values recorded with the stored Aether configuration:</string>
+    <string name="aether_fragment_sni_desc">AETHER_MASQUE_H2_FRAGMENT_SNI: put the split in the middle of the SNI host name instead of at a random offset. Upstream has no CLI flag for it, so it reaches Aether only through this app\u2019s bridge.</string>
+    <string name="aether_fragment_status_on">Applied — this route runs MASQUE over HTTP/2</string>
+    <string name="aether_fragment_status_off">Off — this route runs MASQUE over HTTP/3 (QUIC)</string>
+    <string name="aether_fragment_carrier_switch">Turning fragmenting on switches this route\u2019s MASQUE carrier from HTTP/3 (QUIC) to HTTP/2 (TCP), because the fragments are written into that carrier\u2019s TLS ClientHello (aether/src/masque_h2.rs). The scan and the tunnel both follow the carrier, so nothing is left half applied.</string>
+    <string name="aether_fragment_needs_masque">Fragmenting needs the MASQUE transport: Aether applies it only on the MASQUE-over-HTTP/2 carrier. It is unavailable while this route uses %1$s.</string>
+    <string name="aether_fragment_saved">Fragmenting saved with the route; Aether applies it on the next start.</string>
+    <string name="aether_fragment_saved_restart">Fragmenting saved; Aether is restarting with it.</string>
+    <string name="aether_fragment_scope">One carrier only: MASQUE over HTTP/2. It never applies to the HTTP/3 (QUIC) MASQUE path, and never to WireGuard, gool or mim. This app selects that carrier for you when fragmenting is on, and selects QUIC again when it is off.</string>
+    <string name="aether_fragment_recorded_for">Stored with the selected route (%1$s) and applied when that route starts:</string>
+    <string name="aether_fragment_recorded_none">No route is selected, so these are the values stored with the Aether configuration:</string>
     <string name="aether_psiphon_enable">Chain through Psiphon</string>
-        <string name="aether_fragment_how_to_change">These values are stored with the route and appear in its exported JSON. They are shown read-only because editing them here would change nothing until Aether is started through its CLI path.</string>
+        <string name="aether_fragment_how_to_change">These values are stored with the route, appear in its exported JSON, and are written into the engine\u2019s environment before each start — Aether reads them per connection (aether/src/fragment.rs).</string>
     <string name="aether_fragment_env_label">Aether reads: %1$s</string>
 
     <!-- Reachability reasons (AetherCapabilities) -->
@@ -231,7 +236,8 @@
     <string name="aether_reach_partial_team">The team name is sent, but enrolment also needs a service token or a one-time code. The aether_team_* calls are wired in AetherBridge and are not used by this screen yet.</string>
     <string name="aether_reach_missing_env_only">Aether reads this from its own environment (set by the CLI). No field for it exists on aether_tunnel_start, and Android has no public API for setting the process environment, so the value is saved and shown but not applied.</string>
     <string name="aether_reach_missing_cli_flow">Only the aether_core_start CLI flow acts on this; the identity/scan/tunnel path this build uses has no field for it.</string>
-    <string name="aether_reach_missing_fragment">Fragmenting is configured through AETHER_MASQUE_H2_FRAGMENT and friends, or the --fragment flags. Neither reaches aether_tunnel_start, so the value is saved and shown but not applied.</string>
+    <string name="aether_reach_partial_fragment">Written into the engine\u2019s environment before each start (AETHER_MASQUE_HTTP2 and AETHER_MASQUE_H2_FRAGMENT*), which is where Aether reads it — aether_tunnel_start has no field for it. One carrier only: MASQUE over HTTP/2, so enabling it switches this route away from QUIC. A blank size or delay leaves Aether\u2019s own default in place.</string>
+    <string name="aether_reach_partial_fragment_sni">Applied through the same call, as AETHER_MASQUE_H2_FRAGMENT_SNI. Upstream has no --fragment-sni flag, so this is the only way it reaches Aether, and it only matters on the HTTP/2 carrier.</string>
     <string name="aether_reach_missing_external">Needs a Tor or Psiphon component that is not bundled with this build, and this path forwards no Tor or Psiphon setting.</string>
 
     <!-- Operational log panel -->
