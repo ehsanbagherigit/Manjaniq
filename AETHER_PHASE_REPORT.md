@@ -251,10 +251,18 @@ which the repository already runs on every push
 | `6bf1ae3` | 39505418108 | **failure** — `testDebugUnitTest`: `70 tests completed, 9 failed`; all nine were test-side (`hasText` matches exactly by default, `assertIsDisplayed` is viewport-dependent under Robolectric, a sample port tripped the socks == http rule) |
 | `7fef57c` | 39508147489 | **failure** — `compileDebugUnitTestKotlin`: `Unresolved reference 'boundsInRoot'`; compose-ui-test does not export it. The ordering assertion was dropped |
 | `6029c55` | 39509804264 | **success** — build (compile ×3, unit tests, `assembleDebug`, APK verification) and `emulator-smoke` both green |
-| `edfacb8` | 39519495879 | **PENDING_PASS2** |
+| `edfacb8` | 39519495879 | **failure** — `testDebugUnitTest`: `97 tests completed, 3 failed`, all three `AetherScanStateTest` assertions on `ui.endpoint`. Robolectric resets the Application but not Kotlin `object` state, so an endpoint an earlier test published was still in `AetherRepository`; fixed in the test's `@Before`, not in product code |
+| `faacb65` | 39582881896 | **failure** — `testDebugUnitTest`: `102 tests completed, 1 failed`, `AetherScanStateTest.kt:118`. JUnit's three-argument form is `assertEquals(message, expected, actual)` and the arguments were swapped; fixed in `e04b70c` |
+| `e04b70c` | 39585297915 | **success** — build (compile ×3, `102 tests / 0 failed`, `assembleDebug`, APK verification) and `emulator-smoke` both green |
+| `a8b5e10` | 39696427508 | **success** — build: step 16 Rust `libaether.so`, step 17 native verification, step 19 Kotlin compile ×3, step 20 unit tests, step 24 `assembleDebug`, step 25 APK verification (`lib/arm64-v8a/libaether.so` and `libc++_shared.so` asserted present), step 26 upload; `emulator-smoke` downloaded that exact APK, booted a KVM emulator, launched it and ran instrumentation on the real UI |
 
-No failure in that table came from product code; all three red runs were test or
-test-helper mistakes, fixed in the commit above them.
+No failure in that table came from product code; every red run was a test or
+test-helper mistake, fixed in the commit above it.
+
+The `emulator-smoke` job proves the APK installs, launches and passes instrumentation
+on an emulator. It does **not** register an identity against the real WARP API, so it
+is not evidence that registration succeeds - see §9.6 for what registration needs and
+why that stays an environmental question.
 
 Workflow logs and artifacts cannot be downloaded from this sandbox (the storage
 hosts are unreachable), so failures were read from check-run annotations:
@@ -275,7 +283,7 @@ base commit's runs too, not a regression from this work.
 
 ### What the executed tests cover
 
-Nine test classes under `app/src/test/java/com/manjaniq/`, all Aether-only:
+Twelve test classes under `app/src/test/java/com/manjaniq/`, all Aether-only:
 
 | Class | Runner | Covers |
 |---|---|---|
@@ -288,9 +296,14 @@ Nine test classes under `app/src/test/java/com/manjaniq/`, all Aether-only:
 | `AetherCapabilitiesTest` | Robolectric | the capability matrix, the choice enums against the Rust parsers, fragmenting scope per route |
 | `AetherPanelValidationTest` | Robolectric | per-field validation messages and the section/tag vocabulary |
 | `AetherPanelUiTest` | Robolectric + Compose | the real `MainActivity`: progressive disclosure, collapsed groups, disabled choices, redaction, the log filter, scan-outcome display, small-input marking |
+| `AetherRegistrationOutcomeTest` | plain JUnit | classification of every registration failure family, the engine's wording surviving verbatim, no report claiming success or a running tunnel, the reported 110 s inside the engine's 106.75-111.25 s window and below the app's deadline, and the identity deadline outlasting every schedule the engine can run (§9) |
+| `AetherRegistrationStateTest` | Robolectric | what the panel is told while an identity registers: ERROR with the engine's wording, no identity or endpoint published, an app-side timeout not reported as success, a user stop reported as STOPPED, the identity job's active-job lifecycle, and a retry that starts clean and keeps the failure in history |
+| `AetherNetworkCheckTest` | Robolectric | the read-only connectivity line: an unread state reported as unread rather than offline, a captive portal named, missing DNS or a system proxy reported rather than hidden, and no suggestion to weaken a check |
 
-Nothing in them touches a network, a device or `libaether.so`. The scan tests use
-fixtures shaped exactly like the core's replies.
+Nothing in them touches a network, a device or `libaether.so`. The scan and
+registration tests use fixtures shaped exactly like the core's replies and errors —
+for registration, the strings `https.rs`, `account.rs` and `error.rs` actually
+produce, including the reported failure verbatim.
 
 ### Commands to run where a JDK and the Android SDK exist
 
