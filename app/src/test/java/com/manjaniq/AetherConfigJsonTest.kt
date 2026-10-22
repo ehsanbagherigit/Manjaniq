@@ -38,13 +38,24 @@ class AetherConfigJsonTest {
             ipVersion = "both",
             teamName = "example-team",
             quickReconnect = false,
-            fragmentEnabled = true,
+            // Off here on purpose: this fixture is a WireGuard route, and fragmenting
+            // is valid on MASQUE only - fragment.rs has exactly one consumer,
+            // masque_h2.rs, so a WireGuard route asking for it is refused by
+            // validate(). The three value fields stay non-default so the round trip
+            // still carries them; fragmentEnabled = true is round-tripped by
+            // fragmentingIsPersistedNotJustHeldInMemory and by
+            // profileConfigCarriesBaseAndRouteExtras below.
+            fragmentEnabled = false,
             fragmentSize = "24-48",
             fragmentDelay = "3-9",
             fragmentSniSplit = true
         )
         assertNull(cfg.validate())
         assertEquals(cfg, AetherConfig.fromJson(cfg.toJson()))
+        // The pairing rule, pinned where this fixture touches it: fragmenting on this
+        // WireGuard route is refused, on MASQUE it is accepted.
+        assertNotNull(cfg.copy(fragmentEnabled = true).validate())
+        assertNull(cfg.copy(transport = "masque", fragmentEnabled = true).validate())
     }
 
     @Test
@@ -106,6 +117,9 @@ class AetherConfigJsonTest {
     fun profileConfigCarriesBaseAndRouteExtras() {
         val pc = AetherProfileConfig(
             profileId = AetherProfile.AETHER_TOR.id,
+            // Deliberately a combination validate() refuses to start: persistence is a
+            // dumb carrier, so a stored value must survive the round trip rather than be
+            // dropped or silently rewritten on the way through JSON.
             base = AetherConfig.DEFAULT.copy(transport = "wg", fragmentEnabled = true),
             psiphonEnabled = true,
             psiphonEndpoint = "127.0.0.1:1821",
