@@ -19,7 +19,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.manjaniq.R
 import com.manjaniq.core.models.AetherConfig
+import com.manjaniq.core.models.AetherStartMode
 import com.manjaniq.core.models.AetherState
+import com.manjaniq.core.models.AetherTransportChoice
 import com.manjaniq.ui.TestTags
 
 @Composable
@@ -79,14 +81,48 @@ fun AetherSettingsForm(
                 }
             }
 
-            // Transport selector (chips)
+            // Start path. Chosen first because it decides what the rest of this form
+            // can mean: only aether_core_start applies the settings the granular FFI
+            // calls have no field for.
+            Text(text = stringResource(R.string.aether_start_mode), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AetherStartMode.ALL.forEach { mode ->
+                    FilterChip(
+                        selected = draft.startMode == mode.id,
+                        onClick = { draft = draft.copy(startMode = mode.id); errorText = null },
+                        label = { Text(stringResource(mode.labelRes), fontSize = 12.sp) }
+                    )
+                }
+            }
+            Text(text = stringResource(R.string.aether_start_mode_note), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+
+            // Transport selector (chips). gool and MIM are real protocols only on the
+            // full-engine path; on the granular path the core would run MASQUE while
+            // the stored value said otherwise, so the chips stay disabled until that
+            // path is chosen - the same rule AetherConfig.validate() enforces.
             Text(text = stringResource(R.string.aether_transport), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("masque" to R.string.aether_transport_masque, "wg" to R.string.aether_transport_wg, "gool" to R.string.aether_transport_gool, "mim" to R.string.aether_transport_mim).forEach { (id,res) ->
-                    FilterChip(selected = draft.transport==id, onClick = { draft=draft.copy(transport=id); errorText=null }, label = { Text(stringResource(res), fontSize = 12.sp) })
+                    val selectable = AetherTransportChoice.isSelectable(id, draft.fullEngine())
+                    FilterChip(
+                        selected = draft.transport==id,
+                        enabled = selectable,
+                        onClick = { if (selectable) { draft=draft.copy(transport=id); errorText=null } },
+                        label = { Text(stringResource(res), fontSize = 12.sp) }
+                    )
                 }
             }
             Text(text = stringResource(R.string.aether_transport_desc), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+            // Named, not hidden: these are stored with the route and only applied
+            // when it runs the core's own command line.
+            val cliOnly = draft.commandLineOnlyFeatures()
+            if (cliOnly.isNotEmpty()) {
+                Text(
+                    text = stringResource(R.string.aether_command_line_only, cliOnly.joinToString(", ")),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp
+                )
+            }
 
             // Scan mode
             Text(text = stringResource(R.string.aether_scan_mode), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)

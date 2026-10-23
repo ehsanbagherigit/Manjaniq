@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.sp
 import com.manjaniq.R
 import com.manjaniq.core.models.AetherConfig
 import com.manjaniq.core.models.AetherEngineOptions
+import com.manjaniq.core.models.AetherLogLevel
 import com.manjaniq.core.models.AetherPsiphonMode
 import com.manjaniq.core.models.AetherStartMode
 import com.manjaniq.core.models.AetherTorBridges
@@ -134,6 +135,51 @@ fun AetherEngineOptionsSection(
             }
         )
         EngineText(
+            labelRes = R.string.aether_engine_tor_bridge_file,
+            hintRes = R.string.aether_engine_tor_bridge_file_hint,
+            value = engine.tor.bridgeFile,
+            tag = "aether_engine_tor_bridge_file",
+            onValueChange = { text -> edit { it.copy(tor = it.tor.copy(bridgeFile = text)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_tor_relay_ports,
+            hintRes = R.string.aether_engine_tor_relay_ports_hint,
+            value = engine.tor.relayPorts,
+            tag = "aether_engine_tor_relay_ports",
+            onValueChange = { text -> edit { it.copy(tor = it.tor.copy(relayPorts = text)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_tor_pt_dir,
+            hintRes = R.string.aether_engine_tor_pt_dir_hint,
+            value = engine.tor.ptDir.joinToString("\n"),
+            tag = "aether_engine_tor_pt_dir",
+            minLines = 2,
+            onValueChange = { text ->
+                edit {
+                    it.copy(
+                        tor = it.tor.copy(
+                            ptDir = text.lines().map { line -> line.trim() }
+                                .filter { line -> line.isNotEmpty() }
+                        )
+                    )
+                }
+            }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_tor_bind,
+            hintRes = R.string.aether_engine_tor_bind_hint,
+            value = engine.tor.bind,
+            tag = "aether_engine_tor_bind",
+            onValueChange = { text -> edit { it.copy(tor = it.tor.copy(bind = text)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_tor_http,
+            hintRes = R.string.aether_engine_tor_http_hint,
+            value = engine.tor.http,
+            tag = "aether_engine_tor_http",
+            onValueChange = { text -> edit { it.copy(tor = it.tor.copy(http = text)) } }
+        )
+        EngineText(
             labelRes = R.string.aether_engine_tor_dir,
             value = engine.tor.dir,
             tag = "aether_engine_tor_dir",
@@ -176,6 +222,167 @@ fun AetherEngineOptionsSection(
             tag = "aether_engine_psiphon_cdn_sni",
             onValueChange = { text -> edit { it.copy(psiphon = it.psiphon.copy(cdnSni = text)) } }
         )
+        EngineText(
+            labelRes = R.string.aether_engine_psiphon_cdn_sets,
+            hintRes = R.string.aether_engine_psiphon_cdn_sets_hint,
+            value = engine.psiphon.cdnSets,
+            tag = "aether_engine_psiphon_cdn_sets",
+            onValueChange = { text -> edit { it.copy(psiphon = it.psiphon.copy(cdnSets = text)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_psiphon_server_entries,
+            hintRes = R.string.aether_engine_psiphon_server_entries_hint,
+            value = engine.psiphon.serverEntries,
+            tag = "aether_engine_psiphon_server_entries",
+            onValueChange = { text ->
+                edit { it.copy(psiphon = it.psiphon.copy(serverEntries = text)) }
+            }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_psiphon_config,
+            hintRes = R.string.aether_engine_psiphon_config_hint,
+            value = engine.psiphon.config,
+            tag = "aether_engine_psiphon_config",
+            onValueChange = { text -> edit { it.copy(psiphon = it.psiphon.copy(config = text)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_psiphon_bind,
+            hintRes = R.string.aether_engine_psiphon_bind_hint,
+            value = engine.psiphon.bind,
+            tag = "aether_engine_psiphon_bind",
+            onValueChange = { text -> edit { it.copy(psiphon = it.psiphon.copy(bind = text)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_psiphon_http,
+            hintRes = R.string.aether_engine_psiphon_http_hint,
+            value = engine.psiphon.http,
+            tag = "aether_engine_psiphon_http",
+            onValueChange = { text -> edit { it.copy(psiphon = it.psiphon.copy(http = text)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_psiphon_dir,
+            hintRes = R.string.aether_engine_psiphon_dir_hint,
+            value = engine.psiphon.dir,
+            tag = "aether_engine_psiphon_dir",
+            onValueChange = { text -> edit { it.copy(psiphon = it.psiphon.copy(dir = text)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_psiphon_bin,
+            hintRes = R.string.aether_engine_psiphon_bin_hint,
+            value = engine.psiphon.bin,
+            tag = "aether_engine_psiphon_bin",
+            onValueChange = { text -> edit { it.copy(psiphon = it.psiphon.copy(bin = text)) } }
+        )
+
+        // ------------------------------------------------- Gool, MIM, carrier ---
+        // The two double-hop protocols and the per-carrier endpoints. They belong
+        // beside the protocol choice - the transport chips say may the route use
+        // gool or MIM, and these fields say which hops it uses when it does.
+        EngineGroupTitle(R.string.aether_engine_gool)
+        EngineSwitch(
+            titleRes = R.string.aether_engine_gool_classic,
+            descRes = R.string.aether_engine_gool_classic_desc,
+            checked = engine.gool.classic,
+            tag = "aether_engine_gool_classic",
+            onCheckedChange = { on -> edit { it.copy(gool = it.gool.copy(classic = on)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_gool_peer,
+            hintRes = R.string.aether_engine_gool_peer_hint,
+            value = engine.gool.peer,
+            tag = "aether_engine_gool_peer",
+            onValueChange = { text -> edit { it.copy(gool = it.gool.copy(peer = text)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_gool_outer,
+            hintRes = R.string.aether_engine_gool_outer_hint,
+            value = engine.gool.outerPeer,
+            tag = "aether_engine_gool_outer",
+            onValueChange = { text -> edit { it.copy(gool = it.gool.copy(outerPeer = text)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_gool_inner,
+            hintRes = R.string.aether_engine_gool_inner_hint,
+            value = engine.gool.innerPeer,
+            tag = "aether_engine_gool_inner",
+            onValueChange = { text -> edit { it.copy(gool = it.gool.copy(innerPeer = text)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_gool_peers,
+            hintRes = R.string.aether_engine_gool_peers_hint,
+            value = engine.gool.peers,
+            tag = "aether_engine_gool_peers",
+            onValueChange = { text -> edit { it.copy(gool = it.gool.copy(peers = text)) } }
+        )
+        EngineSwitch(
+            titleRes = R.string.aether_engine_gool_scan,
+            descRes = R.string.aether_engine_gool_scan_desc,
+            checked = engine.gool.scanPeers,
+            tag = "aether_engine_gool_scan",
+            onCheckedChange = { on -> edit { it.copy(gool = it.gool.copy(scanPeers = on)) } }
+        )
+
+        EngineGroupTitle(R.string.aether_engine_mim)
+        EngineText(
+            labelRes = R.string.aether_engine_mim_outer,
+            hintRes = R.string.aether_engine_mim_outer_hint,
+            value = engine.mim.outerPeer,
+            tag = "aether_engine_mim_outer",
+            onValueChange = { text -> edit { it.copy(mim = it.mim.copy(outerPeer = text)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_mim_inner,
+            hintRes = R.string.aether_engine_mim_inner_hint,
+            value = engine.mim.innerPeer,
+            tag = "aether_engine_mim_inner",
+            onValueChange = { text -> edit { it.copy(mim = it.mim.copy(innerPeer = text)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_mim_peers,
+            hintRes = R.string.aether_engine_mim_peers_hint,
+            value = engine.mim.peers,
+            tag = "aether_engine_mim_peers",
+            onValueChange = { text -> edit { it.copy(mim = it.mim.copy(peers = text)) } }
+        )
+        EngineSwitch(
+            titleRes = R.string.aether_engine_mim_scan,
+            descRes = R.string.aether_engine_mim_scan_desc,
+            checked = engine.mim.scanPeers,
+            tag = "aether_engine_mim_scan",
+            onCheckedChange = { on -> edit { it.copy(mim = it.mim.copy(scanPeers = on)) } }
+        )
+
+        EngineGroupTitle(R.string.aether_engine_carrier)
+        EngineText(
+            labelRes = R.string.aether_engine_h2_peer,
+            hintRes = R.string.aether_engine_h2_peer_hint,
+            value = engine.carrier.h2Peer,
+            tag = "aether_engine_h2_peer",
+            onValueChange = { text -> edit { it.copy(carrier = it.carrier.copy(h2Peer = text)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_wg_peer,
+            hintRes = R.string.aether_engine_wg_peer_hint,
+            value = engine.carrier.wgPeer,
+            tag = "aether_engine_wg_peer",
+            onValueChange = { text -> edit { it.copy(carrier = it.carrier.copy(wgPeer = text)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_masque_config,
+            hintRes = R.string.aether_engine_masque_config_hint,
+            value = engine.carrier.masqueConfig,
+            tag = "aether_engine_masque_config",
+            onValueChange = { text ->
+                edit { it.copy(carrier = it.carrier.copy(masqueConfig = text)) }
+            }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_wg_config,
+            hintRes = R.string.aether_engine_wg_config_hint,
+            value = engine.carrier.wgConfig,
+            tag = "aether_engine_wg_config",
+            onValueChange = { text -> edit { it.copy(carrier = it.carrier.copy(wgConfig = text)) } }
+        )
 
         // ------------------------------------------------------ Zero Trust ---
         EngineGroupTitle(R.string.aether_engine_zt_team)
@@ -209,6 +416,20 @@ fun AetherEngineOptionsSection(
             value = engine.api.accessToken,
             tag = "aether_engine_zt_access_token",
             onValueChange = { text -> edit { it.copy(api = it.api.copy(accessToken = text)) } }
+        )
+        EngineSwitch(
+            titleRes = R.string.aether_engine_api_fragment,
+            descRes = R.string.aether_engine_api_fragment_desc,
+            checked = engine.api.fragment,
+            tag = "aether_engine_api_fragment",
+            onCheckedChange = { on -> edit { it.copy(api = it.api.copy(fragment = on)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_enroll_address,
+            hintRes = R.string.aether_engine_enroll_address_hint,
+            value = engine.api.enrollAddress,
+            tag = "aether_engine_enroll_address",
+            onValueChange = { text -> edit { it.copy(api = it.api.copy(enrollAddress = text)) } }
         )
         EngineSwitch(
             titleRes = R.string.aether_engine_zt_gateway,
@@ -265,6 +486,20 @@ fun AetherEngineOptionsSection(
             tag = "aether_engine_tls_grease",
             onCheckedChange = { on -> edit { it.copy(tls = it.tls.copy(disableGrease = on)) } }
         )
+        EngineSwitch(
+            titleRes = R.string.aether_engine_tls_verify,
+            descRes = R.string.aether_engine_tls_verify_desc,
+            checked = engine.tls.verify,
+            tag = "aether_engine_tls_verify",
+            onCheckedChange = { on -> edit { it.copy(tls = it.tls.copy(verify = on)) } }
+        )
+        EngineSwitch(
+            titleRes = R.string.aether_engine_tls_no_quic_v2,
+            descRes = R.string.aether_engine_tls_no_quic_v2_desc,
+            checked = engine.tls.noQuicV2,
+            tag = "aether_engine_tls_no_quic_v2",
+            onCheckedChange = { on -> edit { it.copy(tls = it.tls.copy(noQuicV2 = on)) } }
+        )
         EngineText(
             labelRes = R.string.aether_engine_ech_value,
             hintRes = R.string.aether_engine_ech_value_hint,
@@ -286,6 +521,56 @@ fun AetherEngineOptionsSection(
             onValueChange = { text -> edit { it.copy(ech = it.ech.copy(domain = text)) } }
         )
 
+        // ----------------------------------------------------------- Timing ---
+        EngineGroupTitle(R.string.aether_engine_timing)
+        EngineText(
+            labelRes = R.string.aether_engine_startup_secs,
+            hintRes = R.string.aether_engine_startup_secs_hint,
+            value = engine.timing.startupSecs,
+            tag = "aether_engine_startup_secs",
+            onValueChange = { text -> edit { it.copy(timing = it.timing.copy(startupSecs = text)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_reconnect_secs,
+            value = engine.timing.reconnectSecs,
+            tag = "aether_engine_reconnect_secs",
+            onValueChange = {
+                text -> edit { it.copy(timing = it.timing.copy(reconnectSecs = text)) }
+            }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_validate_secs,
+            value = engine.timing.validateSecs,
+            tag = "aether_engine_validate_secs",
+            onValueChange = {
+                text -> edit { it.copy(timing = it.timing.copy(validateSecs = text)) }
+            }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_keepalive_secs,
+            value = engine.timing.keepaliveSecs,
+            tag = "aether_engine_keepalive_secs",
+            onValueChange = {
+                text -> edit { it.copy(timing = it.timing.copy(keepaliveSecs = text)) }
+            }
+        )
+        EngineSwitch(
+            titleRes = R.string.aether_engine_no_data_check,
+            descRes = R.string.aether_engine_no_data_check_desc,
+            checked = engine.timing.noDataCheck,
+            tag = "aether_engine_no_data_check",
+            onCheckedChange = { on -> edit { it.copy(timing = it.timing.copy(noDataCheck = on)) } }
+        )
+        EngineSwitch(
+            titleRes = R.string.aether_engine_no_profile_retry,
+            descRes = R.string.aether_engine_no_profile_retry_desc,
+            checked = engine.timing.noProfileRetry,
+            tag = "aether_engine_no_profile_retry",
+            onCheckedChange = {
+                on -> edit { it.copy(timing = it.timing.copy(noProfileRetry = on)) }
+            }
+        )
+
         // ----------------------------------------------- Reporting / routing ---
         EngineGroupTitle(R.string.aether_engine_misc)
         EngineText(
@@ -302,6 +587,15 @@ fun AetherEngineOptionsSection(
             tag = "aether_engine_exit_loc",
             onValueChange = { text ->
                 edit { it.copy(exitLocation = it.exitLocation.copy(filter = text)) }
+            }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_exit_loc_secs,
+            hintRes = R.string.aether_engine_exit_loc_secs_hint,
+            value = engine.exitLocation.verificationSecs,
+            tag = "aether_engine_exit_loc_secs",
+            onValueChange = {
+                text -> edit { it.copy(exitLocation = it.exitLocation.copy(verificationSecs = text)) }
             }
         )
         EngineSwitch(
@@ -323,6 +617,32 @@ fun AetherEngineOptionsSection(
             value = engine.api.register,
             tag = "aether_engine_register",
             onValueChange = { text -> edit { it.copy(api = it.api.copy(register = text)) } }
+        )
+
+        // ---------------------------------------------------------- Logging ---
+        EngineGroupTitle(R.string.aether_engine_logging)
+        EngineChoice(
+            labelRes = R.string.aether_engine_log_level,
+            options = LOG_LEVELS,
+            selected = engine.logging.level,
+            tagPrefix = "aether_engine_log_level_",
+            onSelect = { id -> edit { it.copy(logging = it.logging.copy(level = id)) } }
+        )
+        EngineSwitch(
+            titleRes = R.string.aether_engine_verbose,
+            descRes = R.string.aether_engine_verbose_desc,
+            checked = engine.logging.verbose,
+            tag = "aether_engine_logging_verbose",
+            onCheckedChange = { on -> edit { it.copy(logging = it.logging.copy(verbose = on)) } }
+        )
+        EngineText(
+            labelRes = R.string.aether_engine_perf,
+            hintRes = R.string.aether_engine_perf_hint,
+            value = engine.logging.perfProfile,
+            tag = "aether_engine_perf",
+            onValueChange = {
+                text -> edit { it.copy(logging = it.logging.copy(perfProfile = text)) }
+            }
         )
 
         Text(
@@ -354,6 +674,15 @@ private val PSIPHON_MODES: List<Pair<String, Int>> = listOf(
     AetherPsiphonMode.CHAIN to R.string.aether_engine_chain,
     AetherPsiphonMode.REVERSE to R.string.aether_engine_reverse,
     AetherPsiphonMode.ONLY to R.string.aether_engine_only
+)
+
+private val LOG_LEVELS: List<Pair<String, Int>> = listOf(
+    AetherLogLevel.DEFAULT to R.string.aether_engine_log_default,
+    "error" to R.string.aether_engine_log_error,
+    "warn" to R.string.aether_engine_log_warn,
+    "info" to R.string.aether_engine_log_info,
+    "debug" to R.string.aether_engine_log_debug,
+    "trace" to R.string.aether_engine_log_trace
 )
 
 @Composable
@@ -478,6 +807,18 @@ private fun engineOptionsSummary(engine: AetherEngineOptions): String {
         parts += "TLS"
     }
     if (engine.ech.value.isNotBlank()) parts += "ECH"
+    if (engine.gool.classic || engine.gool.peer.isNotBlank() ||
+        engine.gool.innerPeer.isNotBlank() || engine.gool.outerPeer.isNotBlank() ||
+        engine.gool.peers.isNotBlank() || engine.gool.scanPeers
+    ) {
+        parts += "gool"
+    }
+    if (engine.mim.innerPeer.isNotBlank() || engine.mim.outerPeer.isNotBlank() ||
+        engine.mim.peers.isNotBlank() || engine.mim.scanPeers
+    ) {
+        parts += "MIM"
+    }
+    if (engine.logging.verbose || engine.logging.level.isNotBlank()) parts += "logging"
     if (engine.stats.enabled) parts += "stats"
     return if (parts.isEmpty()) {
         stringResource(R.string.aether_section_summary_default)
