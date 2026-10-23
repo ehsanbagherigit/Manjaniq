@@ -139,7 +139,6 @@ class AetherPanelValidationTest {
 
         val tags = listOf(
             AetherTestTags.PANEL,
-            AetherTestTags.NOTICE,
             AetherTestTags.ROUTE_LIST,
             AetherTestTags.SAVE,
             AetherTestTags.RESET,

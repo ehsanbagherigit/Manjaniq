@@ -1,12 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Aether strings - replaces Coming Soon placeholders with real controls -->
-    <string name="aether_coming_soon_title">Aether — Next-Gen Transport</string>
-    <string name="aether_coming_soon_body">Aether discovers reachable gateways, opens an encrypted tunnel (MASQUE/WireGuard) and exposes a local SOCKS5 proxy. Configure transport, scan mode and bind address, then start.</string>
-    <string name="aether_no_effect">Aether runs independently from RSTA; it has its own identity and tunnel. Switch cores to control each engine separately.</string>
-    <string name="aether_feature_1">MASQUE (HTTP/3 &amp; H2) + WireGuard, nested Gool/MIM</string>
-    <string name="aether_feature_2">Endpoint discovery + data-plane validation + obfuscation</string>
-    <string name="aether_feature_3">Local SOCKS5 (127.0.0.1:1819) + optional HTTP proxy</string>
+    <!-- Aether strings -->
 
     <!-- Aether Settings Form -->
     <string name="aether_settings">Aether Configuration</string>
@@ -128,9 +122,6 @@
     <string name="profile_expand_settings">Show settings</string>
     <string name="profile_collapse_settings">Hide settings</string>
     <string name="profile_requires_external">This profile needs an external component (Tor or Psiphon) that is not bundled. Install and verify it separately; app will show setup instructions.</string>
-    <string name="profile_socks_note">SOCKS5 %1$s — Port-conflict checked vs RSTA</string>
-    <string name="vpn_limitation_title">No device-wide VPN</string>
-    <string name="vpn_limitation_body">Aether exposes a local SOCKS5/HTTP proxy. Apps that respect proxy settings can use it; device traffic is not automatically routed via TUN/VpnService. A VpnService implementation would be needed for system-wide routing.</string>
     <!-- ============================================================== -->
     <!-- Progressive Aether flow (route -> protocol -> scan -> carrier)  -->
     <!-- ============================================================== -->
@@ -163,10 +154,6 @@
     <string name="aether_restart_question">Aether is running. Save and restart to apply these settings?</string>
     <string name="aether_reset_question">Replace the settings of this route with defaults?</string>
     <string name="aether_unsaved_hint">Unsaved changes</string>
-
-    <!-- Compact build notice (replaces the oversized coming-soon block) -->
-    <string name="aether_notice_title">About this build</string>
-    <string name="aether_notice_summary">Local SOCKS5 proxy · no device-wide VPN</string>
 
     <!-- Transport / protocol detail lines -->
     <string name="aether_transport_masque_detail">MASQUE over QUIC/HTTP-3. The Aether default.</string>

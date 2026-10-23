@@ -19,7 +19,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -71,7 +70,6 @@ import com.manjaniq.ui.AetherAccentDeep
 import com.manjaniq.ui.AetherAccentSoft
 import com.manjaniq.ui.theme.ManjaniqBorder
 import com.manjaniq.ui.theme.ManjaniqPurple
-import com.manjaniq.ui.theme.ManjaniqPurpleDeep
 import com.manjaniq.ui.theme.ManjaniqSurface
 
 /** Start is neon blue, stop is purple — the accent split the Aether UI already used. */
@@ -84,8 +82,8 @@ private val NeonBlue = Color(0xFF00D5FF)
  * The flow is progressive, mirroring the order the Aether CLI asks its questions
  * (protocol → scan → IP version → carrier → obfuscation → local proxy):
  *
- *  1. a compact notice and the start control, so the tunnel is one tap away
- *     without scrolling past settings;
+ *  1. the start control, so the tunnel is one tap away without scrolling past
+ *     settings;
  *  2. the route list, where picking a route is the only decision on screen;
  *  3. the selected route's settings, grouped in collapsible sections that show
  *     only what that route owns — [getSectionsForProfile] is the single source
@@ -119,8 +117,6 @@ fun AetherPanel(
             .testTag(AetherTestTags.PANEL),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        AetherNotice(socksEndpoint = ui.socksEndpoint)
-
         if (ui.lastError != null) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
@@ -233,99 +229,6 @@ fun AetherPanel(
             state = ui.state,
             onClear = onClearLogs
         )
-    }
-}
-
-/**
- * One compact line about what Aether is here, with the detail behind a toggle.
- *
- * It replaces a five-paragraph block that used to sit above the start control
- * and push it off the first screen; the VPN limitation stays visible in the
- * collapsed summary, so nothing important is hidden.
- */
-@Composable
-private fun AetherNotice(socksEndpoint: String) {
-    var expanded by remember { mutableStateOf(false) }
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag(AetherTestTags.NOTICE),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = ManjaniqPurpleDeep),
-        border = BorderStroke(1.dp, ManjaniqPurple.copy(alpha = 0.4f))
-    ) {
-        Column(Modifier.fillMaxWidth()) {
-            Card(
-                onClick = { expanded = !expanded },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag(AetherTestTags.NOTICE_TOGGLE),
-                shape = RoundedCornerShape(0.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.aether_coming_soon_title),
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1
-                        )
-                        Text(
-                            text = stringResource(R.string.aether_notice_summary) +
-                                " · socks5h://$socksEndpoint",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 11.sp,
-                            maxLines = 2
-                        )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Text(text = if (expanded) "▲" else "▼", color = AetherAccent, fontSize = 10.sp)
-                }
-            }
-            if (expanded) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.aether_coming_soon_body),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp
-                    )
-                    Text(
-                        text = stringResource(R.string.profile_socks_note, socksEndpoint),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp,
-                        fontStyle = FontStyle.Italic
-                    )
-                    HorizontalDivider(color = ManjaniqBorder)
-                    Text(
-                        text = stringResource(R.string.vpn_limitation_title),
-                        color = AetherAccent,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 12.sp
-                    )
-                    Text(
-                        text = stringResource(R.string.vpn_limitation_body),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp,
-                        lineHeight = 15.sp
-                    )
-                }
-            }
-        }
     }
 }
 

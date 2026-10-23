@@ -11,19 +11,16 @@
     <string name="nav_close">Close navigation menu</string>
 
     <!-- Top Bar -->
-    <string name="app_subtitle">RSTA SNI Spoof — local proxy control</string>
+    <string name="app_subtitle">A multi-core networking client</string>
 
     <!-- Core Selector -->
     <string name="select_core">Select Core</string>
     <string name="rsta_name">RSTA</string>
     <string name="rsta_description">SNI spoof and fragmentation proxy. Battle-tested Go engine.</string>
     <string name="aether_name">Aether</string>
-    <string name="aether_description">Next-gen pluggable transport. Planned integration.</string>
+    <string name="aether_description">censorship circumvention client designed for heavily restricted networks</string>
     <string name="badge_available">Available</string>
     <string name="badge_ready">Ready</string>
-    <string name="badge_coming_soon">Coming Soon</string>
-    <string name="aether_not_available">Engine not available in this build</string>
-    <string name="aether_learn_more">Learn more</string>
 
     <!-- Connection Status -->
     <string name="connection_status">Connection Status</string>
@@ -102,8 +99,6 @@
     <string name="theme_dark">Dark</string>
     <string name="theme_dark_desc">Premium dark mode (default)</string>
     <string name="general">General</string>
-    <string name="config_management">Configuration</string>
-    <string name="config_management_desc">Import, export or reset your RSTA configuration</string>
     <string name="settings_saved">Settings saved. They take effect on the next start.</string>
     <string name="settings_saved_restart">Settings saved; engine restarting.</string>
     <string name="settings_saved_next">Settings saved; they apply on the next manual start.</string>
@@ -132,14 +127,12 @@
     <!-- About -->
     <string name="about_title">About</string>
     <string name="about_subtitle">Manjaniq application information</string>
-    <string name="about_description">Manjaniq is a modular Android application for network utilities. Its initial feature controls the genuine RSTA SNI Spoof Go engine as a local proxy. Point compatible apps at the configured listen address — no root required and no device-wide VPN.</string>
+    <string name="about_description">Manjaniq is a modular Android networking client that integrates third-party cores to support internet access in restrictive network environments. It includes techniques intended to help circumvent censorship and DPI-based filtering.</string>
     <string name="version">Version</string>
     <string name="engine">Engine</string>
-    <string name="engine_rsta_version">RSTA SNI Spoof</string>
+    <string name="engine_name">Multi-core</string>
     <string name="repository">Repository</string>
     <string name="license">License</string>
-    <string name="acknowledgements">Acknowledgements</string>
-    <string name="ack_text">Built with Kotlin, Jetpack Compose, and the open-source RSTA engine. Thanks to the RSTA team and community contributors.</string>
 
     <!-- Connection Details Expanded -->
     <string name="live_statistics">Live Statistics</string>
@@ -174,7 +167,6 @@
 
     <!-- Previously hardcoded in composables (Aether specifics now in strings_aether.xml) -->
     <string name="stats_footnote">Counters come from the engine\'s own monitor; traffic totals advance in 256 KB steps, as in the original program.</string>
-    <string name="config_management_hint">Switch to Home → RSTA to edit connection, bypass and fragmentation settings. They are persisted separately from app language and theme.</string>
     <string name="rsta_config_intro">Your RSTA engine configuration is ready. Adjust listen/target, SNI, method and fragmentation below.</string>
     <string name="rsta_config_intro_hint">Use the controls below to edit. Changes are validated and saved to your device.</string>
     <string name="engine_version_fmt">Engine v%1$s</string>
