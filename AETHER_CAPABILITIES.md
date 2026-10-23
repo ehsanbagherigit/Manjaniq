@@ -7,6 +7,17 @@ Scope: the Aether module of this app only (`app/src/main/java/com/manjaniq/{Aeth
 Nothing here is inferred from a feature name. Every row cites the file and line
 that establishes it, or says explicitly that it could not be established.
 
+> **Updated: start modes.** The inventory below describes the *granular* FFI path
+> (`aether_identity_open` -> `aether_scan_start` -> `aether_tunnel_start`), which
+> is what this app used exclusively when the table was written. That path is
+> still the default and still reports each step, but it is no longer the only
+> one: a route can be started through `aether_core_start`, i.e. the core's own
+> command line, where every flag in `cli.rs` applies. §9 covers that path, the
+> packaged helper processes it needs, and what Android 10+ (W^X) allows. Where a
+> row below says "recorded only" or "not implemented", read it as *on the granular
+> path* - `AetherCapabilities.reachOf(key, mode)` answers the same question for
+> either mode, and the settings screen uses it.
+
 ---
 
 ## 1. What "reachable" means in this build
@@ -315,3 +326,124 @@ Listed so nothing is mistaken for missing when it is only unwired:
   returns device id, addresses, organization, gateway proxy, assigned endpoint and
   the MASQUE certificate state (`api.rs:228-238`). No caller: it is a separate call
   from the open reply, and nothing in the panel needs it yet.
+
+---
+
+## 9. The full-engine start path
+
+### 9.1 Why a second path exists
+
+The three granular calls carry fixed payload structs (`ffi.rs:215-260`):
+
+| call | fields |
+|---|---|
+| `aether_identity_open` | `path`, `transport`, `model`, `locale`, `team` |
+| `aether_scan_start` | `transport`, `mode`, `ip`, `profile`, `ports`, `excluded`, `ech` |
+| `aether_tunnel_start` | `peer`, `transport`, `socks`, `http`, `profile`, `keepalive`, `ech` |
+
+Everything else the core implements - `--gool`, `--mim`, `--tor*`, `--psiphon*`,
+`--team`/`--access-*`/`--gateway`, `--routes`/`--route-block`/`--route-direct`,
+`--upstream`, `--dns`, `--quick-reconnect`, `--stats`, `--mark`, `--register`,
+`--tls-*`, `--ech*`, `--h2`/`--h3` - has no field there, because it is parsed by
+`cli.rs` into `AETHER_*` variables before `run_with` starts (`lib.rs:77`).
+
+`aether_core_start` (`ffi.rs:492`) runs `cli::parse_args` over a JSON array of
+arguments and then `run_with`, returning a pollable, cancellable job exactly like
+the granular calls. `AetherConfig.toAetherArgs` builds that list from the same
+model the settings screen edits, and `AetherService.startFullEngine` drives it:
+start the job, poll it, probe the loopback SOCKS listener until it answers, then
+hold the job until it ends. Stop, restart, readiness reporting and state
+publication are shared with the granular path.
+
+The mode is stored per route (`AetherConfig.startMode`, `AetherStartMode`), shown
+in the settings, and validated (`AetherConfig.validate`): an unknown mode is
+refused, and the protocols only the CLI has are refused on the granular path
+instead of silently degrading to MASQUE (`api::Transport::parse`, `api.rs:20-26`).
+
+### 9.2 What a child process needs, and why it lives in lib/
+
+Two Aether features spawn an executable:
+
+| child process | spawned by | flag | needed for |
+|---|---|---|---|
+| `psiphon-tunnel-core` | `psiphon.rs:749` | `--psiphon-bin` | every `--psiphon*` mode |
+| lyrebird (obfs4, snowflake, webtunnel) | `bridges.rs` | `--tor-pt [name=]<path>` | bridges that name a pluggable transport; plain Tor needs none |
+
+Upstream ships both in a `pt/` folder built as static `GOOS=linux CGO_ENABLED=0`
+ELFs - a pure-Go binary needs no libc, so it runs unchanged under Android
+(`third_party/Aether/.github/workflows/release.yml`, `android` job).
+
+Android 10 (API 29) enforces W^X: an app may not `execve` a file in its writable
+data directory. The read-only native library directory is therefore the only
+place these may live, so:
+
+1. `scripts/ci/build_helpers.sh` runs the upstream build scripts and installs the
+   results as `lib/arm64-v8a/liblyrebird.so` and
+   `lib/arm64-v8a/libpsiphon_tunnel_core.so` (and the same for `x86_64`);
+2. `app/build.gradle.kts` sets `useLegacyPackaging = true`, i.e. the APK installs
+   with `extractNativeLibs=true`, so those entries become real files in
+   `nativeLibraryDir`;
+3. `AetherHelpers` resolves them **only** there, requires the execute bit, and
+   refuses a path outside that directory (`AetherHelpers.isExecutableLibraryFile`);
+4. `AetherConfig.toAetherArgs` names the resolved files on the command line, and
+   only where the user left the field blank - a path the user typed always wins.
+
+State is the other way round: tor's cache and psiphon's data must be writable, so
+`--tor-dir` / `--psiphon-dir` point into `filesDir` (`filesDir/aether/tor`,
+`filesDir/aether/psiphon`). Data is writable, code is not.
+
+Because a helper can be absent (upstream unreachable during the build, or a build
+that chooses not to ship one), both paths fail closed:
+
+* `AetherConfig.validate()` refuses a Psiphon route with no binary and no packaged
+  helper, and a bridged Tor route with no transport, naming the missing file;
+* `AetherHelpers.summary()` states what the installation can start, and the
+  settings screen shows that line;
+* the CI step that packages them reports a `::warning::`, never a failure, and
+  the APK verification prints what was actually packaged.
+
+### 9.3 Reach, per mode
+
+`AetherCapabilities.reachOf(key, mode)` answers this in code; the table is the
+short version.
+
+| setting | granular | full engine |
+|---|---|---|
+| transport, scanMode, ipVersion, socksBind, httpProxyBind, peer, identityPath | Applied | Applied |
+| echEnabled, noizeProfile, teamName, fragmentEnabled/Size/Delay | Partial | Applied |
+| fragmentSniSplit | Partial (bridge sets the variable; no CLI flag upstream) | Partial (same reason) |
+| dns, upstream, quickReconnect | NotForwarded | Applied |
+| gool, mim | NotForwarded (runs as MASQUE) | Applied (`--gool`, `--mim`) |
+| Tor layering, bridges, relays, PT paths | NotForwarded | Applied / Partial when a PT is needed |
+| Psiphon layering, region, CDN fronting | NotForwarded | Applied / Partial when the child process is absent |
+| Zero Trust (`--team`, `--access-*`, `--gateway`) | NotForwarded | Applied |
+| routing (`--routes`, `--route-block`, `--route-direct`) | NotForwarded | Applied |
+| `--stats`, `--exit-loc`, `--mark`, `--register`, `--tls-*`, `--ech*`, `--dns` | NotForwarded | Applied |
+| fragmenting carrier | `AETHER_MASQUE_HTTP2` via `fragmentingApply` | `--h2`/`--h3` on the command line |
+
+### 9.4 UI
+
+* The selected route shows a **Start path** choice (`granular` / `full`), stored
+  with the route.
+* Transport chips follow the mode: `gool` and `mim` become selectable exactly
+  when the route runs the full engine, and stay unclickable with the reason
+  beside them otherwise. `AetherTransportChoice.isSelectable(id, fullEngine)` is
+  the single rule the chips and `validate()` share.
+* Every reach note is mode-aware (`AetherCapabilities.reachOf(key, mode)`), so a
+  setting shown as applied is applied.
+* `AetherConfig.commandLineOnlyFeatures()` names anything the chosen mode cannot
+  apply, both above the groups and in the service log.
+* An **Engine options** group edits the remaining flags (`AetherEngineOptionsPanel`):
+  Tor mode/bridges/lines/relays/PT/dir, Psiphon mode/region/CDN, Zero Trust
+  team and service-token/email/JWT credentials plus the gateway toggle, routing
+  lists and routes file, TLS ciphers/groups/GREASE, ECH key/DoH resolver/domain,
+  `--mark`, `--exit-loc`, `--stats`, and `--register`.
+
+### 9.5 Registration (headless identities)
+
+`--register <masque|wg|gool|mim|all>` registers identities and exits without
+scanning or tunnelling (`cli.rs`). It is edited in the engine options group and
+run by the full-engine path as a one-shot job bounded by the engine's own
+registration budget (`AetherJobPolling.identityTimeoutMs`), with failures
+reported through `AetherRegistrationOutcome`. `--enroll-address` (custom WARP API
+endpoint) and `--dns` (custom tunnel DNS) are part of the same argument list.

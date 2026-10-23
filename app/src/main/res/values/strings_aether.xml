@@ -227,6 +227,90 @@
     <string name="aether_reach_partial_fragment_sni">Applied through the same call, as AETHER_MASQUE_H2_FRAGMENT_SNI. Upstream has no --fragment-sni flag, so this is the only way it reaches Aether, and it only matters on the HTTP/2 carrier.</string>
     <string name="aether_reach_missing_external">Needs a Tor or Psiphon component that is not bundled with this build, and this path forwards no Tor or Psiphon setting.</string>
 
+    <!-- Start mode (AetherStartMode) -->
+    <string name="aether_start_mode">Start path</string>
+    <string name="aether_start_mode_granular">Scan then tunnel</string>
+    <string name="aether_start_mode_granular_detail">Aether is driven step by step through aether_identity_open, aether_scan_start and aether_tunnel_start, so the scan\u2019s chosen endpoint and every failure are reported as they happen. Only what those payloads carry is applied.</string>
+    <string name="aether_start_mode_full">Full engine</string>
+    <string name="aether_start_mode_full_detail">Aether is started with its own command line (aether_core_start). This is the only path that applies gool, masquerade-in-masquerade, Tor and Psiphon layering, Zero Trust, routing rules, the upstream proxy, the in-tunnel DNS list, quick reconnect, traffic statistics and the socket mark.</string>
+    <string name="aether_start_mode_note">Chosen per route. The full-engine path is the only one that applies every setting below; the scan-then-tunnel path reports each step instead.</string>
+    <string name="aether_command_line_only">Stored with this route, applied only on the full-engine start path: %1$s</string>
+    <string name="aether_helpers_title">Child processes this build ships</string>
+
+    <!-- Reachability reasons for the full-engine path -->
+    <string name="aether_reach_full_cli">Applied: the full-engine path runs Aether\u2019s own command line (aether_core_start), which sets this variable before the engine starts.</string>
+    <string name="aether_reach_full_helper_psiphon">Applied on the full-engine path. Psiphon itself needs the psiphon-tunnel-core child process, which this build ships when the build produced it; without it the start is refused with that reason instead of failing inside the engine.</string>
+    <string name="aether_reach_full_helper_tor">Applied on the full-engine path. Tor needs a pluggable transport only for bridges that name one (obfs4, snowflake, webtunnel); this build ships lyrebird for those, and plain Tor needs no child process at all.</string>
+
+    <!-- Engine options (the core's own command line, AetherEngineOptions) -->
+    <string name="aether_engine_section">Engine options</string>
+    <string name="aether_engine_section_desc">Every remaining flag the Aether core accepts, modelled one-to-one against aether/src/cli.rs. They apply on the full-engine start path.</string>
+    <string name="aether_engine_helper_note">These are the fields aether_core_start reads. On the scan-then-tunnel path they are stored but not applied, and the route says so above.</string>
+
+    <string name="aether_engine_tor_mode">Tor layering</string>
+    <string name="aether_engine_tor_bridges">Bridge source</string>
+    <string name="aether_engine_tor_bridge_lines">Bridge lines</string>
+    <string name="aether_engine_tor_bridge_lines_hint">One bridge per line, in the shape torrc uses: obfs4 1.2.3.4:443 FINGERPRINT cert=… iat-mode=0</string>
+    <string name="aether_engine_tor_relays">Onionoo relays</string>
+    <string name="aether_engine_tor_relays_hint">auto, only, off, or a count such as 80</string>
+    <string name="aether_engine_tor_pt">Pluggable transport</string>
+    <string name="aether_engine_tor_pt_hint">Absolute path to a transport binary, e.g. /data/app/…/liblyrebird.so</string>
+    <string name="aether_engine_tor_dir">Tor state directory</string>
+
+    <string name="aether_engine_psiphon_mode">Psiphon layering</string>
+    <string name="aether_engine_psiphon_region">Psiphon egress region</string>
+    <string name="aether_engine_psiphon_region_hint">Two-letter country code, or empty for automatic</string>
+    <string name="aether_engine_psiphon_cdn_mode">Psiphon mode</string>
+    <string name="aether_engine_psiphon_cdn_mode_hint">auto, cdn or direct</string>
+    <string name="aether_engine_psiphon_cdn_ips">CDN fronting IPs</string>
+    <string name="aether_engine_psiphon_cdn_ips_hint">Comma or space separated addresses; empty uses Psiphon\u2019s own list</string>
+    <string name="aether_engine_psiphon_cdn_sni">CDN fronting SNIs</string>
+
+    <string name="aether_engine_zt_team">Zero Trust team name</string>
+    <string name="aether_engine_zt_access_id">Access client id</string>
+    <string name="aether_engine_zt_access_secret">Access client secret</string>
+    <string name="aether_engine_zt_access_email">Access email</string>
+    <string name="aether_engine_zt_access_email_hint">Sign in with a one-time code sent to this address</string>
+    <string name="aether_engine_zt_access_token">Access token</string>
+    <string name="aether_engine_zt_gateway">Route through the Zero Trust gateway</string>
+    <string name="aether_engine_zt_gateway_desc">Sends HTTP and HTTPS through the organization\u2019s gateway proxy so its filtering and logging apply. It adds a hop inside the tunnel.</string>
+
+    <string name="aether_engine_route_block">Blocked routes</string>
+    <string name="aether_engine_route_block_hint">example.com, full:host, keyword:text, regexp:^ad[0-9]+, 10.0.0.0/8, port:25, private</string>
+    <string name="aether_engine_route_direct">Direct routes</string>
+    <string name="aether_engine_route_file">Routes file</string>
+    <string name="aether_engine_route_file_hint">TOML with a [block] and a [direct] section</string>
+
+    <string name="aether_engine_tls_ciphers">TLS 1.2 cipher suites</string>
+    <string name="aether_engine_tls_groups">TLS groups</string>
+    <string name="aether_engine_tls_grease">Disable GREASE</string>
+    <string name="aether_engine_tls_grease_desc">Leave out the GREASE values (RFC 8701) Chrome\u2019s fingerprint carries by default.</string>
+    <string name="aether_engine_ech_value">ECH key</string>
+    <string name="aether_engine_ech_value_hint">auto, or a base64 Encrypted Client Hello config list</string>
+    <string name="aether_engine_ech_dns">ECH DNS resolver</string>
+    <string name="aether_engine_ech_dns_hint">udp://ip[:port], tcp://ip[:port] or an https:// DoH URL, with @address= / @sni= overrides</string>
+    <string name="aether_engine_ech_domain">ECH domain</string>
+
+    <string name="aether_engine_misc">Routing and reporting</string>
+    <string name="aether_engine_mark">Firewall mark (SO_MARK)</string>
+    <string name="aether_engine_mark_hint">Needs root or CAP_NET_ADMIN; a name is resolved outside the mark</string>
+    <string name="aether_engine_stats">Log tunnel traffic statistics</string>
+    <string name="aether_engine_stats_desc">How much went up and down and how long the tunnel has been up.</string>
+    <string name="aether_engine_stats_secs">Statistics interval (s)</string>
+    <string name="aether_engine_exit_loc">Exit country filter</string>
+    <string name="aether_engine_exit_loc_hint">!IR,AZ,RU blocks those; DE,SE allows only those. Empty disables the check.</string>
+    <string name="aether_engine_register">Register identities and exit</string>
+    <string name="aether_engine_register_hint">masque, wg, gool, mim or all (the --register flag)</string>
+
+    <string name="aether_engine_off">Off</string>
+    <string name="aether_engine_chain">Chain</string>
+    <string name="aether_engine_reverse">Reverse</string>
+    <string name="aether_engine_only">Only</string>
+    <string name="aether_engine_bridges_default">Engine default</string>
+    <string name="aether_engine_bridges_auto">Fetch bridges</string>
+    <string name="aether_engine_bridges_off">Never bridges</string>
+    <string name="aether_engine_bridges_custom">The lines below</string>
+
     <!-- Operational log panel -->
     <string name="aether_log_title">Aether activity</string>
     <string name="aether_log_subtitle">Every step Aether reported, newest last.</string>

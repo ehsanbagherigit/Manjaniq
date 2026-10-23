@@ -13,6 +13,7 @@ import com.manjaniq.AetherBridge
 import com.manjaniq.MainActivity
 import com.manjaniq.R
 import com.manjaniq.core.AetherConfigStore
+import com.manjaniq.core.AetherHelpers
 import com.manjaniq.core.AetherJobPolling
 import com.manjaniq.core.AetherNetworkCheck
 import com.manjaniq.core.AetherRegistrationOutcome
@@ -56,6 +57,9 @@ class AetherService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // A start can arrive from the notification without the activity ever
+        // having composed, so the helper paths are resolved here too.
+        AetherHelpers.configure(applicationContext)
         createChannel()
     }
 
@@ -103,19 +107,16 @@ class AetherService : Service() {
                     "(api::Transport parses only masque|wg); Aether will run plain MASQUE"
             )
         }
-        val skipped = mutableListOf<String>()
-        if (cfg.dns.isNotBlank() && cfg.dns != com.manjaniq.core.models.AetherConfig.DEFAULT.dns) {
-            skipped += "dns"
-        }
-        if (cfg.upstream.isNotBlank()) skipped += "upstream"
-        if (!cfg.quickReconnect) skipped += "quick-reconnect"
-        // Fragmenting is no longer in this list: it is applied to the engine's
-        // environment before the scan (see applyFragmenting), on the MASQUE HTTP/2
-        // carrier it belongs to.
+        // AetherConfig owns the list, so the log and the settings screen cannot
+        // disagree about what this path drops.
+        val skipped = cfg.commandLineOnlyFeatures()
         if (skipped.isNotEmpty()) {
             AetherRepository.log(
                 "WARN",
-                "Saved but not applied on this path (no FFI payload field): ${skipped.joinToString(", ")}"
+                "Saved but not applied on this start path (the identity/scan/tunnel payloads " +
+                    "carry no field for them): ${skipped.joinToString(", ")}. Set the start mode " +
+                    "to '" + com.manjaniq.core.models.AetherStartMode.FULL_ENGINE.id +
+                    "' to apply them."
             )
         }
     }
@@ -409,6 +410,22 @@ class AetherService : Service() {
             if (fragmentProblem != null) {
                 failed(fragmentProblem)
                 stopForegroundAndSelf()
+                return@launch
+            }
+
+            // Everything else the core accepts reaches it only through its own
+            // command line, so a route that asks for those features is started
+            // there (aether_core_start) instead of through the three granular
+            // calls. The two paths publish the same states and share the same
+            // readiness probe, stop and cleanup, so the UI cannot tell them apart
+            // except by what the log says was applied.
+            if (cfg.fullEngine()) {
+                startFullEngine(
+                    cfg = cfg,
+                    attempt = attempt,
+                    onFail = { message -> failed(message) },
+                    isCurrent = { isCurrent() }
+                )
                 return@launch
             }
 
@@ -742,6 +759,204 @@ class AetherService : Service() {
                 // A restart owns the service now; stopping it would kill the newer start.
                 AetherRepository.log("INFO", "Superseded Aether attempt cleaned up")
             }
+        }
+    }
+
+    /**
+     * Starts Aether through `aether_core_start` - the core's own command line -
+     * and holds the job until it ends.
+     *
+     * This is the only path that applies the whole configuration: gool and mim
+     * (`--gool`, `--mim`), the Tor and Psiphon layering (`--tor*`,
+     * `--psiphon*`), Zero Trust (`--team`, `--access-*`, `--gateway`), routing
+     * (`--routes`, `--route-block`, `--route-direct`), `--upstream`, `--dns`,
+     * `--quick-reconnect`, `--stats`, `--mark` and `--register`. The argument
+     * list is [com.manjaniq.core.models.AetherConfig.toAetherArgs], i.e. the same
+     * model the settings screen edits, so nothing is translated twice.
+     *
+     * The readiness signal is unchanged: `awaitTunnelServing` polls the job and
+     * probes the loopback SOCKS listener, and Aether binds that listener only
+     * after the tunnel is established and validated. Scanning now happens inside
+     * the same job, so the budget covers the engine's own scan deadline plus the
+     * readiness window rather than either alone.
+     *
+     * On failure the reason goes to [onFail], which knows whether a stop the user
+     * asked for turned this into a cancellation. Nothing here invents state: the
+     * job id is published while the job exists and released before returning.
+     */
+    private suspend fun startFullEngine(
+        cfg: com.manjaniq.core.models.AetherConfig,
+        attempt: StartAttempt,
+        onFail: (String) -> Unit,
+        isCurrent: () -> Boolean
+    ) {
+        val filesDir = applicationContext.filesDir.absolutePath
+        val helpers = AetherHelpers.paths(applicationContext)
+        AetherRepository.log("INFO", AetherHelpers.summary())
+
+        val args = cfg.toAetherArgs(filesDir, helpers)
+        // Only the flags are logged: values can hold a Zero Trust secret
+        // (--access-secret, --access-token) or a bridge line.
+        val flags = args.filter { it.startsWith("-") }.distinct()
+        AetherRepository.log(
+            "INFO",
+            "Full-engine start: ${args.size} arguments, flags ${flags.joinToString(" ")}"
+        )
+
+        val started = AetherBridge.coreStart(args)
+        if (started.isFailure) {
+            onFail(
+                "Aether refused the configuration: " +
+                    (started.exceptionOrNull()?.message ?: "no reason was given")
+            )
+            stopForegroundAndSelf()
+            return
+        }
+        val startedObject = started.getOrNull()!!
+        val jobId = startedObject.optLong("job", -1L)
+        if (jobId == -1L) {
+            onFail("aether_core_start returned no job id: $startedObject")
+            stopForegroundAndSelf()
+            return
+        }
+        AetherRepository.setActiveJob(jobId)
+        synchronized(this@AetherService) { currentJobId = jobId }
+
+        // `--register` registers identities and exits without scanning or
+        // tunnelling (cli.rs), so it is a one-shot job with a registration
+        // budget, not a tunnel that will ever answer on SOCKS.
+        if (cfg.engine.api.register.isNotBlank()) {
+            val registerBudget = AetherJobPolling.identityTimeoutMs()
+            AetherRepository.log(
+                "INFO",
+                "Register-only run: Aether registers '${cfg.engine.api.register}' and exits " +
+                    "(up to ${registerBudget / 1000}s for the WARP API)"
+            )
+            val done = pollJob(jobId, registerBudget)
+            AetherBridge.jobFree(jobId)
+            synchronized(this@AetherService) { if (currentJobId == jobId) currentJobId = null }
+            AetherRepository.setActiveJob(null)
+            when {
+                !isCurrent() -> AetherRepository.log(
+                    "INFO",
+                    "Superseded Aether registration finished"
+                )
+                done == null || done.isFailure -> {
+                    val raw = done?.exceptionOrNull()?.message
+                    onFail(
+                        AetherRegistrationOutcome.report(raw, registerBudget) +
+                            " No identity was registered."
+                    )
+                }
+                else -> {
+                    AetherRepository.log(
+                        "OK",
+                        "Identities registered for '${cfg.engine.api.register}'; " +
+                            "the files are beside the configured identity path"
+                    )
+                    AetherRepository.onServiceActionFinished(null, AetherState.STOPPED)
+                }
+            }
+            if (isCurrent()) stopForegroundAndSelf()
+            return
+        }
+
+        val readinessBudget =
+            AetherJobPolling.scanTimeoutFor(cfg.transport, cfg.scanMode) + SOCKS_READY_BUDGET_MS
+        AetherRepository.log(
+            "INFO",
+            "Full-engine job $jobId started; waiting up to ${readinessBudget / 1000}s for " +
+                "SOCKS5 ${cfg.socksBind} to accept connections (scan, tunnel and validation " +
+                "all run inside this one job)"
+        )
+        val outcome = awaitTunnelServing(jobId, cfg.socksBind, attempt, readinessBudget)
+
+        if (outcome.ended || outcome.cancelled) {
+            AetherBridge.jobFree(jobId)
+            synchronized(this@AetherService) { if (currentJobId == jobId) currentJobId = null }
+            AetherRepository.setActiveJob(null)
+            when {
+                !isCurrent() -> AetherRepository.log(
+                    "INFO",
+                    "Superseded Aether start attempt ended while starting"
+                )
+                attempt.cancelled || outcome.cancelled || outcome.endState == "stopped" -> {
+                    AetherRepository.log("INFO", "Aether stopped before the tunnel came up")
+                    AetherRepository.onServiceActionFinished(null, AetherState.STOPPED)
+                }
+                else -> {
+                    val message = outcome.endError
+                        ?: "Aether ended before SOCKS5 ${cfg.socksBind} came up " +
+                        "(state=${outcome.endState})"
+                    AetherRepository.log("ERROR", "Aether failed: $message")
+                    AetherRepository.onServiceActionFinished(
+                        "Aether failed: $message",
+                        AetherState.ERROR
+                    )
+                }
+            }
+            if (isCurrent()) stopForegroundAndSelf()
+            return
+        }
+
+        if (!outcome.serving) {
+            // The job is still running: Aether has not given up, the loopback
+            // probe simply has not been answered yet. Say exactly that and keep
+            // holding the tunnel rather than inventing a failure.
+            AetherRepository.log(
+                "WARN",
+                "SOCKS5 ${cfg.socksBind} did not answer within ${readinessBudget / 1000}s; " +
+                    "job $jobId is still running and its outcome is reported here"
+            )
+        } else {
+            AetherRepository.log("OK", "SOCKS5 ${cfg.socksBind} is accepting connections")
+        }
+
+        if (!isCurrent()) {
+            AetherRepository.log("INFO", "Superseded Aether start attempt finished the readiness check")
+            AetherBridge.jobFree(jobId)
+            return
+        }
+
+        AetherRepository.updateState(AetherState.RUNNING)
+        AetherRepository.setEndpoint(cfg.peer.trim().ifEmpty { "scan" }, cfg.socksBind)
+        goForeground("Aether SOCKS5 ${cfg.socksBind} [${cfg.transport}, full engine]")
+        AetherRepository.onServiceActionFinished(null, AetherState.RUNNING)
+        AetherRepository.log(
+            "OK",
+            "Tunnel running socks=${cfg.socksBind} transport=${cfg.transport} " +
+                "mode=${cfg.scanMode} noize=${cfg.noizeProfile}"
+        )
+
+        val exit = pollJob(jobId, timeoutMs = null)
+        AetherBridge.jobFree(jobId)
+        synchronized(this@AetherService) { if (currentJobId == jobId) currentJobId = null }
+        AetherRepository.setActiveJob(null)
+
+        val exitState = exit?.getOrNull()?.optString("state") ?: ""
+        val exitError = exit?.exceptionOrNull()?.message
+        when {
+            !isCurrent() -> AetherRepository.log(
+                "INFO",
+                "Superseded Aether attempt ended (state=$exitState)"
+            )
+            attempt.cancelled || exitState == "stopped" -> {
+                AetherRepository.log("INFO", "Tunnel stopped")
+                AetherRepository.onServiceActionFinished(null, AetherState.STOPPED)
+            }
+            exitError != null -> {
+                AetherRepository.log("ERROR", "Tunnel failed: $exitError")
+                AetherRepository.onServiceActionFinished("Tunnel failed: $exitError", AetherState.ERROR)
+            }
+            else -> {
+                AetherRepository.log("INFO", "Tunnel closed by the gateway (state=$exitState)")
+                AetherRepository.onServiceActionFinished(null, AetherState.STOPPED)
+            }
+        }
+        if (isCurrent()) {
+            stopForegroundAndSelf()
+        } else {
+            AetherRepository.log("INFO", "Superseded Aether attempt cleaned up")
         }
     }
 

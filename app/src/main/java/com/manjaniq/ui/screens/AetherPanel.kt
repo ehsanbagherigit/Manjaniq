@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.manjaniq.R
+import com.manjaniq.core.AetherHelpers
 import com.manjaniq.core.AetherLog
 import com.manjaniq.core.AetherUiState
 import com.manjaniq.core.models.AetherCapabilities
@@ -52,6 +53,7 @@ import com.manjaniq.core.models.AetherNoizeChoice
 import com.manjaniq.core.models.AetherProfile
 import com.manjaniq.core.models.AetherProfileConfig
 import com.manjaniq.core.models.AetherScanChoice
+import com.manjaniq.core.models.AetherStartMode
 import com.manjaniq.core.models.AetherState
 import com.manjaniq.core.models.AetherTransportChoice
 import com.manjaniq.core.models.getSectionsForProfile
@@ -397,6 +399,9 @@ private fun AetherRouteSettings(
     var infoRes by remember(profile) { mutableStateOf<Int?>(null) }
     var pendingRestart by remember(profile) { mutableStateOf<AetherProfileConfig?>(null) }
     var confirmReset by remember(profile) { mutableStateOf(false) }
+    // Collapsed by default: the route's own groups come first, and these are the
+    // flags most routes never touch.
+    var engineOpen by remember(profile) { mutableStateOf(false) }
 
     val sections = remember(profile) { getSectionsForProfile(profile) }
     // Only the first group starts open: the route is chosen, the rest is one tap
@@ -455,6 +460,45 @@ private fun AetherRouteSettings(
                 )
             }
 
+            // Which path starts the engine. It is stored with the route and it
+            // decides what the reach notes below can promise: the full-engine path
+            // runs Aether's own command line, which is the only way gool, mim, Tor,
+            // Psiphon, Zero Trust, routing, an upstream proxy or the in-tunnel DNS
+            // list reach the core at all.
+            AetherSettingLabel(R.string.aether_start_mode)
+            AetherOptionGroup(
+                options = startModeOptions(),
+                selectedId = draft.base.startMode,
+                onSelect = { id ->
+                    onDraftChange(draft.copy(base = draft.base.copy(startMode = id)))
+                },
+                tagPrefix = "aether_start_mode_"
+            )
+            Text(
+                text = stringResource(R.string.aether_start_mode_note),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp
+            )
+            // Which child processes this installation can actually start. Read
+            // from the native library directory, never from the writable data
+            // directory, because Android 10+ refuses to execute from there.
+            AetherReadOnlyRow(
+                labelRes = R.string.aether_helpers_title,
+                value = AetherHelpers.summary(),
+                tag = "aether_helpers_summary"
+            )
+            val commandLineOnly = draft.base.commandLineOnlyFeatures()
+            if (commandLineOnly.isNotEmpty()) {
+                Text(
+                    text = stringResource(
+                        R.string.aether_command_line_only,
+                        commandLineOnly.joinToString(", ")
+                    ),
+                    color = AetherAccentSoft,
+                    fontSize = 11.sp
+                )
+            }
+
             sections.forEach { section ->
                 val isOpen = section.titleRes in open
                 AetherSection(
@@ -477,6 +521,17 @@ private fun AetherRouteSettings(
                     }
                 }
             }
+
+            // Every remaining flag the core accepts (Tor, Psiphon, Zero Trust,
+            // routing, TLS/ECH, statistics, registration). They are edited in the
+            // route's draft, so Save stores them with the route exactly like the
+            // groups above.
+            AetherEngineOptionsSection(
+                base = draft.base,
+                onChange = { next -> onDraftChange(draft.copy(base = next)) },
+                expanded = engineOpen,
+                onToggle = { engineOpen = !engineOpen }
+            )
 
             if (saveProfile != null && resetProfile != null) {
                 if (errorText != null) {
@@ -613,17 +668,20 @@ private fun AetherSetting(
 ) {
     val base = draft.base
     fun updateBase(mut: (AetherConfig) -> AetherConfig) = onDraftChange(draft.copy(base = mut(base)))
+    // What this configuration's start path can apply: the reach notes below are
+    // read through it, so a setting shown as applied really is applied.
+    val startMode = AetherStartMode.byId(base.startMode) ?: AetherStartMode.GRANULAR
 
     when (key) {
         "transport" -> {
             AetherSettingLabel(R.string.aether_transport)
             AetherOptionGroup(
-                options = transportOptions(base.transport),
+                options = transportOptions(base.transport, startMode),
                 selectedId = base.transport,
                 onSelect = { id -> updateBase { it.copy(transport = id) } },
                 tagPrefix = "aether_transport_"
             )
-            AetherKeyReachNote("transport")
+            AetherKeyReachNote("transport", startMode)
         }
 
         "scanMode" -> if (base.peer.isBlank()) {
@@ -634,7 +692,7 @@ private fun AetherSetting(
                 onSelect = { mode -> updateBase { it.copy(scanMode = mode) } },
                 tagPrefix = "aether_scan_"
             )
-            AetherKeyReachNote("scanMode")
+            AetherKeyReachNote("scanMode", startMode)
         }
 
         "ipVersion" -> if (base.peer.isBlank()) {
@@ -645,7 +703,7 @@ private fun AetherSetting(
                 onSelect = { ip -> updateBase { it.copy(ipVersion = ip) } },
                 tagPrefix = "aether_ip_"
             )
-            AetherKeyReachNote("ipVersion")
+            AetherKeyReachNote("ipVersion", startMode)
         }
 
         "peer" -> {
@@ -663,7 +721,7 @@ private fun AetherSetting(
                     fontSize = 11.sp
                 )
             }
-            AetherKeyReachNote("peer")
+            AetherKeyReachNote("peer", startMode)
         }
 
         "socksBind" -> {
@@ -683,7 +741,7 @@ private fun AetherSetting(
                 errorText = problem,
                 tag = "aether_socks_field"
             )
-            AetherKeyReachNote("socksBind")
+            AetherKeyReachNote("socksBind", startMode)
         }
 
         "httpProxyBind" -> {
@@ -703,7 +761,7 @@ private fun AetherSetting(
                 errorText = problem,
                 tag = "aether_http_field"
             )
-            AetherKeyReachNote("httpProxyBind")
+            AetherKeyReachNote("httpProxyBind", startMode)
         }
 
         "dns" -> {
@@ -714,7 +772,7 @@ private fun AetherSetting(
                 hintRes = R.string.aether_dns_hint,
                 tag = "aether_dns_field"
             )
-            AetherKeyReachNote("dns")
+            AetherKeyReachNote("dns", startMode)
         }
 
         "upstream" -> {
@@ -725,7 +783,7 @@ private fun AetherSetting(
                 hintRes = R.string.aether_upstream_hint,
                 tag = "aether_upstream_field"
             )
-            AetherKeyReachNote("upstream")
+            AetherKeyReachNote("upstream", startMode)
         }
 
         "noizeProfile" -> {
@@ -736,7 +794,7 @@ private fun AetherSetting(
                 onSelect = { p -> updateBase { it.copy(noizeProfile = p) } },
                 tagPrefix = "aether_noize_"
             )
-            AetherKeyReachNote("noizeProfile")
+            AetherKeyReachNote("noizeProfile", startMode)
         }
 
         "echEnabled" -> {
@@ -747,7 +805,7 @@ private fun AetherSetting(
                 onCheckedChange = { v -> updateBase { it.copy(echEnabled = v) } },
                 tag = "aether_ech_toggle"
             )
-            AetherKeyReachNote("echEnabled")
+            AetherKeyReachNote("echEnabled", startMode)
         }
 
         "quickReconnect" -> {
@@ -758,7 +816,7 @@ private fun AetherSetting(
                 onCheckedChange = { v -> updateBase { it.copy(quickReconnect = v) } },
                 tag = "aether_quick_toggle"
             )
-            AetherKeyReachNote("quickReconnect")
+            AetherKeyReachNote("quickReconnect", startMode)
         }
 
         "teamName" -> {
@@ -768,7 +826,7 @@ private fun AetherSetting(
                 labelRes = R.string.aether_team,
                 tag = "aether_team_field"
             )
-            AetherKeyReachNote("teamName")
+            AetherKeyReachNote("teamName", startMode)
         }
 
         "identityPath" -> {
@@ -779,7 +837,7 @@ private fun AetherSetting(
                 hintRes = R.string.aether_identity_hint,
                 tag = "aether_identity_field"
             )
-            AetherKeyReachNote("identityPath")
+            AetherKeyReachNote("identityPath", startMode)
         }
 
         "psiphonEnabled" -> {
@@ -790,7 +848,7 @@ private fun AetherSetting(
                 onCheckedChange = { v -> onDraftChange(draft.copy(psiphonEnabled = v)) },
                 tag = "aether_psiphon_toggle"
             )
-            AetherKeyReachNote("psiphonEnabled")
+            AetherKeyReachNote("psiphonEnabled", startMode)
         }
 
         "psiphonEndpoint" -> AetherField(
@@ -1296,9 +1354,12 @@ private fun AetherSettingLabel(labelRes: Int) {
 
 /** Reach note for one setting key; silent for settings that are fully applied. */
 @Composable
-private fun AetherKeyReachNote(key: String) {
-    val info = AetherCapabilities.of(key) ?: return
-    AetherReachNote(reach = info.reach, reasonRes = info.reasonRes)
+private fun AetherKeyReachNote(key: String, mode: AetherStartMode) {
+    if (AetherCapabilities.of(key) == null) return
+    AetherReachNote(
+        reach = AetherCapabilities.reachOf(key, mode),
+        reasonRes = AetherCapabilities.reasonResFor(key, mode)
+    )
 }
 
 @Composable
@@ -1446,10 +1507,22 @@ private fun AetherProfileImportExport(
 // ---------------------------------------------------------------- choices ----
 
 @Composable
-private fun transportOptions(current: String): List<AetherOption> {
+private fun startModeOptions(): List<AetherOption> = AetherStartMode.ALL.map { mode ->
+    AetherOption(
+        id = mode.id,
+        label = stringResource(mode.labelRes),
+        detail = stringResource(mode.detailRes)
+    )
+}
+
+@Composable
+private fun transportOptions(current: String, mode: AetherStartMode): List<AetherOption> {
     val reason = stringResource(R.string.aether_transport_unreachable)
     return AetherTransportChoice.ALL.map { choice ->
-        val selectable = choice.selectable || choice.id == current
+        // The full-engine path runs cli.rs, where all four ids are protocols; the
+        // granular path must stay on the two api::Transport parses.
+        val selectable = AetherTransportChoice.isSelectable(choice.id, mode.fullEngine) ||
+            choice.id == current
         AetherOption(
             id = choice.id,
             label = stringResource(choice.labelRes),

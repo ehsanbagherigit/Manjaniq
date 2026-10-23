@@ -1,5 +1,6 @@
 package com.manjaniq.core.models
 
+import com.manjaniq.core.AetherHelpers
 import org.json.JSONObject
 
 /**
@@ -63,8 +64,23 @@ data class AetherConfig(
      * flags, and a default renders nothing at all so the engine keeps its own value.
      * See [AetherEngineOptions].
      */
-    val engine: AetherEngineOptions = AetherEngineOptions()
+    val engine: AetherEngineOptions = AetherEngineOptions(),
+    /**
+     * How AetherService starts the core: the granular FFI calls
+     * ([AetherStartMode.GRANULAR], the default and what every earlier build did)
+     * or the core's own command line ([AetherStartMode.FULL_ENGINE]), which is
+     * the only path that can carry `--gool`/`--mim`, Tor and Psiphon layering,
+     * Zero Trust, routing, `--upstream`, `--dns`, `--quick-reconnect`, `--stats`,
+     * `--mark` and `--register`.
+     *
+     * The mode is stored per route and shown in the settings, so a configuration
+     * is never started through a path other than the one it names.
+     */
+    val startMode: String = AetherStartMode.GRANULAR.id
 ) {
+
+    /** True when this configuration runs the core's command line. */
+    fun fullEngine(): Boolean = AetherStartMode.isFullEngine(startMode)
     fun validate(): String? {
         // socksBind must be loopback
         val socks = socksBind.trim()
@@ -94,16 +110,21 @@ data class AetherConfig(
                 return "SOCKS and HTTP proxy must listen on different ports"
             }
         }
+        if (startMode !in AetherStartMode.IDS) {
+            return "Start mode must be one of " + AetherStartMode.IDS.joinToString(", ")
+        }
         if (transport !in AetherTransportChoice.IDS) return "Invalid transport"
         // `aether_tunnel_start` parses only "wg" and "masque", and
         // `api::Transport::parse` (api.rs) maps every other string to Masque.
-        // Forwarding a transport this build cannot dispatch would therefore run
+        // Forwarding a transport the start path cannot dispatch would therefore run
         // plain MASQUE while the stored configuration claims something else - a
-        // silent fallback. Refuse instead, with the ids that do work.
-        if (!AetherTransportChoice.isSelectable(transport)) {
-            return "Transport '$transport' cannot be started by this build (Aether would " +
-                "run MASQUE instead); choose " +
-                AetherTransportChoice.SELECTABLE_IDS.joinToString(" or ")
+        // silent fallback. The full-engine path runs `cli.rs`, where `--gool` and
+        // `--mim` are real protocols, so the check follows the mode.
+        if (!AetherTransportChoice.isSelectable(transport, fullEngine())) {
+            return "Transport '$transport' needs the full-engine start mode " +
+                "(on the granular path Aether would run MASQUE instead); choose " +
+                AetherTransportChoice.SELECTABLE_IDS.joinToString(" or ") +
+                " or set the start mode to " + AetherStartMode.FULL_ENGINE.id
         }
         if (scanMode !in AetherScanChoice.IDS) return "Invalid scan mode"
         // Empty means "let Aether pick its own default" and was accepted before
@@ -124,23 +145,65 @@ data class AetherConfig(
                 "MASQUE-over-HTTP/2 carrier, so '$transport' would ignore it"
         }
         engine.validate()?.let { return it }
-        // psiphon.rs:749 spawns psiphon-tunnel-core and bridges.rs:301 spawns a Tor
-        // pluggable transport. This build ships neither, so asking for them without
-        // naming an executable would fail deep inside the engine with no explanation.
-        // Naming a path is accepted: the check is about the missing binary, not about
-        // the feature.
-        if (engine.psiphon.isEnabled() && engine.psiphon.bin.isBlank()) {
-            return "Psiphon needs the ${AetherEngineOptions.HELPER_PSIPHON} executable, which this " +
-                "build does not ship: set its path, or ship it as a native library (see " +
+        // Psiphon and the Tor bridges each need a helper process. A packaged one
+        // is resolved by AetherHelpers in the read-only native library directory
+        // (scripts/ci/build_helpers.sh puts it there); without one, the start is
+        // refused here rather than failing deep inside the engine with no
+        // explanation. Naming a path is always accepted: the check is about a
+        // missing binary, not about the feature.
+        if (engine.psiphon.isEnabled() && engine.psiphon.bin.isBlank() && !AetherHelpers.hasPsiphon()) {
+            return "Psiphon needs the ${AetherEngineOptions.HELPER_PSIPHON} executable and this " +
+                "build does not ship it: set its path, or ship it as a native library (see " +
                 "AETHER_CAPABILITIES.md §6)"
         }
-        if (engine.tor.needsHelperBinary() && engine.tor.pt.isEmpty() && engine.tor.ptDir.isEmpty()) {
+        if (engine.tor.needsHelperBinary() &&
+            engine.tor.pt.isEmpty() &&
+            engine.tor.ptDir.isEmpty() &&
+            !AetherHelpers.hasPluggableTransport()
+        ) {
             return "These Tor bridges need a pluggable-transport executable such as " +
-                "${AetherEngineOptions.HELPER_TOR_PT}, which this build does not ship: name one with " +
-                "the PT or PT directory setting, or ship it as a native library (see " +
+                "${AetherEngineOptions.HELPER_TOR_PT} and this build does not ship it: name one " +
+                "with the PT or PT directory setting, or ship it as a native library (see " +
                 "AETHER_CAPABILITIES.md §6)"
         }
         return null
+    }
+
+    /**
+     * The configured features that reach the engine **only** through its command
+     * line, in the order a user would meet them. Empty on a full-engine route.
+     *
+     * This is what the granular FFI path (`identity_open` -> `scan_start` ->
+     * `tunnel_start`) silently drops: those payload structs have no field for any
+     * of it (`ffi.rs:215-260`). Rather than refuse to save the configuration - the
+     * values are real, and a later start mode should be able to use them - the
+     * app names them, both in the settings screen and in the service log, so
+     * nothing claims to be applied when it is not.
+     */
+    fun commandLineOnlyFeatures(): List<String> {
+        if (fullEngine()) return emptyList()
+        val features = mutableListOf<String>()
+        if (engine.tor.isEnabled()) features += "Tor layering (--tor/--tor-reverse/--tor-only)"
+        if (engine.psiphon.isEnabled()) features += "Psiphon layering (--psiphon*)"
+        if (engine.gateway.enabled) features += "the Zero Trust gateway (--gateway)"
+        if (engine.api.team.isNotBlank() || engine.api.hasSecrets()) {
+            features += "Zero Trust enrolment (--team/--access-*)"
+        }
+        if (engine.routing.routesFile.isNotBlank() ||
+            engine.routing.block.isNotBlank() ||
+            engine.routing.direct.isNotBlank()
+        ) {
+            features += "routing rules (--routes/--route-block/--route-direct)"
+        }
+        if (upstream.isNotBlank()) features += "the upstream proxy (--upstream)"
+        if (dns.isNotBlank() && dns != DEFAULT.dns) features += "the in-tunnel DNS list (--dns)"
+        if (engine.stats.enabled) features += "traffic statistics (--stats)"
+        if (engine.exitLocation.filter.isNotBlank()) features += "exit-country filtering (--exit-loc)"
+        if (engine.timing.mark.isNotBlank()) features += "the socket mark (--mark)"
+        if (AetherTransportChoice.byId(transport)?.selectable == false) {
+            features += "the '$transport' protocol (--$transport)"
+        }
+        return features
     }
 
     /**
@@ -171,23 +234,35 @@ data class AetherConfig(
         put("fragmentDelay", fragmentDelay)
         put("fragmentSniSplit", fragmentSniSplit)
         put("engine", engine.toJson())
+        put("startMode", startMode)
     }.toString()
 
     /**
      * The Aether command line for this configuration, for `aether_core_start`
      * (`AetherBridge.coreStart`).
      *
-     * NOTE: `AetherService` currently drives Aether through the granular
-     * `identity_open` / `scan_start` / `tunnel_start` FFI calls instead, so this
-     * mapping is not what runs today. It is kept complete and correct because it
-     * is the only path that can express gool, mim, DNS, upstream and quick
-     * reconnect. Fragmenting reaches the engine today through
+     * `AetherService` runs this when the route's start mode is
+     * [AetherStartMode.FULL_ENGINE]; the granular path
+     * (`identity_open` / `scan_start` / `tunnel_start`) uses its typed payloads
+     * instead. This is the only mapping that can express gool/mim, the Tor and
+     * Psiphon layering, Zero Trust, routing, `--upstream`, `--dns`,
+     * `--quick-reconnect`, `--stats`, `--mark` and `--register`, which is why the
+     * full-engine mode exists at all.
+     *
+     * Fragmenting also reaches the engine through
      * [AetherBridge.fragmentingApply] (`AetherService.applyFragmenting`), which
      * writes the variables Aether reads; these flags carry the same decision for
      * the `aether_core_start` path so the two never disagree. See
      * AETHER_CAPABILITIES.md §3.
+     *
+     * [helpers] supplies the paths of the packaged child processes, resolved by
+     * [com.manjaniq.core.AetherHelpers]. A setting the user left blank is filled
+     * from it; a setting the user named always wins.
      */
-    fun toAetherArgs(contextFilesDir: String): List<String> {
+    fun toAetherArgs(
+        contextFilesDir: String,
+        helpers: AetherHelperPaths = AetherHelperPaths.none()
+    ): List<String> {
         val args = mutableListOf<String>()
         // bind is required; Aether defaults to 127.0.0.1:1819 but we set explicitly
         args += "--bind"; args += socksBind.ifEmpty { "127.0.0.1:1819" }
@@ -267,8 +342,46 @@ data class AetherConfig(
         // Every remaining family the core accepts (cli.rs:469-647), each emitting
         // nothing when it is left at the engine's own default.
         args += engine.toArgs()
+        // The child processes. Both are spawned by the engine (psiphon by
+        // psiphon.rs:749, the Tor transport by bridges.rs) and neither is on PATH
+        // under Android, so the exact file is named here. Only fields the user
+        // left blank are filled in, and only on the path that can use them.
+        if (fullEngine()) {
+            if (engine.psiphon.isEnabled()) {
+                if (engine.psiphon.bin.isBlank() && helpers.psiphonBinary.isNotEmpty()) {
+                    args += "--psiphon-bin"; args += helpers.psiphonBinary
+                }
+                if (engine.psiphon.dir.isBlank() && helpers.psiphonDirectory.isNotEmpty()) {
+                    args += "--psiphon-dir"; args += helpers.psiphonDirectory
+                }
+            }
+            if (engine.tor.isEnabled()) {
+                if (engine.tor.pt.isEmpty() && engine.tor.ptDir.isEmpty() && helpers.ptBinary.isNotEmpty()) {
+                    // One lyrebird binary serves every transport Aether asks for
+                    // (obfs4, snowflake, webtunnel), so it is named once per
+                    // transport rather than left to a lookup that cannot see it.
+                    listOf("obfs4", "snowflake", "webtunnel").forEach { name ->
+                        args += "--tor-pt"; args += "$name=${helpers.ptBinary}"
+                    }
+                }
+                if (engine.tor.ptDir.isEmpty() && helpers.ptDirectory.isNotEmpty()) {
+                    args += "--tor-pt-dir"; args += helpers.ptDirectory
+                }
+                if (engine.tor.dir.isBlank() && helpers.torDirectory.isNotEmpty()) {
+                    args += "--tor-dir"; args += helpers.torDirectory
+                }
+            }
+        }
         return args
     }
+
+    /**
+     * A copy of this configuration that runs the core's command line, which is
+     * the only way the Tor, Psiphon, Zero Trust and routing settings apply. Used
+     * by the settings screen when a route asks for one of them.
+     */
+    fun withFullEngine(): AetherConfig =
+        if (fullEngine()) this else copy(startMode = AetherStartMode.FULL_ENGINE.id)
 
     companion object {
         fun fromJson(json: String): AetherConfig? {
@@ -294,7 +407,11 @@ data class AetherConfig(
                     fragmentSize = o.optString("fragmentSize", AetherFragmenting.DEFAULT_SIZE),
                     fragmentDelay = o.optString("fragmentDelay", AetherFragmenting.DEFAULT_DELAY),
                     fragmentSniSplit = o.optBoolean("fragmentSniSplit", AetherFragmenting.DEFAULT_SNI_SPLIT),
-                    engine = AetherEngineOptions.fromJson(o.optJSONObject("engine"))
+                    engine = AetherEngineOptions.fromJson(o.optJSONObject("engine")),
+                    // Absent in configurations written before the full-engine
+                    // path existed: those were all granular starts, which is the
+                    // default and therefore what they mean.
+                    startMode = o.optString("startMode", AetherStartMode.GRANULAR.id)
                 )
             } catch (e: Exception) { null }
         }

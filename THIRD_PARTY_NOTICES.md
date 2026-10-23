@@ -23,8 +23,35 @@
 | jni | 0.21.1 | MIT/Apache | JNI shim in wrapper |
 | ring | 0.17 | MIT/Apache | crypto |
 | x25519-dalek | 2.0.1 | BSD-3 | |
-| arti-client (optional) | 0.46 | MIT/Apache | **tor feature OFF** — not built in this phase |
-| liblzma (optional) | 0.4 | MIT/BSD | tor only |
+| arti-client | 0.46 | MIT/Apache-2.0 | **tor feature ON** — pure-Rust Tor client, built into libaether.so |
+| tor-chanmgr / tor-rtcompat | 0.46 | MIT/Apache-2.0 | tor feature (bridges, runtime) |
+| liblzma | 0.4 | MIT/BSD | tor feature (compressed directory documents, static build) |
+| rusqlite (via arti `static-sqlite`) | bundled | Public domain (SQLite) | tor state storage |
+
+## Helper processes shipped beside libaether.so
+
+Aether spawns two child processes. They are **separate executables**, not linked
+into the app, and are built by `scripts/ci/build_helpers.sh` with the upstream
+build scripts (`third_party/Aether/pt-build.sh`, `third_party/Aether/psiphon-build.sh`).
+
+| Component | Source | License | Notes |
+|---|---|---|---|
+| lyrebird | `gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird` (pinned `fc105a03c0e0`) | BSD-3-Clause (Tor Project) | obfs4 / snowflake / webtunnel pluggable transports; Tor only, started only when a bridge names one |
+| psiphon-tunnel-core | `github.com/CluvexStudio/psiphon-tunnel-core` branch `shirokhorshid` (pinned `83aa73b9…`), derived from `Psiphon-Labs/psiphon-tunnel-core` | **GPL-3.0** (upstream Psiphon) | ConsoleClient binary; started only for `--psiphon*` modes |
+
+Both are built `GOOS=linux CGO_ENABLED=0` exactly as upstream's own android
+release job does, and packaged as `lib<name>.so` entries so Android 10+ extracts
+them into the read-only native library directory — the only place an app may
+exec from under W^X. They run as separate processes and are not linked into the
+APK's own code.
+
+**GPL-3.0 consequence:** distributing an APK that contains
+`libpsiphon_tunnel_core.so` means distributing a GPL-3.0 binary, so the
+Corresponding Source for that binary (the pinned commit above plus
+`scripts/ci/build_helpers.sh`) must be offered alongside it. `AETHER_INTEGRATION.md`
+records the exact build steps. If the project does not want that obligation, do
+not package the helper: `AetherHelpers` reports it as missing and the Psiphon
+routes refuse to start with that reason instead of failing inside the engine.
 
 ## Manjaniq native (existing)
 - `engine/rstaspoof` — Go stdlib-only; MIT-like (check rsta-source/README.md)
@@ -47,6 +74,13 @@
 - Release assets via `release-assets.githubusercontent.com` **blocked** in sandbox egress — CI must fetch via `gh release download` with full internet.
 - Rust toolchain blocked in sandbox (`static.rust-lang.org`, `crates.io` blocked) — CI builds real `libaether.so`; local APK degrades gracefully.
 
-## Remaining blocked features
-- **Tor** (`--tor`): requires `arti-client` + `liblzma` + PT binaries (`pt-build.sh` output `pt/`). Excluded — would need Go `pt` cross-compile for Android.
-- **Psiphon** (`--psiphon`): requires `psiphon-tunnel-core` binary; excluded.
+## Feature status after this change
+- **Tor** (`--tor`, `--tor-reverse`, `--tor-only`, bridgedb/onionoo, bridges): the
+  `tor` feature is compiled in, so arti runs inside libaether.so. A bridge that
+  names a pluggable transport additionally needs lyrebird, which CI builds and
+  packages. Plain Tor needs no child process.
+- **Psiphon** (`--psiphon*`): needs the `psiphon-tunnel-core` child process,
+  which CI builds and packages. See the GPL-3.0 note above.
+- **Full engine path:** every flag is applied only when a route's start mode is
+  `full` (`aether_core_start`). The granular path still reports each step and is
+  the default; the settings screen says which features a route's mode applies.

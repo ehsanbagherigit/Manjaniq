@@ -89,13 +89,53 @@ object AetherCapabilities {
 
     fun of(key: String): AetherSettingInfo? = BY_KEY[key]
 
+    /** What the **granular** path does with [key]; kept for callers that predate modes. */
     fun reachOf(key: String): AetherReach = BY_KEY[key]?.reach ?: AetherReach.NotForwarded
 
     fun reasonResFor(key: String): Int =
         BY_KEY[key]?.reasonRes ?: R.string.aether_reach_missing_env_only
 
-    /** True when [key] is applied (fully or partly) by the path this build uses. */
+    /** True when [key] is applied (fully or partly) by the granular path. */
     fun isForwarded(key: String): Boolean = reachOf(key) != AetherReach.NotForwarded
+
+    /**
+     * What the start mode [mode] does with [key].
+     *
+     * The table in [INFO] describes the granular FFI path, because that is the
+     * payload surface it was written against. `aether_core_start` runs the whole
+     * CLI, so every setting it accepts is applied - the only exceptions are the
+     * ones that need a child process this build may not ship (Psiphon, a Tor
+     * pluggable transport) and the ClientHello SNI split, which upstream has no
+     * flag for and which the app writes through
+     * `AetherBridge.fragmentingApply` either way.
+     */
+    fun reachOf(key: String, mode: AetherStartMode): AetherReach {
+        if (!mode.fullEngine) return reachOf(key)
+        return when (key) {
+            // Needs an external executable; present only when the build shipped it.
+            "psiphonEnabled", "psiphonEndpoint", "psiphonRegion",
+            "torSocks", "torBridges", "torUseBridges" -> AetherReach.Partial
+            // Written into the environment by the JNI bridge, not by a CLI flag.
+            "fragmentSniSplit" -> AetherReach.Partial
+            else -> AetherReach.Applied
+        }
+    }
+
+    /** The reason text for [key] under [mode]. */
+    fun reasonResFor(key: String, mode: AetherStartMode): Int {
+        if (!mode.fullEngine) return reasonResFor(key)
+        return when (key) {
+            "psiphonEnabled", "psiphonEndpoint", "psiphonRegion" ->
+                R.string.aether_reach_full_helper_psiphon
+            "torSocks", "torBridges", "torUseBridges" -> R.string.aether_reach_full_helper_tor
+            "fragmentSniSplit" -> R.string.aether_reach_partial_fragment_sni
+            else -> R.string.aether_reach_full_cli
+        }
+    }
+
+    /** True when [key] reaches Aether at all under [mode]. */
+    fun isForwarded(key: String, mode: AetherStartMode): Boolean =
+        reachOf(key, mode) != AetherReach.NotForwarded
 }
 
 /**
@@ -128,7 +168,23 @@ enum class AetherTransportChoice(
 
         fun byId(id: String): AetherTransportChoice? = ALL.firstOrNull { it.id == id }
 
+        /**
+         * Whether the granular path can dispatch [id]: only `masque` and `wg`,
+         * because `api::Transport::parse` (api.rs:20-26) maps every other string
+         * to Masque.
+         */
         fun isSelectable(id: String): Boolean = byId(id)?.selectable == true
+
+        /**
+         * Whether [mode] can start [id]. The full-engine path runs `cli.rs`, where
+         * `--gool` (`AETHER_PROTOCOL=gool`) and `--mim` are real protocols, so all
+         * four are selectable there; on the granular path the table's own
+         * [AetherTransportChoice.selectable] decides.
+         */
+        fun isSelectable(id: String, fullEngine: Boolean): Boolean {
+            val choice = byId(id) ?: return false
+            return choice.selectable || fullEngine
+        }
     }
 }
 

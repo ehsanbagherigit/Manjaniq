@@ -54,6 +54,10 @@ object AetherTestTags {
     /** The carrier consequence, shown while fragmenting is on. */
     const val FRAGMENT_CARRIER_NOTE = "aether_fragment_carrier_note"
 
+    /** The core's remaining flags, edited in their own collapsible group. */
+    const val ENGINE_OPTIONS = "aether_engine_options"
+    const val ENGINE_OPTIONS_TOGGLE = "aether_engine_options_toggle"
+
     /** Save / reset / export / import of the selected route. */
     const val SAVE = "aether_save_settings"
     const val RESET = "aether_reset_settings"
