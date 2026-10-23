@@ -7,6 +7,7 @@ import com.manjaniq.core.models.AetherFragmenting
 import com.manjaniq.core.models.AetherIpChoice
 import com.manjaniq.core.models.AetherNoizeChoice
 import com.manjaniq.core.models.AetherProfile
+import com.manjaniq.core.models.ProfileCapability
 import com.manjaniq.core.models.AetherReach
 import com.manjaniq.core.models.AetherScanChoice
 import com.manjaniq.core.models.AetherTransportChoice
@@ -262,10 +263,28 @@ class AetherCapabilitiesTest {
 
     @Test
     fun onlyOneRouteIsAvailableWithoutAnExternalComponent() {
-        // Truthful status: the other five need Tor or Psiphon, which this build
-        // does not bundle. The UI must keep showing them, not hide them.
+        // The shipping table: the Tor routes need configuration (tor is compiled
+        // into libaether.so, but a route only applies its settings on the
+        // full-engine start path), and the Psiphon routes need the
+        // psiphon-tunnel-core child process. The UI must keep showing all of
+        // them, not hide them.
         val available = AetherProfile.ALL.filter { it.capability.name == "Available" }
         assertEquals(listOf(AetherProfile.WARP_DIRECT), available)
+        // What this installation can do, which is the badge the route cards show.
+        assertEquals(ProfileCapability.Available, AetherProfile.WARP_DIRECT.capabilityInThisBuild())
+        listOf(AetherProfile.TOR_DIRECT, AetherProfile.AETHER_TOR, AetherProfile.TOR_AETHER)
+            .forEach { profile ->
+                assertEquals(profile.name, ProfileCapability.NeedsConfiguration, profile.capabilityInThisBuild())
+            }
+        // The host JVM has no packaged helper, so these two stay honest about the
+        // child process they need; on a device the check reads nativeLibraryDir.
+        listOf(AetherProfile.AETHER_PSIPHON, AetherProfile.TOR_PSIPHON).forEach { profile ->
+            assertEquals(
+                profile.name,
+                ProfileCapability.RequiresExternalComponent,
+                profile.capabilityInThisBuild()
+            )
+        }
         assertEquals(6, AetherProfile.ALL.size)
         assertEquals(AetherProfile.WARP_DIRECT, AetherProfile.byId("warp_direct"))
         assertEquals(

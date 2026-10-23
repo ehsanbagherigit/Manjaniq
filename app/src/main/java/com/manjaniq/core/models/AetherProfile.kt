@@ -1,6 +1,7 @@
 package com.manjaniq.core.models
 
 import com.manjaniq.R
+import com.manjaniq.core.AetherHelpers
 
 /**
  * Selectable connection profiles - maintainable single-source definition.
@@ -36,7 +37,10 @@ enum class AetherProfile(
         routeRes = R.string.profile_tor_direct_route,
         iconRes = R.drawable.ic_aether_logo,
         descriptionRes = R.string.profile_tor_direct_desc,
-        capability = ProfileCapability.RequiresExternalComponent
+        // tor is compiled into libaether.so (`features = ["tor"]`), so this route
+        // no longer needs a component the build lacks - it needs the full-engine
+        // start path and, for bridges, a pluggable transport.
+        capability = ProfileCapability.NeedsConfiguration
     ),
     AETHER_TOR(
         id = "aether_tor",
@@ -44,7 +48,7 @@ enum class AetherProfile(
         routeRes = R.string.profile_aether_tor_route,
         iconRes = R.drawable.ic_aether_logo,
         descriptionRes = R.string.profile_aether_tor_desc,
-        capability = ProfileCapability.RequiresExternalComponent
+        capability = ProfileCapability.NeedsConfiguration
     ),
     TOR_PSIPHON(
         id = "tor_psiphon",
@@ -60,8 +64,30 @@ enum class AetherProfile(
         routeRes = R.string.profile_tor_aether_route,
         iconRes = R.drawable.ic_aether_logo,
         descriptionRes = R.string.profile_tor_aether_desc,
-        capability = ProfileCapability.RequiresExternalComponent
+        capability = ProfileCapability.NeedsConfiguration
     );
+
+    /**
+     * What this installation can actually do with this route.
+     *
+     * The static [capability] above is the shipping table: WARP over Aether is
+     * always available, the Tor routes need configuration (tor is compiled in,
+     * but a route only applies its settings on the full-engine start path), and
+     * the Psiphon routes need the psiphon-tunnel-core child process.
+     *
+     * That last part is not a constant: CI builds the helper and packages it, so
+     * a build can ship it or not. [AetherHelpers] answers from the installation
+     * itself - strictly from the native library directory, never from the
+     * writable data directory - so the badge never claims a route will work when
+     * the executable it needs is absent, and never hides one that will.
+     */
+    fun capabilityInThisBuild(): ProfileCapability = when (this) {
+        WARP_DIRECT -> ProfileCapability.Available
+        TOR_DIRECT, AETHER_TOR, TOR_AETHER -> ProfileCapability.NeedsConfiguration
+        AETHER_PSIPHON, TOR_PSIPHON ->
+            if (AetherHelpers.hasPsiphon()) ProfileCapability.NeedsConfiguration
+            else ProfileCapability.RequiresExternalComponent
+    }
 
     companion object {
         fun byId(id: String): AetherProfile = values().find { it.id == id } ?: WARP_DIRECT

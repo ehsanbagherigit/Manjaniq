@@ -33,14 +33,18 @@ fun AetherProfileCard(
     // never colour alone.
     val borderColor = if (selected) AetherAccent else ManjaniqBorder
     val bg = if (selected) AetherAccentDeep else MaterialTheme.colorScheme.surface
-    val badgeText = when (profile.capability) {
+    // What this installation can do, not what the table assumes: the Psiphon
+    // helper is built and packaged by CI, so its presence is a fact about the
+    // installed build (AetherHelpers reads it from the native library directory).
+    val capability = profile.capabilityInThisBuild()
+    val badgeText = when (capability) {
         ProfileCapability.Available -> stringResource(com.manjaniq.R.string.badge_available)
         ProfileCapability.NeedsConfiguration -> stringResource(com.manjaniq.R.string.badge_needs_config)
         ProfileCapability.RequiresExternalComponent -> stringResource(com.manjaniq.R.string.badge_requires_external)
         ProfileCapability.Unsupported -> stringResource(com.manjaniq.R.string.badge_unsupported)
         ProfileCapability.NotVerified -> stringResource(com.manjaniq.R.string.cap_not_verified)
     }
-    val badgeBg = when (profile.capability) {
+    val badgeBg = when (capability) {
         ProfileCapability.Available -> AetherAccent.copy(alpha = 0.18f)
         ProfileCapability.RequiresExternalComponent -> MaterialTheme.colorScheme.surfaceVariant
         else -> MaterialTheme.colorScheme.surfaceVariant
@@ -77,7 +81,7 @@ fun AetherProfileCard(
                 )
                 Badge(
                     containerColor = badgeBg,
-                    contentColor = if (profile.capability == ProfileCapability.Available) AetherAccentSoft else MaterialTheme.colorScheme.onSurfaceVariant
+                    contentColor = if (capability == ProfileCapability.Available) AetherAccentSoft else MaterialTheme.colorScheme.onSurfaceVariant
                 ) {
                     Text(text = badgeText, fontSize = 10.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.5.sp)
                 }
@@ -123,7 +127,7 @@ fun AetherProfileCard(
 
 @Composable
 fun ProfileStatusBanner(profile: AetherProfile) {
-    if (profile.capability == ProfileCapability.RequiresExternalComponent) {
+    if (profile.capabilityInThisBuild() == ProfileCapability.RequiresExternalComponent) {
         Card(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f)),
             shape = RoundedCornerShape(12.dp),

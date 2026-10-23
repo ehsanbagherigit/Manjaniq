@@ -67,17 +67,17 @@ build_one() {
 
   printf '\n=== %s (%s) ===\n' "$label" "$goarch" >> "$log"
   if ! bash "$repo/third_party/Aether/$script" linux "$goarch" "$out" >> "$log" 2>&1; then
-    echo "::warning title=Helper not built::$label for $goarch - upstream script $script failed, see $log"
+    echo "::warning title=Helper not built::$label for $goarch - upstream script $script failed, see $log" >&2
     echo "$label=no"
     return 1
   fi
   if [ ! -f "$out/$produced" ]; then
-    echo "::warning title=Helper not built::$script produced no $produced for $goarch, see $log"
+    echo "::warning title=Helper not built::$script produced no $produced for $goarch, see $log" >&2
     echo "$label=no"
     return 1
   fi
   if ! install -m 0755 "$out/$produced" "$dest/$packaged" >> "$log" 2>&1; then
-    echo "::warning title=Helper not installed::could not copy $produced to $dest/$packaged"
+    echo "::warning title=Helper not installed::could not copy $produced to $dest/$packaged" >&2
     echo "$label=no"
     return 1
   fi
@@ -89,9 +89,9 @@ build_one() {
   done
   if [ -n "$reader" ]; then
     if "$reader" -l "$dest/$packaged" 2>/dev/null | grep -q 'INTERP'; then
-      echo "::warning title=Helper is dynamic::$packaged links an interpreter; it may not run on Android"
+      echo "::warning title=Helper is dynamic::$packaged links an interpreter; it may not run on Android" >&2
     else
-      echo "  static ELF confirmed for $packaged"
+      echo "  static ELF confirmed for $packaged" >&2
     fi
   fi
   echo "$label=yes"

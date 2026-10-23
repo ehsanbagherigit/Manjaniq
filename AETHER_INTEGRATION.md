@@ -1,6 +1,12 @@
 # Aether v2.3.0 Integration — Manjaniq
 
 > Implementation phase 1: SOCKS5-only, no VpnService/TUN, Tor/Psiphon excluded.
+>
+> **Phase 2 (this branch):** the `tor` feature is compiled in, the two child
+> processes (lyrebird, psiphon-tunnel-core) are built and packaged, and a
+> per-route **full-engine** start path (`aether_core_start`) applies every flag
+> the core accepts. See the last section of this file; the phase-1 statements
+> below are kept for history where they still describe the granular path.
 
 ## Pinned version
 - Tag `v2.3.0`, annotated object `db75c53543b8156f27ca73563e5c40148426e76a`, peeled commit `6175b67df370ab856bcee07fe85b524031903956`
@@ -138,3 +144,73 @@ Persistence per-profile, validation per-profile (`validateForProfile` + `AetherC
 | VpnService TUN | not in upstream, needs app-side bridging | Not implemented - disclaimer shown | |
 
 Build/packaging verified: `libaether.so` + `libc++_shared.so` per ABI (arm64-v8a + x86_64) in jniLibs and APK; `verify_aether_lib.sh` checks ELF, JNI exports, bionic, and libc++ presence; `AetherBridge.SUPPORTED_ABIS` + `getLoadDiagnostics()` + `buildLoadDiagnostics()` hint for dlopen failures; `readelf -d NEEDED` logged in CI.
+
+
+---
+
+## Phase 2: tor, helper processes, and the full-engine start path
+
+### What changed in the build
+
+| Piece | Before | Now |
+|---|---|---|
+| libaether.so | `aether` without features | `aether` with `features = ["tor"]` (`aether-wrapper/Cargo.toml`) - arti-client runs inside the library |
+| Tor pluggable transports | absent | `liblyrebird.so`, built by `scripts/ci/build_helpers.sh` -> `third_party/Aether/pt-build.sh` |
+| Psiphon | absent | `libpsiphon_tunnel_core.so`, same script -> `third_party/Aether/psiphon-build.sh` |
+| APK packaging | `useLegacyPackaging = false` | `true`, so the helpers are extracted into `nativeLibraryDir` and can be executed under W^X |
+| Start path | granular only | granular (default) or full engine, chosen per route |
+
+Both helper builds follow upstream's own android release job: static
+`GOOS=linux CGO_ENABLED=0` ELFs (`third_party/Aether/.github/workflows/release.yml`,
+`android` job), because a pure-Go binary needs no libc and therefore runs
+unchanged on Android.
+
+### Local / CI commands
+
+```bash
+# 1. Tor-capable libaether.so (arm64 shown; repeat with -t x86_64 for the emulator)
+cd aether-wrapper
+cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release
+
+# 2. Helper processes, packaged where Android may exec them
+cd ..
+bash scripts/ci/build_helpers.sh arm64 app/src/main/jniLibs/arm64-v8a
+bash scripts/ci/build_helpers.sh amd64 app/src/main/jniLibs/x86_64
+
+# 3. Usual gates
+bash native/verify_aether_lib.sh app/src/main/jniLibs/arm64-v8a/libaether.so
+./gradlew :app:compileDebugKotlin :app:testDebugUnitTest
+```
+
+A helper that upstream cannot be reached for is a `::warning::`, never a build
+failure: `AetherHelpers` then reports it as missing, `AetherConfig.validate()`
+refuses the routes that need it, and the APK verification prints what was
+packaged.
+
+### Where the pieces live at run time
+
+| thing | location | why |
+|---|---|---|
+| `libaether.so`, `liblyrebird.so`, `libpsiphon_tunnel_core.so` | `ApplicationInfo.nativeLibraryDir` | read-only; Android 10+ allows exec only from here (W^X) |
+| identity files (`--config`) | `filesDir/<identityPath>` | written by the core |
+| tor state (`--tor-dir`) | `filesDir/aether/tor` | must be writable; never executed |
+| psiphon data (`--psiphon-dir`) | `filesDir/aether/psiphon` | must be writable; never executed |
+
+`AetherHelpers` resolves executables strictly inside the library directory,
+requires the execute bit, and refuses a path outside it, so the data directory
+holds no executable code.
+
+### How a start runs
+
+* `AetherStartMode.GRANULAR` - `aether_identity_open` -> `aether_scan_start` ->
+  `aether_tunnel_start`, per-step reporting (what earlier builds did).
+* `AetherStartMode.FULL_ENGINE` - `aether_core_start` with
+  `AetherConfig.toAetherArgs(...)`, one job that scans, connects and serves;
+  `AetherService.startFullEngine` polls it and probes the loopback SOCKS listener
+  for readiness, exactly like the granular path.
+* `--register` (in the engine options group) runs that job as a one-shot
+  registration and exits, bounded by `AetherJobPolling.identityTimeoutMs()`.
+
+Reach per setting is answered in code by
+`AetherCapabilities.reachOf(key, mode)`; `AETHER_CAPABILITIES.md §9` is the
+written version.

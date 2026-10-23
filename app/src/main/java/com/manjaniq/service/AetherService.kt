@@ -343,7 +343,7 @@ class AetherService : Service() {
             try {
                 val ps = com.manjaniq.core.AetherProfileStore(this@AetherService).getSelectedProfile()
                 AetherRepository.log("INFO", "Active Aether profile: ${ps.id} -> transport=${cfg.transport}")
-                if (ps.capability != com.manjaniq.core.models.ProfileCapability.Available) {
+                if (ps.capabilityInThisBuild() != com.manjaniq.core.models.ProfileCapability.Available) {
                     AetherRepository.log("WARN", "Profile ${ps.id} requires external component or is not verified - tunnel will use base Aether settings only")
                 }
             } catch (_: Throwable) {}
