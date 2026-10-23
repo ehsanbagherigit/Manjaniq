@@ -261,7 +261,7 @@ data class AetherConfig(
      */
     fun toAetherArgs(
         contextFilesDir: String,
-        helpers: AetherHelperPaths = AetherHelperPaths.none()
+        helpers: AetherHelperPaths = AetherHelperPaths.none
     ): List<String> {
         val args = mutableListOf<String>()
         // bind is required; Aether defaults to 127.0.0.1:1819 but we set explicitly
