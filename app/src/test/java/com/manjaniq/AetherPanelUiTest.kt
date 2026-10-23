@@ -353,6 +353,50 @@ class AetherPanelUiTest {
     }
 
     /**
+     * The engine-options group opens and every family in it has a control.
+     *
+     * `AetherEngineUiCoverageTest` proves the panel writes each field; this walks
+     * the rendered group the way a user opens it, so a field that exists only in
+     * an unreachable branch would still be caught. A sample per family is enough
+     * here - the source test is what holds the full property list.
+     */
+    @Test
+    fun engineOptionsGroupRendersEveryFamily() {
+        openAether()
+        toggle(AetherTestTags.ENGINE_OPTIONS_TOGGLE)
+        waitForNode(AetherTestTags.ENGINE_OPTIONS, present = true)
+
+        listOf(
+            // Tor and Psiphon layering, including the settings that had no editor.
+            "aether_engine_tor_bridge_file",
+            "aether_engine_tor_pt_dir",
+            "aether_engine_tor_bind",
+            "aether_engine_psiphon_bin",
+            "aether_engine_psiphon_cdn_sets",
+            // The two double-hop protocols and the per-carrier endpoints.
+            "aether_engine_gool_outer",
+            "aether_engine_gool_peer",
+            "aether_engine_mim_inner",
+            "aether_engine_h2_peer",
+            "aether_engine_wg_peer",
+            // Zero Trust, TLS, timing, API and logging.
+            "aether_engine_enroll_address",
+            "aether_engine_tls_no_quic_v2",
+            "aether_engine_keepalive_secs",
+            "aether_engine_api_fragment",
+            "aether_engine_perf"
+        ).forEach { tag ->
+            waitForNode(tag, present = true)
+        }
+        compose.onNodeWithTag("aether_engine_log_level_debug").assertExists()
+
+        // Collapsing hides them again: the group is one disclosure, not a second
+        // always-open form.
+        toggle(AetherTestTags.ENGINE_OPTIONS_TOGGLE)
+        waitForNode("aether_engine_gool_outer", present = false)
+    }
+
+    /**
      * Fragmenting is applied now, so its controls are real: the switch states the
      * carrier it changes, the fields validate inline, Save is enabled only for a
      * dirty and valid draft, and saving changes what the card reports.

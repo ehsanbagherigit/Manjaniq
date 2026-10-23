@@ -10,6 +10,15 @@ permissions:
   pull-requests: write
   checks: write
 
+# One run per branch. Four pushes in a row used to mean four full pipelines -
+# both native builds, both APKs and an emulator boot each - racing each other,
+# and the only run that can still matter is the newest. Superseded runs are
+# cancelled instead of queued, so a fix gets its answer sooner and the branch
+# does not spend an hour of runner time proving an already-replaced commit.
+concurrency:
+  group: build-debug-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # Gates (all required - no job is continue-on-error):
 #   build          : asset/format validation, Go engine tests (incl. the
 #                    ephemeral-port tests), native libs, Kotlin compile,

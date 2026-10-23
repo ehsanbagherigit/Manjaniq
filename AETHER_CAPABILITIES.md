@@ -433,11 +433,23 @@ short version.
   setting shown as applied is applied.
 * `AetherConfig.commandLineOnlyFeatures()` names anything the chosen mode cannot
   apply, both above the groups and in the service log.
-* An **Engine options** group edits the remaining flags (`AetherEngineOptionsPanel`):
-  Tor mode/bridges/lines/relays/PT/dir, Psiphon mode/region/CDN, Zero Trust
-  team and service-token/email/JWT credentials plus the gateway toggle, routing
-  lists and routes file, TLS ciphers/groups/GREASE, ECH key/DoH resolver/domain,
-  `--mark`, `--exit-loc`, `--stats`, and `--register`.
+* An **Engine options** group edits every remaining flag (`AetherEngineOptionsPanel`):
+  Tor mode/bridges/lines/bridge file/relays/relay ports/PT and PT directories/
+  SOCKS and HTTP addresses/state directory, Psiphon mode/region/CDN mode, edge
+  sets, IPs, SNIs/server entries/own config/listeners/data directory/executable,
+  Zero Trust team and service-token/email/JWT credentials plus the gateway
+  toggle and `--enroll-address`, routing lists and routes file, TLS
+  ciphers/groups/GREASE/verify/QUIC version, ECH key/DoH resolver/domain, the
+  gool and MASQUE-in-MASQUE hops (`--gool-*`, `--mim-*`), the per-carrier
+  endpoints (`--h2-peer`, `--wg-peer`, `--masque-config`, `--wg-config`), the
+  timing budgets (`--startup-secs`, `--reconnect-secs`, `--validate-secs`,
+  `--keepalive`, `--no-data-check`, `--no-profile-retry`), `--mark`,
+  `--exit-loc` and its re-check interval, `--stats`, `--register`, `--api-fragment`
+  and the log level/verbose/perf profile.
+* Two tests keep that claim honest: `AetherEngineOptionsTest` proves each field
+  reaches argv, and `AetherEngineUiCoverageTest` reads the model and the panel
+  and fails if any option property has no `copy(... = ...)` in the UI.
+  `AetherPanelUiTest` opens the group and checks a control per family renders.
 
 ### 9.5 Registration (headless identities)
 
