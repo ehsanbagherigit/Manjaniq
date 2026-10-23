@@ -21,6 +21,9 @@ object TestTags {
     const val CORE_CARD_AETHER = "core_card_aether"
     const val ENGINE_TOGGLE = "engine_toggle_button"
     const val AETHER_DISABLED_BUTTON = "aether_disabled_button"
+    const val AETHER_TOGGLE = "aether_toggle_button"
+    const val AETHER_SETTINGS = "aether_settings_form"
+    const val AETHER_STATUS = "aether_status_card"
     const val CONNECTION_STATUS = "connection_status_card"
 
     const val LANGUAGE_EN = "language_en"

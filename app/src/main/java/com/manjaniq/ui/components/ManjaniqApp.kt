@@ -12,11 +12,17 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.manjaniq.core.AetherConfigStore
+import com.manjaniq.core.AetherProfileStore
+import com.manjaniq.core.AetherRepository
 import com.manjaniq.core.AppLanguage
 import com.manjaniq.core.AppPreferences
 import com.manjaniq.core.ConfigStore
 import com.manjaniq.core.EngineRepository
 import com.manjaniq.core.SelectedCore
+import com.manjaniq.core.models.AetherConfig
+import com.manjaniq.core.models.AetherProfile
+import com.manjaniq.core.models.AetherProfileConfig
 import com.manjaniq.ui.navigation.AppDestination
 import com.manjaniq.ui.screens.AboutScreen
 import com.manjaniq.ui.screens.GeneralSettingsScreen
@@ -39,6 +45,17 @@ fun ManjaniqApp() {
 
     val ui by EngineRepository.uiState.collectAsState()
     val logs by EngineRepository.logs.collectAsState()
+
+    val aetherConfigStore = remember { AetherConfigStore(appContext) }
+    var aetherConfig by remember { mutableStateOf(aetherConfigStore.load()) }
+    val aetherUi by AetherRepository.uiState.collectAsState()
+    val aetherLogs by AetherRepository.logs.collectAsState()
+    var aetherLocalError by remember { mutableStateOf<String?>(null) }
+
+    // Profile store - new maintainable architecture
+    val aetherProfileStore = remember { AetherProfileStore(appContext) }
+    var selectedAetherProfile by remember { mutableStateOf(aetherProfileStore.getSelectedProfile()) }
+    var currentProfileConfig by remember { mutableStateOf(aetherProfileStore.loadFor(selectedAetherProfile)) }
 
     LaunchedEffect(Unit) {
         appPrefs.coreFlow.collect { selectedCore = it }
@@ -144,6 +161,77 @@ fun ManjaniqApp() {
                                     val defaults = configStore.resetToDefaults()
                                     config = defaults
                                     defaults
+                                },
+                                // Aether bindings - independent from RSTA (legacy)
+                                aetherConfig = currentProfileConfig.base,
+                                aetherUi = aetherUi.copy(lastError = aetherLocalError ?: aetherUi.lastError),
+                                aetherLogs = aetherLogs,
+                                onAetherStart = {
+                                    val base = currentProfileConfig.base
+                                    val conflict = com.manjaniq.core.models.detectAetherPortConflict(base, config)
+                                    if (conflict != null) {
+                                        aetherLocalError = conflict
+                                    } else if (!aetherUi.isNativeLoaded) {
+                                        aetherLocalError = "Aether native library not built for this APK. See build logs. Diagnostics: ${com.manjaniq.AetherBridge.getLoadError()?.message}"
+                                    } else {
+                                        val v = base.validate()
+                                        if (v != null) aetherLocalError = v else {
+                                            val profErr = currentProfileConfig.validateForProfile(selectedAetherProfile)
+                                            if (profErr != null) aetherLocalError = profErr else {
+                                                aetherLocalError = null
+                                                // Persist current profile config to legacy store for service to read
+                                                aetherProfileStore.saveFor(selectedAetherProfile, currentProfileConfig)
+                                                aetherConfigStore.save(base)
+                                                // Also inform repository's active profile
+                                                com.manjaniq.core.models.AetherProfileManager.selectedProfile = selectedAetherProfile
+                                                AetherRepository.requestStart(appContext)
+                                            }
+                                        }
+                                    }
+                                },
+                                onAetherStop = { AetherRepository.requestStop(appContext) },
+                                onAetherDismissError = { aetherLocalError = null; AetherRepository.clearError() },
+                                onAetherSaveConfig = { saved, restart ->
+                                    // Legacy path: save to current profile
+                                    currentProfileConfig = currentProfileConfig.copy(base = saved)
+                                    aetherProfileStore.saveFor(selectedAetherProfile, currentProfileConfig)
+                                    aetherConfigStore.save(saved)
+                                    aetherConfig = saved
+                                    if (restart) AetherRepository.requestRestart(appContext)
+                                },
+                                onAetherResetDefaults = {
+                                    val d = AetherConfig.DEFAULT
+                                    currentProfileConfig = currentProfileConfig.copy(base = d)
+                                    aetherProfileStore.saveFor(selectedAetherProfile, currentProfileConfig)
+                                    aetherConfigStore.save(d)
+                                    aetherConfig = d
+                                    d
+                                },
+                                // New profile-aware bindings
+                                selectedAetherProfile = selectedAetherProfile,
+                                onSelectAetherProfile = { prof ->
+                                    // Save current before switching
+                                    aetherProfileStore.saveFor(selectedAetherProfile, currentProfileConfig)
+                                    aetherProfileStore.setSelectedProfile(prof)
+                                    selectedAetherProfile = prof
+                                    currentProfileConfig = aetherProfileStore.loadFor(prof)
+                                },
+                                aetherProfileConfig = currentProfileConfig,
+                                onSaveAetherProfileConfig = { savedProfileCfg, restart ->
+                                    currentProfileConfig = savedProfileCfg
+                                    aetherProfileStore.saveFor(selectedAetherProfile, savedProfileCfg)
+                                    // Sync base to legacy for service compat
+                                    aetherConfigStore.save(savedProfileCfg.base)
+                                    aetherConfig = savedProfileCfg.base
+                                    if (restart) AetherRepository.requestRestart(appContext)
+                                },
+                                onResetAetherProfileDefaults = { prof ->
+                                    val def = aetherProfileStore.resetFor(prof)
+                                    if (prof == selectedAetherProfile) {
+                                        currentProfileConfig = def
+                                        aetherConfig = def.base
+                                    }
+                                    def
                                 }
                             )
                         }

@@ -21,6 +21,21 @@ android {
         }
     }
 
+    // Aether native library: built via aether-wrapper (cargo ndk) in CI.
+    // Local builds without Rust will have no libaether.so; app degrades gracefully (isNativeAvailable=false).
+    // CI must run: cargo ndk -t arm64-v8a -o app/src/main/jniLibs build --release  in aether-wrapper
+    // Packaging keeps both RSTA (libmanjaniq_native.so) and Aether (libaether.so) in lib/arm64-v8a/
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDirs("src/main/jniLibs")
+        }
+    }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false

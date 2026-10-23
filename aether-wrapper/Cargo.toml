@@ -1,0 +1,21 @@
+[package]
+name = "aether-jni"
+version = "0.1.0"
+edition = "2021"
+description = "Manjaniq JNI wrapper for Aether v2.3.0"
+license = "AGPL-3.0-only"
+
+[lib]
+name = "aether"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+# Path-pinned to vendored third_party/Aether (v2.3.0 peeled 6175b67). Avoids git fetch
+# and allows rust-version patch (1.98 -> 1.56) for CI stable.
+aether = { path = "../third_party/Aether/aether" }
+jni = "0.21.1"
+serde_json = "1"
+
+# Build requirements documented in aether/README.md:
+# CMake, C++ compiler, Perl required for BoringSSL (NDK provides clang)

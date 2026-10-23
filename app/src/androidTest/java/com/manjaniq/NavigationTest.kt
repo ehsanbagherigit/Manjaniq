@@ -89,15 +89,13 @@ class NavigationTest {
 
     @Test
     fun aetherIsComingSoonAndCannotStartAnything() {
+        // Aether is now functional (SOCKS5 phase) - verify its toggle exists
+        // and RSTA controls are hidden when Aether is selected.
         compose.onNodeWithTag(TestTags.CORE_CARD_AETHER).assertIsDisplayed().performClick()
-        compose.waitForTag(TestTags.AETHER_DISABLED_BUTTON)
+        compose.waitForTag(TestTags.AETHER_TOGGLE)
 
-        // The only "start" control for Aether is disabled; the real RSTA
-        // start/stop button is not offered at all.
-        compose.onNodeWithTag(TestTags.AETHER_DISABLED_BUTTON).assertExists().assertIsNotEnabled()
+        compose.onNodeWithTag(TestTags.AETHER_TOGGLE).assertExists().assertIsDisplayed()
         compose.onAllNodesWithTag(TestTags.ENGINE_TOGGLE).assertCountEquals(0)
-        // Clicking a disabled button must be a no-op (performClick on a
-        // disabled node is rejected by Compose, which is itself the proof).
         assertEquals(SelectedCore.AETHER, AppPreferences(AppLaunch.context).currentCore())
 
         // Switching back restores the real RSTA controls.
@@ -110,11 +108,11 @@ class NavigationTest {
     @Test
     fun coreSelectionPersistsAcrossRecreate() {
         compose.onNodeWithTag(TestTags.CORE_CARD_AETHER).performClick()
-        compose.waitForTag(TestTags.AETHER_DISABLED_BUTTON)
+        compose.waitForTag(TestTags.AETHER_TOGGLE)
 
         scenario!!.recreate()
         compose.waitForHome()
-        compose.waitForTag(TestTags.AETHER_DISABLED_BUTTON)
+        compose.waitForTag(TestTags.AETHER_TOGGLE)
         compose.onAllNodesWithTag(TestTags.ENGINE_TOGGLE).assertCountEquals(0)
     }
 }

@@ -116,7 +116,19 @@ jobs:
           grep -q -- "--- PASS: TestRapidStartStop" /tmp/gotest.log
           echo "Ephemeral-port regression tests passed (TestEngineEndToEndFragment, TestRapidStartStop)."
 
-      - name: Build Native Libraries (arm64-v8a + x86_64)
+      - name: Install Rust toolchain (Aether)
+        run: |
+          set -euo pipefail
+          rustup update stable --no-self-update || curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.cargo/bin:$PATH"
+          rustc --version
+          cargo --version
+          rustup target add aarch64-linux-android x86_64-linux-android --toolchain stable || rustup target add aarch64-linux-android x86_64-linux-android
+          cargo install cargo-ndk --locked || cargo install cargo-ndk
+          cargo-ndk --version || cargo ndk --version
+
+      - name: Build Native Libraries (arm64-v8a + x86_64) - RSTA (Go)
         run: |
           set -euo pipefail
           mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/jniLibs/x86_64
@@ -139,10 +151,123 @@ jobs:
             ./native
           ls -lh app/src/main/jniLibs/arm64-v8a/ app/src/main/jniLibs/x86_64/
 
-      - name: Verify native library
+      - name: Build Aether Native Library (libaether.so) - Rust
+        run: |
+          set -uo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-${ANDROID_HOME:-}/ndk/25.2.9519653}"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
+          test -n "${ANDROID_NDK_HOME}" || { echo "::error::ANDROID_NDK_HOME not set"; echo "ANDROID_HOME=${ANDROID_HOME}"; ls -ld ${ANDROID_HOME}/ndk 2>&1 || true; exit 1; }
+          # Verify source is pinned to v2.3.0 (vendored path or git tag)
+          test -f third_party/Aether-LICENSE || { echo "::error::Missing third_party/Aether-LICENSE (AGPL)"; exit 1; }
+          test -f aether-wrapper/Cargo.toml || { echo "::error::aether-wrapper/Cargo.toml missing"; exit 1; }
+          (grep -q 'tag = "v2.3.0"' aether-wrapper/Cargo.toml || grep -q 'path = "../third_party/Aether/aether"' aether-wrapper/Cargo.toml) || { echo "::error::aether-wrapper not pinned to v2.3.0"; cat aether-wrapper/Cargo.toml; exit 1; }
+          test -f third_party/Aether/aether/Cargo.toml || { echo "::error::vendored Aether missing"; ls third_party/Aether/ 2>&1 | head -n 20; exit 1; }
+          grep -q 'version = "2.3.0"' third_party/Aether/aether/Cargo.toml || { echo "::error::vendored Aether not v2.3.0"; cat third_party/Aether/aether/Cargo.toml | head -n 10; exit 1; }
+          # Vendor path in third_party/Aether (v2.3.0 peeled 6175b67) already patched: rust-version 1.98→1.56, 1.88→1.56
+          sudo apt-get update && sudo apt-get install -y cmake perl pkg-config || true
+          rustc --version || echo "rustc missing"; cargo --version || echo "cargo missing"; cargo ndk --version 2>&1 || cargo-ndk --version 2>&1 || echo "cargo-ndk missing, will try cargo ndk"
+          cmake --version 2>&1 | head -n1 || echo "cmake missing"; perl --version 2>&1 | head -n1 || echo "perl missing"
+          # Build arm64-v8a (primary) - vendored path avoids git fetch + rust-version gate
+          set +e; set +u
+          cd aether-wrapper
+          echo "cargo clean to pick up jni 0.20 change"
+          cargo clean 2>&1 | tee /tmp/aether_arm64.log || true
+          rm -f Cargo.lock 2>&1 | tee -a /tmp/aether_arm64.log || true
+          echo "=== cargo ndk arm64 verbose ===" | tee -a /tmp/aether_arm64.log
+          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --verbose 2>&1 | tee -a /tmp/aether_arm64.log; RC=${PIPESTATUS[0]}
+          echo "arm64 build rc=$RC" | tee -a /tmp/aether_arm64.log
+          ls -lh ../app/src/main/jniLibs/arm64-v8a/libaether.so 2>&1 | tee -a /tmp/aether_arm64.log
+          # Build x86_64 (emulator) - best effort, don't fail primary if missing
+          echo "=== cargo ndk x86_64 ===" | tee /tmp/aether_x64.log
+          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release 2>&1 | tee -a /tmp/aether_x64.log || echo "::warning::x86_64 libaether build failed, continuing with arm64 only" | tee -a /tmp/aether_x64.log
+          ls -lh ../app/src/main/jniLibs/x86_64/ 2>&1 | tee -a /tmp/aether_x64.log || true
+          cd ..
+          echo "--- tail arm64 log ---"
+          cat /tmp/aether_arm64.log 2>&1 | tail -n 300 || echo "no arm64 log yet"
+          echo "--- tail x64 log ---"
+          cat /tmp/aether_x64.log 2>&1 | tail -n 100 || echo "no x64 log"
+          ls -R app/src/main/jniLibs 2>&1 | head -n 30
+          # Emit first error with file location as annotation (visible via API)
+          if [ -f /tmp/aether_arm64.log ]; then
+            LOC=$(grep -E "^\s*--> " /tmp/aether_arm64.log 2>&1 | head -n5 | tr '\n' '|' | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-1200)
+            ERR=$(grep -m1 -E "error\[|error: |FAILED|failed to run caml|missing lifetime" /tmp/aether_arm64.log 2>&1 | head -n1 | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-800)
+            CTX=$(grep -B2 -A2 -E "missing lifetime" /tmp/aether_arm64.log 2>&1 | head -n10 | tr '\n' '|' | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-1200)
+            if [ -n "$LOC" ]; then echo "::error title=Aether cargo loc::$LOC"; fi
+            if [ -n "$ERR" ]; then echo "::error title=Aether cargo arm64::$ERR"; fi
+            if [ -n "$CTX" ]; then echo "::error title=Aether ctx::$CTX"; fi
+            echo "--- grep error block ---"
+            grep -E "error|^\s*--> " /tmp/aether_arm64.log 2>&1 | head -n 40
+            echo "### Aether arm64 build log (tail)" >> $GITHUB_STEP_SUMMARY 2>&1 || true
+            tail -n 120 /tmp/aether_arm64.log >> $GITHUB_STEP_SUMMARY 2>&1 || true
+          fi
+          # Fail if primary missing
+          test -f app/src/main/jniLibs/arm64-v8a/libaether.so || { echo "::error::libaether.so not produced - see /tmp/aether_arm64.log"; cat /tmp/aether_arm64.log 2>&1 | tail -n 500; exit 1; }
+
+          # ---- Fix libc++_shared.so: required by libaether.so (BoringSSL/C++ via quiche) ----
+          # The NDK provides it at sources/cxx-stl/llvm-libc++/libs/<abi>/libc++_shared.so
+          # Also available under sysroot. Copy the exact ABI-matched file into jniLibs.
+          echo "=== Packaging libc++_shared.so for each ABI ==="
+          for ABI in arm64-v8a x86_64; do
+            # Map Gradle ABI to NDK arch string
+            case "$ABI" in
+              arm64-v8a) NDK_ABI=arm64-v8a; SYS_ARCH=aarch64-linux-android ;;
+              x86_64)    NDK_ABI=x86_64;  SYS_ARCH=x86_64-linux-android ;;
+              *) continue ;;
+            esac
+            SRC_CANDIDATES=(
+              "$ANDROID_NDK_HOME/sources/cxx-stl/llvm-libc++/libs/$NDK_ABI/libc++_shared.so"
+              "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/$SYS_ARCH/libc++_shared.so"
+            )
+            FOUND=""
+            for cand in "${SRC_CANDIDATES[@]}"; do
+              if [ -f "$cand" ]; then FOUND="$cand"; break; fi
+            done
+            if [ -z "$FOUND" ]; then
+              # Fallback: search under NDK
+              FOUND=$(find "$ANDROID_NDK_HOME" -name "libc++_shared.so" -path "*${NDK_ABI}*" 2>/dev/null | head -n 1 || true)
+              if [ -z "$FOUND" ]; then
+                FOUND=$(find "$ANDROID_NDK_HOME" -name "libc++_shared.so" 2>/dev/null | head -n 1 || true)
+              fi
+            fi
+            if [ -n "$FOUND" ] && [ -f "$FOUND" ]; then
+              echo "Copying $FOUND -> app/src/main/jniLibs/$ABI/libc++_shared.so"
+              cp -v "$FOUND" "app/src/main/jniLibs/$ABI/libc++_shared.so" 2>&1 | tee -a /tmp/aether_arm64.log
+              ls -lh "app/src/main/jniLibs/$ABI/libc++_shared.so" 2>&1 | tee -a /tmp/aether_arm64.log
+              # Sanity: check ELF matches ABI
+              readelf -h "app/src/main/jniLibs/$ABI/libc++_shared.so" 2>&1 | grep -E "Class:|Machine:" | tee -a /tmp/aether_arm64.log || true
+            else
+              echo "::warning::libc++_shared.so not found for ABI $ABI (search in $ANDROID_NDK_HOME) - libaether will fail at runtime with dlopen" | tee -a /tmp/aether_arm64.log
+              ls -R "$ANDROID_NDK_HOME/sources/cxx-stl" 2>&1 | head -n 50 | tee -a /tmp/aether_arm64.log || true
+            fi
+          done
+          echo "=== Final jniLibs ==="
+          ls -R app/src/main/jniLibs 2>&1 | tee -a /tmp/aether_arm64.log
+          # Verify ELF dependency now resolvable
+          echo "=== libaether.so NEEDED ==="
+          readelf -d app/src/main/jniLibs/arm64-v8a/libaether.so 2>&1 | grep NEEDED | tee -a /tmp/aether_arm64.log || llvm-readelf -d app/src/main/jniLibs/arm64-v8a/libaether.so 2>&1 | grep NEEDED | tee -a /tmp/aether_arm64.log || true
+          echo "=== check libc++_shared in NEEDED ==="
+          if readelf -d app/src/main/jniLibs/arm64-v8a/libaether.so 2>&1 | grep -q "libc++_shared.so"; then
+            echo "libaether NEEDED includes libc++_shared.so - packaging fix required and now provided" | tee -a /tmp/aether_arm64.log
+          else
+            echo "INFO: libaether does not list libc++_shared.so in DT_NEEDED (maybe statically linked?) - still package for safety" | tee -a /tmp/aether_arm64.log
+          fi
+
+      - name: Verify native libraries (RSTA + Aether)
         run: |
           set -euo pipefail
           bash native/verify_native_lib.sh
+          bash native/verify_aether_lib.sh || { echo "::warning::Aether lib verification warning (see logs)"; cat native/verify_aether_lib.sh.log 2>/dev/null || true; }
+          # Explicit ELF + symbol gate for libaether (fail if missing when wrapper exists)
+          if [ -f app/src/main/jniLibs/arm64-v8a/libaether.so ]; then
+            echo "Aether lib present, checking exports..."
+            nm -D app/src/main/jniLibs/arm64-v8a/libaether.so 2>&1 | grep -q "Java_com_manjaniq_AetherBridge" || llvm-nm app/src/main/jniLibs/arm64-v8a/libaether.so 2>&1 | grep -q "Java_com_manjaniq_AetherBridge" || { echo "::error::Missing JNI exports in libaether.so"; exit 1; }
+            readelf -h app/src/main/jniLibs/arm64-v8a/libaether.so 2>&1 | grep -q "Machine:.*AArch64" || llvm-readelf -h app/src/main/jniLibs/arm64-v8a/libaether.so 2>&1 | grep -q "AArch64"
+            echo "libaether.so ELF + exports OK"
+          else
+            echo "::error::libaether.so not built - workflow must produce it"
+            exit 1
+          fi
 
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
@@ -155,6 +280,16 @@ jobs:
           bash scripts/ci/gradle_step.sh /tmp/gradle_test.log :app:testDebugUnitTest --stacktrace
           echo "Unit test results:"
           find app/build/test-results -name 'TEST-*.xml' -print -exec grep -o '<testsuite[^>]*>' {} \;
+
+      - name: Upload Aether Rust build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aether-rust-build-logs
+          path: |
+            /tmp/aether_arm64.log
+            /tmp/aether_x64.log
+          if-no-files-found: warn
 
       - name: Upload Gradle logs and unit test results
         if: always()
@@ -206,6 +341,24 @@ jobs:
           grep -q "classes.dex" /tmp/apk_listing.txt
           grep -q "lib/arm64-v8a/libmanjaniq_native.so" /tmp/apk_listing.txt
           grep -q "lib/x86_64/libmanjaniq_native.so" /tmp/apk_listing.txt
+          grep -q "lib/arm64-v8a/libaether.so" /tmp/apk_listing.txt || { echo "::error::APK missing lib/arm64-v8a/libaether.so"; exit 1; }
+          grep -q "lib/x86_64/libaether.so" /tmp/apk_listing.txt || echo "::warning::APK missing lib/x86_64/libaether.so"
+          # libc++_shared.so must be packaged for libaether (BoringSSL/C++). Fail if missing when libaether present.
+          if grep -q "lib/arm64-v8a/libaether.so" /tmp/apk_listing.txt; then
+            grep -q "lib/arm64-v8a/libc++_shared.so" /tmp/apk_listing.txt || { echo "::error::APK missing lib/arm64-v8a/libc++_shared.so required by libaether.so (dlopen failed: library \"libc++_shared.so\" not found)"; unzip -l "$APK" | grep -E "libc\\+\\+|libaether"; exit 1; }
+            echo "APK contains lib/arm64-v8a/libc++_shared.so - libc++ fix verified"
+          fi
+          if grep -q "lib/x86_64/libaether.so" /tmp/apk_listing.txt; then
+            grep -q "lib/x86_64/libc++_shared.so" /tmp/apk_listing.txt || echo "::warning::APK missing lib/x86_64/libc++_shared.so (emulator may fail)"
+          fi
+          # libc++_shared.so must be packaged for libaether (BoringSSL/C++). Fail if missing when libaether present.
+          if grep -q "lib/arm64-v8a/libaether.so" /tmp/apk_listing.txt; then
+            grep -q "lib/arm64-v8a/libc++_shared.so" /tmp/apk_listing.txt || { echo "::error::APK missing lib/arm64-v8a/libc++_shared.so required by libaether.so (dlopen failed: library \"libc++_shared.so\" not found)"; unzip -l "$APK" | grep -E "libc\+\+|libaether"; exit 1; }
+            echo "APK contains lib/arm64-v8a/libc++_shared.so - libc++ fix verified"
+          fi
+          if grep -q "lib/x86_64/libaether.so" /tmp/apk_listing.txt; then
+            grep -q "lib/x86_64/libc++_shared.so" /tmp/apk_listing.txt || echo "::warning::APK missing lib/x86_64/libc++_shared.so (emulator may fail)"
+          fi
           # Launcher + brand resources must be packaged (regression for missing icon / stale logo)
           for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             grep -q "res/mipmap-${d}-v4/ic_launcher.png\|res/mipmap-${d}/ic_launcher.png\|mipmap-${d}.*ic_launcher" /tmp/apk_listing.txt \
@@ -243,6 +396,7 @@ jobs:
               sys.exit(1)
           PY
           bash native/verify_native_lib.sh /tmp/apkcheck/lib/arm64-v8a/libmanjaniq_native.so
+          bash native/verify_aether_lib.sh /tmp/apkcheck/lib/arm64-v8a/libaether.so
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -308,15 +462,46 @@ jobs:
           "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0" "ndk;25.2.9519653"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> "$GITHUB_ENV"
 
-      - name: Build native libs for the instrumentation build (arm64 + x86_64)
+      - name: Install Rust toolchain (Aether - emulator-smoke)
+        run: |
+          set -euo pipefail
+          rustup update stable --no-self-update || curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.cargo/bin:$PATH"
+          rustup target add aarch64-linux-android x86_64-linux-android --toolchain stable || rustup target add aarch64-linux-android x86_64-linux-android
+          cargo install cargo-ndk --locked || cargo install cargo-ndk
+          sudo apt-get update && sudo apt-get install -y cmake perl || true
+
+      - name: Build native libs for the instrumentation build (arm64 + x86_64) - RSTA + Aether
         run: |
           set -euo pipefail
           mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/jniLibs/x86_64
+          export PATH="$HOME/.cargo/bin:$PATH"
+          export ANDROID_NDK_HOME="$ANDROID_NDK_HOME"
+          # RSTA (Go)
           export CGO_ENABLED=1 GOOS=android GO111MODULE=on
           export GOARCH=arm64 CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
           go build -buildmode=c-shared -o app/src/main/jniLibs/arm64-v8a/libmanjaniq_native.so ./native
           export GOARCH=amd64 CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang"
           go build -buildmode=c-shared -o app/src/main/jniLibs/x86_64/libmanjaniq_native.so ./native
+          # Aether (Rust) - x86_64 needed for emulator
+          cd aether-wrapper
+          # Vendored path already patched; rebuild for emulator (no --locked, wrapper has no Cargo.lock)
+          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release || cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release --verbose
+          cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release || cargo ndk -t x86_64 -o ../app/src/main/jniLibs build --release --verbose || echo "::warning::Aether x86_64 build failed"
+          cd ..
+          # Copy libc++_shared.so for emulator build as well
+          for ABI in arm64-v8a x86_64; do
+            case "$ABI" in arm64-v8a) NDK_ABI=arm64-v8a; SYS_ARCH=aarch64-linux-android ;; x86_64) NDK_ABI=x86_64; SYS_ARCH=x86_64-linux-android ;; *) continue ;; esac
+            for cand in "$ANDROID_NDK_HOME/sources/cxx-stl/llvm-libc++/libs/$NDK_ABI/libc++_shared.so" "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/$SYS_ARCH/libc++_shared.so"; do
+              if [ -f "$cand" ]; then echo "Copy $cand -> app/src/main/jniLibs/$ABI/libc++_shared.so"; cp -v "$cand" "app/src/main/jniLibs/$ABI/libc++_shared.so" || true; break; fi
+            done
+            if [ ! -f "app/src/main/jniLibs/$ABI/libc++_shared.so" ]; then
+              FOUND=$(find "$ANDROID_NDK_HOME" -name "libc++_shared.so" 2>/dev/null | grep "$NDK_ABI" | head -n 1 || true)
+              if [ -n "$FOUND" ]; then cp -v "$FOUND" "app/src/main/jniLibs/$ABI/libc++_shared.so" || true; fi
+            fi
+          done
+          ls -lh app/src/main/jniLibs/arm64-v8a/ app/src/main/jniLibs/x86_64/
 
       - name: Free disk space for emulator
         run: |

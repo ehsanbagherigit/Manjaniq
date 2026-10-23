@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Aether strings - replaces Coming Soon placeholders with real controls -->
+    <string name="aether_coming_soon_title">Aether — Next-Gen Transport</string>
+    <string name="aether_coming_soon_body">Aether discovers reachable gateways, opens an encrypted tunnel (MASQUE/WireGuard) and exposes a local SOCKS5 proxy. Configure transport, scan mode and bind address, then start.</string>
+    <string name="aether_no_effect">Aether runs independently from RSTA; it has its own identity and tunnel. Switch cores to control each engine separately.</string>
+    <string name="aether_feature_1">MASQUE (HTTP/3 &amp; H2) + WireGuard, nested Gool/MIM</string>
+    <string name="aether_feature_2">Endpoint discovery + data-plane validation + obfuscation</string>
+    <string name="aether_feature_3">Local SOCKS5 (127.0.0.1:1819) + optional HTTP proxy</string>
+
+    <!-- Aether Settings Form -->
+    <string name="aether_settings">Aether Configuration</string>
+    <string name="aether_settings_intro">Configure Aether transport, SOCKS binding, and scan behaviour. All settings apply on next start.</string>
+    <string name="aether_transport">Transport</string>
+    <string name="aether_transport_desc">masque (QUIC) recommended; wg, gool, mim for special routes</string>
+    <string name="aether_transport_masque">MASQUE (HTTP/3)</string>
+    <string name="aether_transport_wg">WireGuard</string>
+    <string name="aether_transport_gool">Gool (WG in MASQUE)</string>
+    <string name="aether_transport_mim">MIM (MASQUE in MASQUE)</string>
+    <string name="aether_scan_mode">Scan mode</string>
+    <string name="aether_scan_turbo">turbo — first answer</string>
+    <string name="aether_scan_balanced">balanced — fastest few (default)</string>
+    <string name="aether_scan_thorough">thorough — full sweep</string>
+    <string name="aether_scan_verified">verified — data-plane check</string>
+    <string name="aether_scan_ironclad">ironclad — real HTTP probe</string>
+    <string name="aether_noize">Obfuscation profile</string>
+    <string name="aether_noize_off">off</string>
+    <string name="aether_noize_firewall">firewall (default)</string>
+    <string name="aether_noize_balanced">balanced</string>
+    <string name="aether_noize_gfw">gfw</string>
+    <string name="aether_noize_aggressive">aggressive</string>
+    <string name="aether_socks_bind">SOCKS bind</string>
+    <string name="aether_socks_hint">Loopback only — e.g. 127.0.0.1:1819 (blocked: 0.0.0.0)</string>
+    <string name="aether_http_bind">HTTP proxy bind (optional)</string>
+    <string name="aether_http_hint">Leave empty to disable — e.g. 127.0.0.1:1820</string>
+    <string name="aether_peer">Fixed peer (optional)</string>
+    <string name="aether_peer_hint">Empty = scan; set 1.2.3.4:443 to force endpoint</string>
+    <string name="aether_upstream">Upstream proxy (optional)</string>
+    <string name="aether_upstream_hint">socks5://127.0.0.1:1080 or http://host:8080 to dial through</string>
+    <string name="aether_dns">DNS inside tunnel</string>
+    <string name="aether_dns_hint">1.1.1.1,1.0.0.1 — comma separated</string>
+    <string name="aether_ech">Encrypted ClientHello</string>
+    <string name="aether_ech_desc">Enable auto ECH (needs DoH, may fail on strict networks)</string>
+    <string name="aether_quick_reconnect">Quick reconnect</string>
+    <string name="aether_quick_desc">Reuse last working gateway, skip scan</string>
+    <string name="aether_identity_path">Identity storage name</string>
+    <string name="aether_identity_hint">File name inside the app private directory. Aether keeps the device key and certificate here.</string>
+    <string name="aether_team">Team (ZeroTrust, optional)</string>
+
+    <!-- Connection Status for Aether -->
+    <string name="aether_status_title">Aether Tunnel</string>
+    <string name="aether_proxy_copy">Copy SOCKS address</string>
+    <string name="aether_proxy_copied">SOCKS address copied</string>
+    <string name="aether_proxy_hint">Configure apps to use this SOCKS5</string>
+    <string name="aether_proxy_format">socks5h://%1$s</string>
+    <string name="aether_http_format">http://%1$s</string>
+    <string name="aether_state_running">Tunnel up</string>
+    <string name="aether_state_stopped">Tunnel down</string>
+    <string name="aether_state_scanning">Scanning gateways…</string>
+    <string name="aether_state_connecting">Connecting…</string>
+    <string name="aether_error_title">Aether error</string>
+
+    <!-- Notifications -->
+    <string name="notification_channel_name_aether">Aether engine</string>
+    <string name="notification_channel_desc_aether">Shown while Aether tunnel is active</string>
+    <string name="notification_title_aether">Manjaniq — Aether engine</string>
+
+    <!-- Dialogs -->
+    <string name="aether_port_conflict">Port conflict with RSTA: %1$s</string>
+    <string name="aether_not_native">Aether native library not loaded. Rebuild APK with libaether.so.</string>
+    <string name="aether_export_title">Aether config JSON</string>
+    <string name="aether_import_title">Import Aether config</string>
+
+    <!-- Profiles (6) -->
+    <string name="profile_warp_title">WARP / Aether Direct</string>
+    <string name="profile_warp_route">Phone → Aether gateway</string>
+    <string name="profile_warp_desc">Simple default — auto-discovers a WARP-compatible gateway via MASQUE/WireGuard and exposes local SOCKS5. Minimal setup.</string>
+    <string name="profile_aether_psiphon_title">Aether → Psiphon</string>
+    <string name="profile_aether_psiphon_route">Phone → Aether → Psiphon</string>
+    <string name="profile_aether_psiphon_desc">Route through Psiphon after Aether tunnel. Requires running Psiphon proxy.</string>
+    <string name="profile_tor_direct_title">Tor Direct</string>
+    <string name="profile_tor_direct_route">Phone → Tor</string>
+    <string name="profile_tor_direct_desc">Direct Tor connection via installed Tor daemon or bridge. No Aether.</string>
+    <string name="profile_aether_tor_title">Aether → Tor</string>
+    <string name="profile_aether_tor_route">Phone → Aether → Tor</string>
+    <string name="profile_aether_tor_desc">Aether gateway then Tor exit. Upstream must be Tor SOCKS.</string>
+    <string name="profile_tor_psiphon_title">Tor → Psiphon</string>
+    <string name="profile_tor_psiphon_route">Phone → Tor → Psiphon</string>
+    <string name="profile_tor_psiphon_desc">Tor circuit then Psiphon. Verify chain order and reachability.</string>
+    <string name="profile_tor_aether_title">Tor → Aether</string>
+    <string name="profile_tor_aether_route">Phone → Tor → Aether</string>
+    <string name="profile_tor_aether_desc">Tor as upstream for Aether dial-out. Requires Tor SOCKS upstream.</string>
+
+    <!-- Capabilities -->
+    <!-- badge_available is in strings.xml canonical -->
+    <string name="badge_needs_config">Needs config</string>
+    <string name="badge_unsupported">Unsupported</string>
+    <string name="badge_requires_external">Needs external</string>
+    <string name="cap_available">Available</string>
+    <string name="cap_needs_config">Needs configuration</string>
+    <string name="cap_requires_external">Requires external component</string>
+    <string name="cap_unsupported">Unsupported by pinned upstream</string>
+    <string name="cap_not_verified">Not verified</string>
+
+    <!-- Sections -->
+    <string name="section_gateway">Gateway</string>
+    <string name="section_tunnel">Local proxy</string>
+    <string name="section_tor">Tor</string>
+    <string name="section_psiphon">Psiphon</string>
+    <string name="section_advanced">Advanced</string>
+
+    <!-- Psiphon/Tor settings -->
+    <string name="psiphon_endpoint">Psiphon SOCKS endpoint</string>
+    <string name="psiphon_endpoint_hint">127.0.0.1:1821 — where your Psiphon instance listens</string>
+    <string name="psiphon_region">Psiphon region</string>
+    <string name="psiphon_region_hint">DE, US — optional country code</string>
+    <string name="tor_socks">Tor SOCKS</string>
+    <string name="tor_socks_hint">127.0.0.1:9050 — Tor daemon SOCKS address</string>
+    <string name="tor_bridges">Tor bridges (obfs4 / snowflake)</string>
+    <string name="tor_bridges_hint">One bridge per line; used when "Use bridges" enabled</string>
+    <string name="tor_use_bridges">Use bridges</string>
+    <string name="tor_use_bridges_desc">Route Tor through the listed bridges</string>
+
+    <!-- Profile UI -->
+    <string name="aether_profiles_title">Connection profiles</string>
+    <string name="aether_profiles_intro">Choose a routing profile. Only settings relevant to the selected profile are shown. Advanced options are collapsed by default.</string>
+    <string name="profile_selected">Selected — %1$s</string>
+    <string name="profile_expand_settings">Show settings</string>
+    <string name="profile_collapse_settings">Hide settings</string>
+    <string name="profile_requires_external">This profile needs an external component (Tor or Psiphon) that is not bundled. Install and verify it separately; app will show setup instructions.</string>
+    <string name="profile_socks_note">SOCKS5 %1$s — Port-conflict checked vs RSTA</string>
+    <string name="vpn_limitation_title">No device-wide VPN</string>
+    <string name="vpn_limitation_body">Aether exposes a local SOCKS5/HTTP proxy. Apps that respect proxy settings can use it; device traffic is not automatically routed via TUN/VpnService. A VpnService implementation would be needed for system-wide routing.</string>
+    <!-- ============================================================== -->
+    <!-- Progressive Aether flow (route -> protocol -> scan -> carrier)  -->
+    <!-- ============================================================== -->
+
+    <string name="aether_flow_title">Aether</string>
+    <string name="aether_flow_subtitle">Pick a route, then tune only what that route uses.</string>
+    <string name="aether_route_step">1 · Route</string>
+    <string name="aether_settings_step">2 · Settings for this route</string>
+    <string name="aether_route_none_selected">No route selected</string>
+    <string name="aether_show_settings">Show settings</string>
+    <string name="aether_hide_settings">Hide settings</string>
+    <string name="aether_section_summary_default">Not set</string>
+    <string name="aether_choice_selected">Selected</string>
+    <string name="aether_choice_unavailable">Not selectable here</string>
+    <string name="aether_choice_on">On</string>
+    <string name="aether_choice_off">Off</string>
+    <string name="aether_choice_applied">Applied</string>
+    <string name="aether_choice_partial">Partly applied</string>
+    <string name="aether_choice_not_forwarded">Recorded only</string>
+    <string name="aether_setting_note_prefix">Aether: %1$s</string>
+    <string name="aether_start">Start Aether</string>
+    <string name="aether_stop">Stop Aether</string>
+    <string name="aether_cancel_start">Cancel start</string>
+    <string name="aether_settings_saved">Route settings saved.</string>
+    <string name="aether_settings_saved_restart">Saved; restarting Aether.</string>
+    <string name="aether_settings_saved_next_start">Saved; applies on the next start.</string>
+    <string name="aether_defaults_restored">Defaults restored.</string>
+    <string name="aether_imported">Imported — review, then save.</string>
+    <string name="aether_import_invalid">That is not usable Aether JSON.</string>
+    <string name="aether_restart_question">Aether is running. Save and restart to apply these settings?</string>
+    <string name="aether_reset_question">Replace the settings of this route with defaults?</string>
+    <string name="aether_unsaved_hint">Unsaved changes</string>
+
+    <!-- Compact build notice (replaces the oversized coming-soon block) -->
+    <string name="aether_notice_title">About this build</string>
+    <string name="aether_notice_summary">Local SOCKS5 proxy · no device-wide VPN</string>
+
+    <!-- Transport / protocol detail lines -->
+    <string name="aether_transport_masque_detail">MASQUE over QUIC/HTTP-3. The Aether default.</string>
+    <string name="aether_transport_wg_detail">Classic WireGuard to a WARP endpoint on UDP 2408.</string>
+    <string name="aether_transport_gool_detail">WireGuard carried inside MASQUE, for a foreign exit address.</string>
+    <string name="aether_transport_mim_detail">MASQUE inside MASQUE: two hops, a different exit address.</string>
+    <string name="aether_transport_unreachable">Aether supports this protocol, but aether_tunnel_start parses only masque and wg (api::Transport), so it would silently run as plain MASQUE. It needs the aether_core_start path.</string>
+
+    <!-- Scan mode detail lines -->
+    <string name="aether_scan_turbo_detail">Stop at the first candidate that answers.</string>
+    <string name="aether_scan_balanced_detail">Collect a few candidates, keep the fastest. Aether default.</string>
+    <string name="aether_scan_thorough_detail">Sweep whole ranges, for when everything looks blocked.</string>
+    <string name="aether_scan_verified_detail">Dial only edges measured to answer connect-ip.</string>
+    <string name="aether_scan_ironclad_detail">Open a real tunnel and make a real HTTP request per candidate.</string>
+    <string name="aether_scan_skipped_peer">A fixed peer is set, so the scan is skipped.</string>
+
+    <!-- IP version -->
+    <string name="aether_ip_version">IP version to scan</string>
+    <string name="aether_ip_v4">IPv4</string>
+    <string name="aether_ip_v6">IPv6</string>
+    <string name="aether_ip_both">Both</string>
+
+    <!-- Obfuscation detail lines -->
+    <string name="aether_noize_light">light</string>
+    <string name="aether_noize_off_detail">No cover traffic.</string>
+    <string name="aether_noize_light_detail">A little cover traffic; lowest overhead.</string>
+    <string name="aether_noize_firewall_detail">The scanner default for MASQUE, and a distinct profile for WireGuard.</string>
+    <string name="aether_noize_balanced_detail">WireGuard tunnels only. The scanner has no balanced case, so it scans as firewall.</string>
+    <string name="aether_noize_gfw_detail">For networks where the default does not get through. Aether treats gfw and aggressive as the same profile on the scan path.</string>
+    <string name="aether_noize_aggressive_detail">Most cover traffic; highest overhead. Distinct from gfw on the tunnel path, the same profile on the scan path.</string>
+
+    <!-- Fragmenting -->
+    <string name="section_fragmenting">Fragmenting</string>
+    <string name="aether_fragment_title">Fragment the TLS ClientHello</string>
+    <string name="aether_fragment_desc">Aether splits the ClientHello of the MASQUE HTTP/2 carrier into small pieces with a delay between them, so a firewall that resets a whole ClientHello whose SNI ends in cloudflareclient.com does not see one. Implemented in aether/src/fragment.rs.</string>
+    <string name="aether_fragment_enable">Fragmenting on</string>
+    <string name="aether_fragment_enable_desc">Off by default in Aether. Applies to the HTTP/2 carrier only, never to QUIC or WireGuard, so turning it on also selects that carrier.</string>
+    <string name="aether_fragment_size">Chunk size (bytes)</string>
+    <string name="aether_fragment_size_hint">n or a-b, for example 16-32 (the Aether default)</string>
+    <string name="aether_fragment_delay">Delay between fragments (ms)</string>
+    <string name="aether_fragment_delay_hint">n or a-b, for example 2-10 (the Aether default)</string>
+    <string name="aether_fragment_sni">Split inside the server name</string>
+    <string name="aether_fragment_sni_desc">AETHER_MASQUE_H2_FRAGMENT_SNI: put the split in the middle of the SNI host name instead of at a random offset. Upstream has no CLI flag for it, so it reaches Aether only through this app\u2019s bridge.</string>
+    <string name="aether_fragment_status_on">Applied — this route runs MASQUE over HTTP/2</string>
+    <string name="aether_fragment_status_off">Off — this route runs MASQUE over HTTP/3 (QUIC)</string>
+    <string name="aether_fragment_carrier_switch">Turning fragmenting on switches this route\u2019s MASQUE carrier from HTTP/3 (QUIC) to HTTP/2 (TCP), because the fragments are written into that carrier\u2019s TLS ClientHello (aether/src/masque_h2.rs). The scan and the tunnel both follow the carrier, so nothing is left half applied.</string>
+    <string name="aether_fragment_needs_masque">Fragmenting needs the MASQUE transport: Aether applies it only on the MASQUE-over-HTTP/2 carrier. It is unavailable while this route uses %1$s.</string>
+    <string name="aether_fragment_saved">Fragmenting saved with the route; Aether applies it on the next start.</string>
+    <string name="aether_fragment_saved_restart">Fragmenting saved; Aether is restarting with it.</string>
+    <string name="aether_fragment_scope">One carrier only: MASQUE over HTTP/2. It never applies to the HTTP/3 (QUIC) MASQUE path, and never to WireGuard, gool or mim. This app selects that carrier for you when fragmenting is on, and selects QUIC again when it is off.</string>
+    <string name="aether_fragment_recorded_for">Stored with the selected route (%1$s) and applied when that route starts:</string>
+    <string name="aether_fragment_recorded_none">No route is selected, so these are the values stored with the Aether configuration:</string>
+    <string name="aether_psiphon_enable">Chain through Psiphon</string>
+        <string name="aether_fragment_how_to_change">These values are stored with the route, appear in its exported JSON, and are written into the engine\u2019s environment before each start — Aether reads them per connection (aether/src/fragment.rs).</string>
+    <string name="aether_fragment_env_label">Aether reads: %1$s</string>
+
+    <!-- Reachability reasons (AetherCapabilities) -->
+    <string name="aether_reach_applied_transport">Sent to aether_identity_open, aether_scan_start and aether_tunnel_start.</string>
+    <string name="aether_reach_applied_scan">Sent as ScanRequest.mode; prober::ScanMode parses it.</string>
+    <string name="aether_reach_applied_ip">Sent as ScanRequest.ip; prober::IpScan parses v4, v6 and both.</string>
+    <string name="aether_reach_applied_socks">Sent as TunnelSpec.socks; Aether binds the SOCKS5 listener there.</string>
+    <string name="aether_reach_applied_http">Sent as TunnelSpec.http; Aether also serves an HTTP CONNECT proxy there.</string>
+    <string name="aether_reach_applied_peer">Used instead of scanning; sent as the tunnel peer.</string>
+    <string name="aether_reach_applied_identity">Resolved inside the app private directory and sent to aether_identity_open.</string>
+    <string name="aether_reach_partial_ech">Applied for MASQUE only: ffi::job_ech returns no key for WireGuard, which has no TLS handshake to hide a name in.</string>
+    <string name="aether_reach_partial_noize">Applied to the scan (noize::from_profile) and to a WireGuard tunnel (aethernoize::from_profile), but not to a MASQUE tunnel, which reads its profile from AETHER_NOIZE — a variable this path cannot set. The two parsers also differ: the scan has no balanced case, so balanced scans as firewall.</string>
+    <string name="aether_reach_partial_team">The team name is sent, but enrolment also needs a service token or a one-time code. The aether_team_* calls are wired in AetherBridge and are not used by this screen yet.</string>
+    <string name="aether_reach_missing_env_only">Aether reads this from its own environment (set by the CLI). No field for it exists on aether_tunnel_start, and Android has no public API for setting the process environment, so the value is saved and shown but not applied.</string>
+    <string name="aether_reach_missing_cli_flow">Only the aether_core_start CLI flow acts on this; the identity/scan/tunnel path this build uses has no field for it.</string>
+    <string name="aether_reach_partial_fragment">Written into the engine\u2019s environment before each start (AETHER_MASQUE_HTTP2 and AETHER_MASQUE_H2_FRAGMENT*), which is where Aether reads it — aether_tunnel_start has no field for it. One carrier only: MASQUE over HTTP/2, so enabling it switches this route away from QUIC. A blank size or delay leaves Aether\u2019s own default in place.</string>
+    <string name="aether_reach_partial_fragment_sni">Applied through the same call, as AETHER_MASQUE_H2_FRAGMENT_SNI. Upstream has no --fragment-sni flag, so this is the only way it reaches Aether, and it only matters on the HTTP/2 carrier.</string>
+    <string name="aether_reach_missing_external">Needs a Tor or Psiphon component that is not bundled with this build, and this path forwards no Tor or Psiphon setting.</string>
+
+    <!-- Operational log panel -->
+    <string name="aether_log_title">Aether activity</string>
+    <string name="aether_log_subtitle">Every step Aether reported, newest last.</string>
+    <string name="aether_log_empty">No Aether events yet. Start the tunnel to see what it does.</string>
+    <string name="aether_log_count">%1$d events</string>
+    <string name="aether_log_count_one">1 event</string>
+    <string name="aether_log_show">Show log</string>
+    <string name="aether_log_hide">Hide log</string>
+    <string name="aether_log_follow">Jump to latest</string>
+    <string name="aether_log_following">Following</string>
+    <string name="aether_log_paused">Paused</string>
+    <string name="aether_log_no_problems">No warnings or errors recorded.</string>
+    <string name="aether_log_follow_toggle_on">Following — tap to pause</string>
+    <string name="aether_log_follow_toggle_off">Paused — tap to follow</string>
+    <string name="aether_log_copy">Copy</string>
+    <string name="aether_log_copied">Aether log copied</string>
+    <string name="aether_log_clear">Clear</string>
+    <string name="aether_log_filter_all">All</string>
+    <string name="aether_log_filter_problems">Problems</string>
+    <string name="aether_log_last_error">Last error</string>
+    <string name="aether_log_redacted_notice">Credentials are redacted before they reach this panel.</string>
+    <string name="aether_log_state_running">Tunnel serving</string>
+    <string name="aether_log_state_starting">Starting</string>
+    <string name="aether_log_state_stopping">Stopping</string>
+    <string name="aether_log_state_stopped">Stopped</string>
+    <string name="aether_log_state_error">Error</string>
+
+</resources>
