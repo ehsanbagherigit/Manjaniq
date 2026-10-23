@@ -253,6 +253,20 @@ jobs:
             echo "INFO: libaether does not list libc++_shared.so in DT_NEEDED (maybe statically linked?) - still package for safety" | tee -a /tmp/aether_arm64.log
           fi
 
+      - name: Build Aether helper binaries (Tor pluggable transport + Psiphon)
+        run: |
+          set -uo pipefail
+          # The two helper processes Aether spawns: lyrebird for Tor bridges and
+          # psiphon-tunnel-core for every --psiphon* mode. Built as static
+          # GOOS=linux ELFs precisely the way upstream's android release job does
+          # (third_party/Aether/.github/workflows/release.yml: android job), then
+          # installed under lib<name>.so so the packager puts them in lib/<abi>/,
+          # the only directory Android 10+ permits exec from.
+          bash scripts/ci/build_helpers.sh arm64 app/src/main/jniLibs/arm64-v8a /tmp/aether_helpers_arm64.log
+          bash scripts/ci/build_helpers.sh amd64 app/src/main/jniLibs/x86_64 /tmp/aether_helpers_x64.log
+          echo "=== jniLibs after helpers ==="
+          ls -l app/src/main/jniLibs/arm64-v8a app/src/main/jniLibs/x86_64
+
       - name: Verify native libraries (RSTA + Aether)
         run: |
           set -euo pipefail
@@ -268,6 +282,32 @@ jobs:
             echo "::error::libaether.so not built - workflow must produce it"
             exit 1
           fi
+          # Helper binaries Aether spawns at run time. They are warned about, not
+          # failed on: libaether works without them (AetherHelpers reports the gap
+          # in the UI), and an upstream outage must not turn the pipeline red.
+          for helper in liblyrebird.so libpsiphon_tunnel_core.so; do
+            for abi in arm64-v8a x86_64; do
+              file="app/src/main/jniLibs/$abi/$helper"
+              if [ -f "$file" ]; then
+                echo "helper present: $file ($(stat -c%s "$file") bytes)"
+              else
+                echo "::warning title=Helper missing::$file was not produced; Tor bridges (lyrebird) or Psiphon will report the missing executable in the app"
+              fi
+            done
+          done
+          # A packaged helper must be a static ELF: Android would refuse a glibc
+          # interpreter, and a dynamic binary there fails only on the device.
+          for abi in arm64-v8a x86_64; do
+            for helper in liblyrebird.so libpsiphon_tunnel_core.so; do
+              file="app/src/main/jniLibs/$abi/$helper"
+              [ -f "$file" ] || continue
+              if readelf -l "$file" 2>/dev/null | grep -q 'INTERP'; then
+                echo "::warning title=Helper is dynamic::$file links an interpreter and may not start on Android"
+              else
+                echo "static ELF confirmed: $file"
+              fi
+            done
+          done
 
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
@@ -289,6 +329,8 @@ jobs:
           path: |
             /tmp/aether_arm64.log
             /tmp/aether_x64.log
+            /tmp/aether_helpers_arm64.log
+            /tmp/aether_helpers_x64.log
           if-no-files-found: warn
 
       - name: Upload Gradle logs and unit test results
@@ -351,6 +393,15 @@ jobs:
           if grep -q "lib/x86_64/libaether.so" /tmp/apk_listing.txt; then
             grep -q "lib/x86_64/libc++_shared.so" /tmp/apk_listing.txt || echo "::warning::APK missing lib/x86_64/libc++_shared.so (emulator may fail)"
           fi
+          # Aether's helper processes (Tor pluggable transport, Psiphon) must be in
+          # lib/<abi>/: that is the only path Android 10+ allows an app to exec, and
+          # the APK is installed with extractNativeLibs=true so they are real files
+          # there. Warned about rather than failed on - see the verify step.
+          for helper in liblyrebird.so libpsiphon_tunnel_core.so; do
+            grep -q "lib/arm64-v8a/$helper" /tmp/apk_listing.txt \
+              && echo "APK contains lib/arm64-v8a/$helper" \
+              || echo "::warning title=Helper not packaged::lib/arm64-v8a/$helper missing; Aether will report that bridge/Psiphon helper as unavailable"
+          done
           # libc++_shared.so must be packaged for libaether (BoringSSL/C++). Fail if missing when libaether present.
           if grep -q "lib/arm64-v8a/libaether.so" /tmp/apk_listing.txt; then
             grep -q "lib/arm64-v8a/libc++_shared.so" /tmp/apk_listing.txt || { echo "::error::APK missing lib/arm64-v8a/libc++_shared.so required by libaether.so (dlopen failed: library \"libc++_shared.so\" not found)"; unzip -l "$APK" | grep -E "libc\+\+|libaether"; exit 1; }
@@ -408,7 +459,7 @@ jobs:
   emulator-smoke:
     runs-on: ubuntu-latest
     needs: build
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -502,6 +553,17 @@ jobs:
             fi
           done
           ls -lh app/src/main/jniLibs/arm64-v8a/ app/src/main/jniLibs/x86_64/
+
+      - name: Build Aether helper binaries (Tor pluggable transport + Psiphon)
+        run: |
+          set -uo pipefail
+          # Same helpers as the build job, and for the same reason: the emulator
+          # runs the real instrumentation suite against an APK that must carry
+          # them, and the ones for this ABI are needed to launch a Tor/Psiphon
+          # route at all.
+          bash scripts/ci/build_helpers.sh arm64 app/src/main/jniLibs/arm64-v8a /tmp/aether_helpers_arm64.log
+          bash scripts/ci/build_helpers.sh amd64 app/src/main/jniLibs/x86_64 /tmp/aether_helpers_x64.log
+          ls -l app/src/main/jniLibs/arm64-v8a app/src/main/jniLibs/x86_64
 
       - name: Free disk space for emulator
         run: |

@@ -32,7 +32,30 @@ android {
     }
     packaging {
         jniLibs {
-            useLegacyPackaging = false
+            /**
+             * True so the APK is installed with `extractNativeLibs=true`, i.e. the
+             * native libraries are written into the app's read-only library
+             * directory instead of being mapped from inside the APK.
+             *
+             * Android 10 (API 29) enforces W^X: an app that targets 29 or newer may
+             * not `execve` a file in its own writable data directory. Aether runs
+             * two helper processes - a Tor pluggable transport
+             * (`bridges.rs` -> `--tor-pt`) and `psiphon-tunnel-core`
+             * (`psiphon.rs:749` -> `--psiphon-bin`) - and those arrive as
+             * `lib<name>.so` entries in jniLibs (scripts/ci/build_helpers.sh).
+             * Without extraction they are not files on disk at all, so they cannot
+             * be started; with it, they live in the one directory the platform both
+             * populates and allows exec from.
+             *
+             * `AetherHelpers` only ever resolves a helper inside that directory and
+             * refuses an executable that sits in `filesDir`, so nothing here weakens
+             * the W^X boundary: the data directory still holds no executable code.
+             *
+             * Cost: the libraries occupy disk twice (once in the APK, once
+             * extracted) and installation is a little slower. libaether.so itself
+             * loads either way.
+             */
+            useLegacyPackaging = true
         }
     }
 
