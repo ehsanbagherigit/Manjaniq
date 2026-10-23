@@ -122,13 +122,16 @@ class AetherFragmentingWiringTest {
     }
 
     @Test
-    fun goolAndMimAreStillRefusedBeforeTheFragmentingRule() {
+    fun goolAndMimAreRefusedBeforeTheFragmentingRuleOnTheGranularPath() {
         // Transport selectability is checked first, so a stored gool or mim route
-        // cannot reach the fragmenting rule and be started as plain MASQUE.
+        // cannot reach the fragmenting rule and be started as plain MASQUE. The
+        // reason names the start path now, because the protocols are real on the
+        // full-engine path - that is what makes the refusal a choice rather than a
+        // limitation.
         listOf("gool", "mim").forEach { id ->
             val problem = AetherConfig.DEFAULT.copy(transport = id, fragmentEnabled = true).validate()
             assertNotNull(id, problem)
-            assertTrue(id, problem!!.contains("cannot be started by this build"))
+            assertTrue(id, problem!!.contains("needs the full-engine start mode"))
         }
     }
 

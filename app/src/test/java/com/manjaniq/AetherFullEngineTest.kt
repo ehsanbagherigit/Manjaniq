@@ -215,7 +215,9 @@ class AetherFullEngineTest {
         )
         val args = configured.toAetherArgs("/data/user/0/com.manjaniq/files", helpers)
         assertEquals("/opt/psiphon", args[args.indexOf("--psiphon-bin") + 1])
-        assertEquals("/opt/snowflake", args[args.indexOf("--tor-pt") + 1])
+        // The transport is named in the value itself (`<name>=<path>`), which is the
+        // shape bridges.rs parses; the path alone would be taken as a bare binary.
+        assertEquals("snowflake=/opt/snowflake", args[args.indexOf("--tor-pt") + 1])
         // A user-named PT means the packaged one is not also listed.
         assertFalse(args.contains("obfs4=${helpers.ptBinary}"))
     }
