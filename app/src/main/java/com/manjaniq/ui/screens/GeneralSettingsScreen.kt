@@ -111,21 +111,7 @@ fun GeneralSettingsScreen(
         SettingsCard(title = stringResource(R.string.general).uppercase()) {
             SettingsRow(label = stringResource(R.string.version), value = versionName)
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
-            SettingsRow(label = stringResource(R.string.engine), value = stringResource(R.string.engine_rsta_version))
-        }
-
-        // Config management hint — actual RSTA config editing lives on Home for RSTA core
-        SettingsCard(title = stringResource(R.string.config_management).uppercase()) {
-            Text(
-                text = stringResource(R.string.config_management_desc),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 13.sp
-            )
-            Text(
-                text = stringResource(R.string.config_management_hint),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp
-            )
+            SettingsRow(label = stringResource(R.string.engine), value = stringResource(R.string.engine_multi_core))
         }
 
         Spacer(modifier = Modifier.height(8.dp))

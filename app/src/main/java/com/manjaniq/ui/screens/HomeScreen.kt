@@ -175,23 +175,6 @@ fun HomeScreen(
                 val aRunning = aetherUi.state == AetherState.RUNNING
                 val aTransition = aetherUi.state == AetherState.STARTING || aetherUi.state == AetherState.STOPPING
 
-                // VPN limitation notice
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = ManjaniqPurpleDeep),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, ManjaniqPurple.copy(alpha = 0.4f))
-                ) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(text = stringResource(R.string.aether_coming_soon_title), fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface)
-                        Text(text = stringResource(R.string.aether_coming_soon_body), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 16.sp)
-                        Text(text = stringResource(R.string.profile_socks_note, aetherUi.socksEndpoint), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
-                        HorizontalDivider(color = ManjaniqBorder)
-                        Text(text = stringResource(R.string.vpn_limitation_title), color = ManjaniqPurpleNeon, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                        Text(text = stringResource(R.string.vpn_limitation_body), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 15.sp)
-                    }
-                }
-
                 if (aetherUi.lastError != null) {
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(14.dp)) {

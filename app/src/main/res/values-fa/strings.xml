@@ -11,19 +11,17 @@
     <string name="nav_close">بستن منوی پیمایش</string>
 
     <!-- Top Bar -->
-    <string name="app_subtitle">پروکسی محلی RSTA — کنترل SNI</string>
+    <string name="drawer_subtitle">یک کارخواه شبکه‌ای چند‌هسته‌ای</string>
 
     <!-- Core Selector -->
     <string name="select_core">انتخاب هسته</string>
     <string name="rsta_name">RSTA</string>
     <string name="rsta_description">پروکسی جعل SNI و تکه‌تکه‌سازی. موتور Go آزمایش‌شده.</string>
     <string name="aether_name">ایثر</string>
-    <string name="aether_description">پروتکل نسل بعدی. یکپارچه‌سازی در آینده.</string>
+    <string name="aether_description">کارخواه دور زدن سانسور برای شبکه‌های به‌شدت محدودشده</string>
     <string name="badge_available">در دسترس</string>
     <string name="badge_ready">آماده</string>
     <string name="badge_coming_soon">به‌زودی</string>
-    <string name="aether_coming_soon_title">ایثر — به‌زودی</string>
-    <string name="aether_coming_soon_body">ایثر یک موتور نسل جدید برای منجنیق است. رابط کاربری آماده است اما موتور هنوز یکپارچه نشده است. هیچ قابلیتی در این نسخه وجود ندارد. به‌روزرسانی‌های پروژه را دنبال کنید.</string>
     <string name="aether_not_available">موتور در این نسخه موجود نیست</string>
     <string name="aether_learn_more">بیشتر بدانید</string>
 
@@ -104,8 +102,6 @@
     <string name="theme_dark">تیره</string>
     <string name="theme_dark_desc">حالت تیره حرفه‌ای (پیش‌فرض)</string>
     <string name="general">عمومی</string>
-    <string name="config_management">مدیریت پیکربندی</string>
-    <string name="config_management_desc">پیکربندی RSTA را وارد، صادر یا بازنشانی کنید</string>
     <string name="settings_saved">تنظیمات ذخیره شد. در شروع بعدی اعمال می‌شود.</string>
     <string name="settings_saved_restart">تنظیمات ذخیره و موتور در حال راه‌اندازی مجدد.</string>
     <string name="settings_saved_next">تنظیمات ذخیره شد؛ در شروع دستی بعدی اعمال می‌شود.</string>
@@ -134,14 +130,12 @@
     <!-- About -->
     <string name="about_title">درباره</string>
     <string name="about_subtitle">اطلاعات برنامه منجنیق</string>
-    <string name="about_description">منجنیق یک برنامه ماژولار اندروید برای ابزارهای شبکه است. قابلیت اولیه آن کنترل موتور واقعی RSTA به‌صورت پروکسی محلی است. برنامه‌های سازگار را به آدرس شنود تنظیم کنید — بدون نیاز به روت و بدون VPN سراسری.</string>
+    <string name="about_description">Manjaniq is a modular Android networking client that integrates third-party cores to support internet access in restrictive network environments. It includes techniques intended to help circumvent censorship and DPI-based filtering.</string>
     <string name="version">نسخه</string>
     <string name="engine">موتور</string>
-    <string name="engine_rsta_version">RSTA SNI Spoof</string>
+    <string name="engine_multi_core">چندهسته‌ای</string>
     <string name="repository">مخزن</string>
     <string name="license">مجوز</string>
-    <string name="acknowledgements">قدردانی</string>
-    <string name="ack_text">ساخته‌شده با Kotlin، Compose و موتور متن‌باز RSTA. با سپاس از تیم RSTA و مشارکت‌کنندگان.</string>
 
     <!-- Connection Details Expanded -->
     <string name="live_statistics">آمار زنده</string>
@@ -175,12 +169,7 @@
     <string name="no_events">هنوز رویدادی نیست. موتور را روشن کنید.</string>
 
     <!-- Previously hardcoded in composables -->
-    <string name="aether_no_effect">انتخاب ایثر موتور RSTA را اجرا یا تغییر نمی‌دهد. برای کنترل پروکسی موجود به RSTA برگردید.</string>
-    <string name="aether_feature_1">معماری انتقال افزونه‌پذیر</string>
-    <string name="aether_feature_2">خط لولهٔ مبهم‌سازی پیشرفته</string>
-    <string name="aether_feature_3">هماهنگی چندهسته‌ای (برنامه‌ریزی‌شده)</string>
     <string name="stats_footnote">شمارنده‌ها از مانیتور خود موتور می‌آیند؛ مجموع ترافیک مانند برنامهٔ اصلی در گام‌های ۲۵۶ کیلوبایتی افزایش می‌یابد.</string>
-    <string name="config_management_hint">برای ویرایش تنظیمات اتصال، روش دورزدن و تکه‌تکه‌سازی به خانه ← RSTA بروید. این تنظیمات جدا از زبان و پوستهٔ برنامه ذخیره می‌شوند.</string>
     <string name="rsta_config_intro">پیکربندی موتور RSTA آماده است. شنود/مقصد، SNI، روش و تکه‌تکه‌سازی را در زیر تنظیم کنید.</string>
     <string name="rsta_config_intro_hint">از کنترل‌های زیر برای ویرایش استفاده کنید. تغییرات اعتبارسنجی و روی دستگاه ذخیره می‌شوند.</string>
     <string name="engine_version_fmt">موتور نسخهٔ %1$s</string>

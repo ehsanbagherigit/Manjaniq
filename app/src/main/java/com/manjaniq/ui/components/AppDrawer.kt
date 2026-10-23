@@ -60,7 +60,7 @@ fun AppDrawerContent(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = stringResource(R.string.app_subtitle),
+                        text = stringResource(R.string.drawer_subtitle),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 12.sp
                     )
@@ -127,11 +127,6 @@ fun AppDrawerContent(
         ) {
             Text(
                 text = stringResource(R.string.version) + " $versionName",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp
-            )
-            Text(
-                text = stringResource(R.string.engine_rsta_version),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp
             )

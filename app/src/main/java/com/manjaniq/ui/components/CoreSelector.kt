@@ -160,7 +160,7 @@ fun CoreCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp,
                     lineHeight = 14.sp,
-                    maxLines = 2
+                    maxLines = 3
                 )
             }
 
