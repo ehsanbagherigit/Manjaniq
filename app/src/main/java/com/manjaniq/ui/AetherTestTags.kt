@@ -16,10 +16,6 @@ object AetherTestTags {
     /** Root of the Aether region of the home screen. */
     const val PANEL = "aether_panel"
 
-    /** Compact notice about what this build can and cannot do. */
-    const val NOTICE = "aether_notice"
-    const val NOTICE_TOGGLE = "aether_notice_toggle"
-
     /** Progressive step 1: the list of Aether routes. */
     const val ROUTE_LIST = "aether_route_list"
     const val ROUTE_TITLE = "aether_profiles_title"

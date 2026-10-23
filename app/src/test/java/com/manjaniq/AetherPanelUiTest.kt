@@ -105,19 +105,17 @@ class AetherPanelUiTest {
     @Test
     fun panelKeepsTheStartControlReachableAndShowsEveryAetherArea() {
         openAether()
-        compose.onNodeWithTag(AetherTestTags.NOTICE).assertExists()
         compose.onNodeWithTag(AetherTestTags.ROUTE_LIST).assertExists()
         compose.onNodeWithTag(AetherTestTags.ROUTE_TITLE).assertExists()
         compose.onNodeWithTag(TestTags.AETHER_STATUS).assertExists()
         compose.onNodeWithTag(AetherTestTags.LOG_PANEL).assertExists()
 
-        // Every Aether band is present: notice, start control, route list, the
-        // selected route's settings, the status card and the operational log.
-        // Their order is fixed by composition in AetherPanel (notice -> error ->
-        // start control -> route flow -> status -> log), and the properties that
-        // keep the start control reachable are asserted where they live: the
-        // notice stays collapsed (noticeIsCompact...), settings are revealed one
-        // group at a time (settingsAreRevealed...), and the log cannot grow
+        // Every Aether band is present: start control, route list, the selected
+        // route's settings, the status card and the operational log. Their order
+        // is fixed by composition in AetherPanel (error -> start control ->
+        // route flow -> status -> log), and the properties that keep the start
+        // control reachable are asserted where they live: settings are revealed
+        // one group at a time (settingsAreRevealed...), and the log cannot grow
         // without limit (longOutput...). Geometry is deliberately not asserted
         // here: a host-JVM viewport is not a device viewport.
         // The selected route owns its settings, and they start open.
@@ -126,22 +124,6 @@ class AetherPanelUiTest {
         listOf("tor_direct", "aether_psiphon", "aether_tor", "tor_psiphon", "tor_aether").forEach {
             compose.onNodeWithTag(AetherTestTags.routeCard(it)).assertExists()
         }
-    }
-
-    @Test
-    fun noticeIsCompactAndStillRevealsTheVpnLimitation() {
-        openAether()
-        // Collapsed: the long body and the limitation paragraph are not composed,
-        // so the panel does not open with a wall of text above the start button.
-        compose.onAllNodes(hasText(LIMITATION_TITLE, substring = true)).assertCountEquals(0)
-        // The one-line summary still names the limitation.
-        waitForText("no device-wide VPN", present = true)
-
-        toggle(AetherTestTags.NOTICE_TOGGLE)
-        waitForText(LIMITATION_TITLE, present = true)
-
-        toggle(AetherTestTags.NOTICE_TOGGLE)
-        waitForText(LIMITATION_TITLE, present = false)
     }
 
     @Test
@@ -501,9 +483,6 @@ class AetherPanelUiTest {
     private companion object {
         /** Must stay in sync with [com.manjaniq.core.AetherLogSanitizer.MASK]. */
         const val MASK_TEXT = "[redacted]"
-
-        /** `R.string.vpn_limitation_title`. */
-        const val LIMITATION_TITLE = "No device-wide VPN"
 
         /** `R.string.aether_choice_not_forwarded`. */
         const val NOT_FORWARDED_LABEL = "Recorded only"

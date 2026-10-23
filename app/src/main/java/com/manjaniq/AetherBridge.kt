@@ -276,31 +276,4 @@ object AetherBridge {
             Result.failure("Aether call failed: ${t.message}")
         }
     }
-
-    /**
-     * Poll helper: blocks up to timeoutMs checking job status via jobPoll.
-     * Returns the final job result JSON (done) or null if timeout/running.
-     * Caller must still jobFree after.
-     */
-    fun pollUntilDone(jobId: Long, timeoutMs: Long = 30_000, pollIntervalMs: Long = 200): Result<JSONObject>? {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < deadline) {
-            val poll = jobPoll(jobId)
-            if (poll.isFailure) return poll
-            val obj = poll.getOrNull() ?: return Result.failure("poll null")
-            val state = obj.optString("state")
-            if (state == "done") {
-                // result is nested JSON under "result"
-                val result = obj.optJSONObject("result")
-                return if (result != null) {
-                    if (result.optBoolean("ok", false)) Result.success(result)
-                    else Result.failure(result.optString("error", "job done with error"))
-                } else {
-                    Result.success(obj)
-                }
-            }
-            Thread.sleep(pollIntervalMs)
-        }
-        return null // timeout
-    }
 }

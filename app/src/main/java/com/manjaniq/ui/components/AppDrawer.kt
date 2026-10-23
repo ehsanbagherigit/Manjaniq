@@ -130,11 +130,6 @@ fun AppDrawerContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp
             )
-            Text(
-                text = stringResource(R.string.engine_rsta_version),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp
-            )
         }
     }
 }
