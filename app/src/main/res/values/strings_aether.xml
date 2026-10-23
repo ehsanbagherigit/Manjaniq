@@ -395,7 +395,7 @@
     <string name="aether_engine_psiphon_bin">Psiphon executable</string>
     <string name="aether_engine_psiphon_bin_hint">Empty uses the packaged libpsiphon_tunnel_core.so</string>
     <string name="aether_engine_tls_verify">Verify the TLS chain</string>
-    <string name="aether_engine_tls_verify_desc">Turn certificate verification back on. Off is Aether's deliberate default for a censored network.</string>
+    <string name="aether_engine_tls_verify_desc">Turn certificate verification back on. Off is the engine default, chosen for a censored network.</string>
     <string name="aether_engine_tls_no_quic_v2">Disable QUIC v2</string>
     <string name="aether_engine_tls_no_quic_v2_desc">Force QUIC version 1, which some middleboxes treat differently from v2.</string>
     <string name="aether_engine_timing">Timing</string>
@@ -417,7 +417,7 @@
     <string name="aether_engine_enroll_address_hint">A custom WARP API base address, for a self-hosted enrolment</string>
     <string name="aether_engine_logging">Logging</string>
     <string name="aether_engine_log_level">Log level</string>
-    <string name="aether_engine_log_level_hint">Engine default keeps the core's own level</string>
+    <string name="aether_engine_log_level_hint">Engine default keeps the level the core chose</string>
     <string name="aether_engine_verbose">Verbose</string>
     <string name="aether_engine_verbose_desc">Shorthand for debug level, kept because the core parses it.</string>
     <string name="aether_engine_perf">Performance profile</string>
