@@ -111,7 +111,7 @@ Persistence per-profile, validation per-profile (`validateForProfile` + `AetherC
 - Cards: purple border when selected, orange for NeedsExternal, error red
 
 ### SOCKS/HTTP proxy vs VPN/TUN disclaimer
-- Current phase: SOCKS5 + HTTP proxy only (`127.0.0.1:1819` + optional httpProxyBind). No `VpnService`/`protect()`/TUN fd pump. Shown in UI as `vpn_limitation_title/body` + `profile_socks_note` + `aether_coming_soon_body`.
+- Current phase: SOCKS5 + HTTP proxy only (`127.0.0.1:1819` + optional httpProxyBind). No `VpnService`/`protect()`/TUN fd pump. The former build-notice card (`vpn_limitation_*`, `profile_socks_note`, `aether_coming_soon_body`) was removed from the Aether panel; the limitation is documented here and in `THIRD_PARTY_NOTICES.md`.
 - VPN would require `AetherVpnService : VpnService` bridging TUN fd ↔ netstack DataIn channel + protect(quic socket). Not implemented; documented as limitation.
 
 ### Upstream capability audit matrix (26+ features, truthful status)
@@ -123,7 +123,7 @@ Persistence per-profile, validation per-profile (`validateForProfile` + `AetherC
 | MIM gateway | mim flag | Available via `transport=mim` | |
 | Gateway scan | `aether_scan_start` (scanMode turbo/balanced/thorough/verified/ironclad) | Available (ScanMode chips) | |
 | Obfuscation (noize) | `noizeProfile firewall/balanced/gfw/aggressive/off` | Available (chips) | |
-| SOCKS5 bind | `socks::serve` 127.0.0.1:1819 | Available | AETHER_TOGGLE shows `profile_socks_note` |
+| SOCKS5 bind | `socks::serve` 127.0.0.1:1819 | Available | `AETHER_TOGGLE` starts the tunnel; the bound address is shown in the status card |
 | HTTP proxy bind | `httpProxyBind` | Available | |
 | Peer manual | `peer` field | Available | skips scan |
 | Upstream proxy chaining | `upstream` field (socks/http) | Available | used for Aether→Psiphon: upstream set to Psiphon endpoint |

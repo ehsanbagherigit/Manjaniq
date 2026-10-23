@@ -275,18 +275,11 @@ Listed so nothing is mistaken for missing when it is only unwired:
 * `AetherBridge.verifyStart` → `aether_verify_start` (`ffi.rs:450`) — dials a
   candidate and performs a real request; this is what `scanMode = ironclad` does
   inside the scan, so the separate call is redundant here.
-* `AetherBridge.pollUntilDone` — a second, older copy of the poll loop with a
-  flat 30 s timeout and a blocking `Thread.sleep`. It has no callers; the service
-  uses its own `pollJob` over `AetherJobPolling`. Left in place (removing it is
-  not needed for any fix), but noted so nobody reaches for it: 30 s is shorter
-  than every scan budget Aether has.
-* `AetherProfileStore.loadAll` / `exportAllJson` / `importAllJson` — all-route
-  export/import. Per-route export/import *is* in the UI; the all-route variant is
-  code-only.
-* `AetherRepository.refreshVersionFromNative` — no caller; the version is fetched
-  by the service during a start.
-* `AetherComingSoonContent` (`ui/screens/AetherComingSoonScreen.kt`) — no caller;
-  left in place, its strings are still defined.
+* `AetherBridge.coreStart` / `AetherConfig.toAetherArgs` and `verifyStart` above
+  remain the only unwired entry points. The audit removed the code with no
+  caller at all: `AetherBridge.pollUntilDone`, `AetherProfileStore.loadAll` /
+  `exportAllJson` / `importAllJson`, `AetherRepository.refreshVersionFromNative`
+  and the dead `AetherComingSoonContent` screen (with its strings).
 * `TestTags.AETHER_SETTINGS` — declared for the legacy `AetherSettingsForm` but
   never applied to it; it is applied now, so the fallback form is findable.
 * `TestTags.AETHER_DISABLED_BUTTON` — still never applied. The new panel keeps

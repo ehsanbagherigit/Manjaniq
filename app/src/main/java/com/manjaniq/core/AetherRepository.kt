@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import org.json.JSONObject
 
 /**
  * Single source of truth for Aether UI (mirrors EngineRepository for RSTA).
@@ -150,20 +149,6 @@ object AetherRepository {
     fun clearLogs() {
         synchronized(logLock) { logRing.clear() }
         _logs.value = emptyList()
-    }
-
-    /** Direct FFI version check (no service) */
-    fun refreshVersionFromNative() {
-        val v = AetherBridge.version()
-        if (v.isSuccess) {
-            val versionStr = v.getOrNull()?.optString("version", "") ?: ""
-            setVersion(versionStr)
-            log("INFO", "Aether native version: $versionStr")
-        } else {
-            val err = v.exceptionOrNull()?.message ?: "unknown"
-            _uiState.update { it.copy(loadError = err) }
-            log("ERROR", "Version call failed: $err")
-        }
     }
 
     /** Exposes lastPollRaw for diagnostics */

@@ -50,43 +50,10 @@ class AetherProfileStore(private val context: Context) {
         prefs.edit().putString(keyFor(profile), config.toJson()).apply()
     }
 
-    fun loadAll(): Map<AetherProfile, AetherProfileConfig> {
-        return AetherProfile.ALL.associateWith { loadFor(it) }
-    }
-
     fun resetFor(profile: AetherProfile): AetherProfileConfig {
         val def = AetherProfileConfig(profileId = profile.id)
         saveFor(profile, def)
         return def
-    }
-
-    fun exportAllJson(): String {
-        val o = org.json.JSONObject()
-        o.put("selected", getSelectedProfile().id)
-        val arr = org.json.JSONArray()
-        for (p in AetherProfile.ALL) {
-            arr.put(org.json.JSONObject(loadFor(p).toJson()))
-        }
-        o.put("profiles", arr)
-        return o.toString(2)
-    }
-
-    fun importAllJson(json: String): Boolean {
-        return try {
-            val o = org.json.JSONObject(json)
-            val sel = o.optString("selected", "")
-            if (sel.isNotEmpty()) {
-                prefs.edit().putString(KEY_SELECTED, sel).apply()
-            }
-            val arr = o.optJSONArray("profiles") ?: return false
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                val cfg = AetherProfileConfig.fromJson(obj.toString()) ?: continue
-                val prof = AetherProfile.byId(cfg.profileId)
-                saveFor(prof, cfg)
-            }
-            true
-        } catch (_: Exception) { false }
     }
 
     private fun keyFor(profile: AetherProfile) = "profile_${profile.id}_config"
