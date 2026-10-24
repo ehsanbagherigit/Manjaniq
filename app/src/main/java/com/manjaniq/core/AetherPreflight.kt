@@ -82,14 +82,97 @@ object AetherPreflight {
         val identity = identityFile(cfg, filesDir)
             ?: return "The identity path '${cfg.identityPath}' is not usable: it must be a " +
                 "relative path inside the app's data directory (no leading '/', no '..')"
+        prepareIdentity(identity)?.let { return it }
+
+        // A listener this app has just stopped takes a moment to release its
+        // port, and a start straight after a stop would otherwise be refused
+        // with "already in use" while nothing is actually listening. The wait is
+        // only ever spent when the port looks busy, and it is short: a port held
+        // by another app is reported with the same message as before.
+        var socksProblem: String? = null
+        for (attempt in 0 until PORT_RETRY_ATTEMPTS) {
+            socksProblem = socksPortProblem(cfg, isLoopbackPortFree)
+            if (socksProblem == null) break
+            if (attempt < PORT_RETRY_ATTEMPTS - 1) Thread.sleep(PORT_RETRY_DELAY_MS)
+        }
+        socksProblem?.let { return it }
+        return httpPortProblem(cfg, isLoopbackPortFree)
+    }
+
+    /**
+     * Makes sure the identity file can be written where the core is told to write
+     * it, and that an identity already there stays private.
+     *
+     * `--config` names a file the *core* creates and owns: `cli.rs` turns it into
+     * `AETHER_CONFIG` and `config::save` writes it with mode 0600 through a
+     * temporary file and a rename (`config.rs:159-201`). Three things can be
+     * wrong before the core ever sees the path, and each used to arrive as an
+     * engine error in the middle of a start - or, worse, as no error at all:
+     *
+     *  * **The directory does not exist.** `identityPath` may contain
+     *    subdirectories; the core's `create_dir_all` would create them, but a
+     *    path this app cannot create is a configuration mistake worth naming
+     *    before anything is spawned.
+     *  * **The path names a directory, or is unreadable.** `config::load` would
+     *    fail and quarantine it (renaming it to `*.corrupt`), which loses the
+     *    identity silently.
+     *  * **The directory is not writable.** Tested by actually creating, writing
+     *    and removing a probe file: `canWrite()` on Android answers for the
+     *    directory entry, not for whether this app's SELinux context may create a
+     *    file in it.
+     *
+     * The file itself is never created here: an empty `aether.toml` is not a valid
+     * identity (`config::load` would report a parse error and quarantine it), so
+     * creating one would break the very start this check exists to protect.
+     *
+     * An identity that exists is tightened to owner-only if the platform allows
+     * it. `config::save` writes 0600 itself; this also covers a file restored by
+     * the platform or copied in with a wider mode.
+     */
+    fun prepareIdentity(identity: File): String? {
         val parent = identity.parentFile
         if (parent != null && !parent.isDirectory && !parent.mkdirs()) {
             return "The directory for the identity file (${parent.absolutePath}) could not be " +
                 "created, so Aether could not write the identity it registers"
         }
-
-        socksPortProblem(cfg, isLoopbackPortFree)?.let { return it }
-        httpPortProblem(cfg, isLoopbackPortFree)?.let { return it }
+        if (identity.exists() && !identity.isFile) {
+            return "The identity path (${identity.absolutePath}) is not a file, so Aether " +
+                "cannot write the identity it registers there"
+        }
+        if (identity.isFile && !identity.canRead()) {
+            return "The identity file (${identity.absolutePath}) is not readable by this app, " +
+                "so Aether would register a new identity and lose the existing one"
+        }
+        val directory = parent ?: File(".")
+        val probe = File(directory, ".aether-write-probe-${System.nanoTime()}")
+        try {
+            if (!probe.createNewFile()) {
+                return "The directory for the identity file (${directory.absolutePath}) " +
+                    "refuses a new file, so Aether could not write the identity it registers"
+            }
+            probe.writeText("probe")
+            if (probe.length() <= 0L) {
+                return "The directory for the identity file (${directory.absolutePath}) " +
+                    "accepts a file but not its contents, so Aether could not write the identity"
+            }
+        } catch (t: Throwable) {
+            return "The directory for the identity file (${directory.absolutePath}) is not " +
+                "usable for writing (${t.message ?: t.javaClass.simpleName}), so Aether could " +
+                "not write the identity it registers"
+        } finally {
+            probe.delete()
+        }
+        if (identity.isFile) {
+            try {
+                identity.setReadable(false, false)
+                identity.setReadable(true, true)
+                identity.setWritable(true, true)
+                identity.setExecutable(false, false)
+            } catch (_: Throwable) {
+                // Best effort: the core writes 0600 itself, and a platform that
+                // refuses the change is not a reason to refuse the start.
+            }
+        }
         return null
     }
 
@@ -144,6 +227,12 @@ object AetherPreflight {
     }
 
     private const val DEFAULT_SOCKS = "127.0.0.1:1819"
+
+    /** How often a busy listener port is probed again before it is reported. */
+    private const val PORT_RETRY_ATTEMPTS = 3
+
+    /** How long to wait between those probes. */
+    private const val PORT_RETRY_DELAY_MS = 200L
 
     /**
      * True when [bind] is a loopback literal the engine can parse. Used by the panel

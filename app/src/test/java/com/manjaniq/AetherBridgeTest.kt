@@ -48,5 +48,10 @@ class AetherBridgeTest {
         AetherBridge.jobFree(1)
         AetherBridge.envReset()
         AetherBridge.coreStart(listOf("--bind", "127.0.0.1:1819"))
+        // The two calls a start makes before it asks the engine to run: the
+        // environment it writes and the log it reads back.
+        AetherBridge.initialize(null)
+        AetherBridge.envSet(mapOf("TMPDIR" to "/tmp", "HOME" to "/tmp"))
+        AetherBridge.logLines(0)
     }
 }

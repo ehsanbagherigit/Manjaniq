@@ -84,6 +84,46 @@ class AetherPreflightTest {
         }
     }
 
+    /**
+     * The check is a real write, not a `canWrite()` guess: the directory has to
+     * accept a file *and its contents*, or the core cannot write the identity it
+     * registers.
+     */
+    @Test
+    fun theIdentityDirectoryMustAcceptARealWrite() {
+        val root = tempDir()
+        try {
+            val inside = File(root, "identity")
+            assertTrue(inside.mkdirs())
+            val message = AetherPreflight.prepareIdentity(File(inside, "aether_identity"))
+            assertNull("a writable directory must pass: $message", message)
+            // The probe leaves nothing behind.
+            assertEquals(
+                "no probe file may be left in the data directory",
+                0,
+                inside.listFiles()!!.size
+            )
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    /** An identity path that names a directory is refused, not quarantined later. */
+    @Test
+    fun anIdentityPathThatIsADirectoryIsRefused() {
+        val root = tempDir()
+        try {
+            val identity = File(root, "aether_identity")
+            assertTrue(identity.mkdirs())
+            val message = AetherPreflight.check(AetherConfig.DEFAULT, root.absolutePath, alwaysFree)
+            assertNotNull("a directory at the identity path must be refused", message)
+            assertTrue("names the path: $message", message!!.contains("not a file"))
+            assertTrue("the directory must be left alone", identity.isDirectory)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test
     fun aBusySocksPortIsReportedBeforeAnythingIsStarted() {
         val root = tempDir()

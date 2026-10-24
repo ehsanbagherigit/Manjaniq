@@ -3,8 +3,11 @@
 
 use jni::objects::{JClass, JString};
 use jni::JNIEnv;
+use std::collections::VecDeque;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
 
 // Re-export helpers
 fn jstring_to_rust<'a>(env: &mut JNIEnv<'a>, s: JString<'a>) -> String {
@@ -37,6 +40,7 @@ fn c_string_to_jstring<'a>(env: &mut JNIEnv<'a>, ptr: *mut c_char) -> JString<'a
 #[no_mangle]
 pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherVersion<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
 ) -> JString<'a> {
+    install_logger();
     let ptr = aether::ffi::aether_version();
     // aether_version never returns null but handle it
     if ptr.is_null() {
@@ -56,6 +60,7 @@ pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherVersion<'a>(mut env
 pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherJobPoll<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
     id: i64,
 ) -> JString<'a> {
+    install_logger();
     let ptr = aether::ffi::aether_job_poll(id as u64);
     c_string_to_jstring(&mut env, ptr)
 }
@@ -64,6 +69,7 @@ pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherJobPoll<'a>(mut env
 pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherJobCancel<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
     id: i64,
 ) -> JString<'a> {
+    install_logger();
     let ptr = aether::ffi::aether_job_cancel(id as u64);
     c_string_to_jstring(&mut env, ptr)
 }
@@ -72,6 +78,7 @@ pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherJobCancel<'a>(mut e
 pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherJobFree<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
     id: i64,
 ) -> JString<'a> {
+    install_logger();
     let ptr = aether::ffi::aether_job_free(id as u64);
     c_string_to_jstring(&mut env, ptr)
 }
@@ -94,6 +101,7 @@ pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherJobFree<'a>(mut env
 #[no_mangle]
 pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherEnvReset<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
 ) -> JString<'a> {
+    install_logger();
     let names: Vec<String> = std::env::vars()
         .map(|(key, _)| key)
         .filter(|key| key.starts_with("AETHER_"))
@@ -108,6 +116,7 @@ pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherEnvReset<'a>(mut en
 #[no_mangle]
 pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherCoreStart<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>, argsJson: JString<'a>,
 ) -> JString<'a> {
+    install_logger();
     let rust_args = jstring_to_rust(&mut env, argsJson);
     let c_args = match CString::new(rust_args) {
         Ok(c) => c,
@@ -159,6 +168,7 @@ pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherFragmentingApply<'a
     _class: JClass<'a>,
     payload: JString<'a>,
 ) -> JString<'a> {
+    install_logger();
     let text = jstring_to_rust(&mut env, payload);
     let reply = match apply_fragmenting(&text) {
         Ok(value) => value.to_string(),
@@ -286,6 +296,7 @@ fn check_range(spec: &str, name: &str, max: u64) -> Result<(), String> {
 #[no_mangle]
 pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamSignIn<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>, payload: JString<'a>,
 ) -> JString<'a> {
+    install_logger();
     let rust_payload = jstring_to_rust(&mut env, payload);
     let c_payload = match CString::new(rust_payload) {
         Ok(c) => c,
@@ -302,6 +313,7 @@ pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamSignIn<'a>(mut 
 #[no_mangle]
 pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamCodeRequest<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>, payload: JString<'a>,
 ) -> JString<'a> {
+    install_logger();
     let rust_payload = jstring_to_rust(&mut env, payload);
     let c_payload = match CString::new(rust_payload) {
         Ok(c) => c,
@@ -319,6 +331,7 @@ pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamCodeRequest<'a>
 pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamCodeResend<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
     session: i64,
 ) -> JString<'a> {
+    install_logger();
     let ptr = aether::ffi::aether_team_code_resend(session as u64);
     c_string_to_jstring(&mut env, ptr)
 }
@@ -327,6 +340,7 @@ pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamCodeResend<'a>(
 pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamCodeSubmit<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
     session: i64, code: JString<'a>,
 ) -> JString<'a> {
+    install_logger();
     let rust_code = jstring_to_rust(&mut env, code);
     let c_code = match CString::new(rust_code) {
         Ok(c) => c,
@@ -344,6 +358,7 @@ pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamCodeSubmit<'a>(
 pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamSessionFree<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
     id: i64,
 ) -> JString<'a> {
+    install_logger();
     let ptr = aether::ffi::aether_team_session_free(id as u64);
     c_string_to_jstring(&mut env, ptr)
 }
@@ -351,6 +366,7 @@ pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamSessionFree<'a>
 #[no_mangle]
 pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamTokenSet<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>, token: JString<'a>,
 ) -> JString<'a> {
+    install_logger();
     let rust_token = jstring_to_rust(&mut env, token);
     let c_token = match CString::new(rust_token) {
         Ok(c) => c,
@@ -367,6 +383,293 @@ pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamTokenSet<'a>(mu
 #[no_mangle]
 pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTeamTokenClear<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
 ) -> JString<'a> {
+    install_logger();
     let ptr = aether::ffi::aether_team_token_clear();
     c_string_to_jstring(&mut env, ptr)
+}
+
+// ---------------------------------------------------------------- diagnostics
+//
+// WHY THIS EXISTS
+// ---------------
+// The core reports every step of a start through the `log` crate, and its own
+// entry point installs an `env_logger` writer for it (`lib.rs:79-85`). Under
+// Android that writer is stderr, which no process reads: a tunnel that failed to
+// register an identity, could not bind its listener or was refused by the
+// gateway produced *nothing* the app - or `adb logcat` - could show. That is the
+// difference between "the tunnel never comes up" and a diagnosable failure.
+//
+// This sink is installed before the engine runs (every JNI entry point calls
+// `install_logger()` first, and `run_with` only reaches its own
+// `env_logger::try_init()` afterwards, which then quietly declines because a
+// logger already exists). Each record is
+//   * written to logcat under the tag `AetherCore`, so `adb logcat -s
+//     AetherCore` shows the engine's own words on a physical device, and
+//   * kept in a fixed-size in-memory ring that
+//     `Java_com_manjaniq_AetherBridge_nativeAetherLogLines` hands back to the
+//     app, which appends it to its log panel.
+//
+// The ring is bounded (512 lines, 480 bytes each) and never blocks: a log call
+// takes one short mutex, copies the text and returns. Nothing here can panic in
+// a way that matters - a poisoned lock is recovered, not unwrapped - because a
+// logging bug must never be able to take the tunnel down.
+
+const LOG_RING_CAPACITY: usize = 512;
+const LOG_LINE_MAX: usize = 480;
+
+struct EngineLogLine {
+    seq: u64,
+    level: &'static str,
+    text: String,
+}
+
+fn log_ring() -> &'static Mutex<VecDeque<EngineLogLine>> {
+    static RING: std::sync::OnceLock<Mutex<VecDeque<EngineLogLine>>> = std::sync::OnceLock::new();
+    RING.get_or_init(|| Mutex::new(VecDeque::with_capacity(LOG_RING_CAPACITY)))
+}
+
+fn next_log_seq() -> u64 {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Stores one line and returns its sequence number.
+fn record_line(level: &'static str, text: String) -> u64 {
+    let seq = next_log_seq();
+    let mut ring = match log_ring().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    while ring.len() >= LOG_RING_CAPACITY {
+        ring.pop_front();
+    }
+    ring.push_back(EngineLogLine { seq, level, text });
+    seq
+}
+
+fn level_name(level: log::Level) -> &'static str {
+    match level {
+        log::Level::Error => "ERROR",
+        log::Level::Warn => "WARN",
+        log::Level::Info => "INFO",
+        log::Level::Debug => "DEBUG",
+        log::Level::Trace => "TRACE",
+    }
+}
+
+/// The level this sink keeps, from `AETHER_LOG_LEVEL`, defaulting to `info` -
+/// the same default `run_with` uses for its own writer.
+fn configured_level() -> log::LevelFilter {
+    static LEVEL: std::sync::OnceLock<log::LevelFilter> = std::sync::OnceLock::new();
+    *LEVEL.get_or_init(|| match std::env::var("AETHER_LOG_LEVEL") {
+        Ok(value) => match value.trim().to_lowercase().as_str() {
+            "error" => log::LevelFilter::Error,
+            "warn" => log::LevelFilter::Warn,
+            "debug" => log::LevelFilter::Debug,
+            "trace" => log::LevelFilter::Trace,
+            _ => log::LevelFilter::Info,
+        },
+        Err(_) => log::LevelFilter::Info,
+    })
+}
+
+/// The engine's messages on Android's log: `__android_log_write` from liblog,
+/// which every Android process can link. The link attribute is what makes the
+/// symbol resolvable whatever the Android target's default libraries are.
+#[cfg(target_os = "android")]
+fn android_log(level: &str, text: &str) {
+    #[link(name = "log")]
+    extern "C" {
+        fn __android_log_write(prio: i32, tag: *const c_char, text: *const c_char) -> i32;
+    }
+
+    // ANDROID_LOG_* priorities: 3 = debug, 4 = info, 5 = warn, 6 = error.
+    let priority = match level {
+        "ERROR" => 6,
+        "WARN" => 5,
+        "DEBUG" | "TRACE" => 3,
+        _ => 4,
+    };
+    let tag = CString::new("AetherCore").expect("a literal tag");
+    // A line holding a NUL cannot be logged as it stands; log nothing rather
+    // than truncate an error message into a misleading one.
+    if let Ok(message) = CString::new(text) {
+        unsafe {
+            __android_log_write(priority, tag.as_ptr(), message.as_ptr());
+        }
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+fn android_log(_level: &str, _text: &str) {}
+
+struct BridgeLogger;
+
+impl log::Log for BridgeLogger {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        metadata.level() <= configured_level()
+    }
+
+    fn log(&self, record: &log::Record) {
+        if !self.enabled(record.metadata()) {
+            return;
+        }
+        let mut text = record.args().to_string();
+        if text.len() > LOG_LINE_MAX {
+            // Keep the head: it names the step, and logcat keeps the full line.
+            let mut cut = LOG_LINE_MAX;
+            while !text.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            text.truncate(cut);
+            text.push('…');
+        }
+        let level = level_name(record.level());
+        android_log(level, &text);
+        record_line(level, text);
+    }
+
+    fn flush(&self) {}
+}
+
+/// Installs the sink once. Idempotent and safe to call from any thread: a second
+/// call is one atomic read. `set_logger` failing means somebody else already
+/// installed one (a host test harness, say), which is a supported outcome.
+fn install_logger() {
+    static INSTALLED: AtomicBool = AtomicBool::new(false);
+    if INSTALLED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let logger: &'static BridgeLogger = Box::leak(Box::new(BridgeLogger));
+    let _ = log::set_logger(logger);
+    log::set_max_level(log::LevelFilter::Trace);
+}
+
+// ---------------------------------------------------------------- environment
+//
+// WHY THE APP NEEDS THIS
+// ----------------------
+// Aether resolves its writable locations from the process environment, and an
+// Android app inherits none of the variables a desktop process has:
+//
+//   * `std::env::temp_dir()` on Android is `$TMPDIR` and otherwise
+//     `/data/local/tmp`, which the app may not write. psiphon.rs (:986) and the
+//     pluggable-transport probe (bridges.rs:298) write there.
+//   * `HOME` is unset (or `/`), which is where a core component that keeps a
+//     state directory of its own would try to create one.
+//
+// Kotlin cannot `setenv`, so it hands the paths to this call, which writes only
+// the four standard names above and anything named `AETHER_*`. Nothing else can
+// be written through this JNI surface, so it cannot be used to change how the
+// process or another library behaves.
+
+const ENV_ALLOWED_FIXED: [&str; 4] = ["TMPDIR", "TEMP", "TMP", "HOME"];
+
+fn env_name_allowed(name: &str) -> bool {
+    ENV_ALLOWED_FIXED.iter().any(|fixed| *fixed == name) || name.starts_with("AETHER_")
+}
+
+fn apply_environment(payload: &str) -> Result<serde_json::Value, String> {
+    let value: serde_json::Value = serde_json::from_str(payload)
+        .map_err(|e| format!("the environment payload is not json: {e}"))?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| "the environment payload must be a json object".to_string())?;
+
+    // Validated before anything is written, so a payload naming a variable this
+    // bridge may not set changes nothing at all.
+    for (name, raw) in object {
+        if !env_name_allowed(name) {
+            return Err(format!("{name} is not a variable this bridge may set"));
+        }
+        if let serde_json::Value::String(text) = raw {
+            if text.contains('\0') {
+                return Err(format!("{name} holds a null byte"));
+            }
+        } else if !raw.is_null() {
+            return Err(format!("{name} must hold a string or null"));
+        }
+    }
+
+    for (name, raw) in object {
+        match raw {
+            serde_json::Value::Null => std::env::remove_var(name),
+            serde_json::Value::String(text) => std::env::set_var(name, text),
+            _ => unreachable!("checked above"),
+        }
+    }
+
+    // Read back, so the caller logs the paths in force rather than the ones it
+    // asked for. AETHER_* values are not echoed: they can hold a team secret.
+    let mut applied = serde_json::Map::new();
+    for name in ENV_ALLOWED_FIXED {
+        if let Ok(text) = std::env::var(name) {
+            applied.insert(name.to_string(), serde_json::Value::String(text));
+        }
+    }
+    Ok(serde_json::json!({ "ok": true, "set": applied }))
+}
+
+/// Sets the process environment the engine reads its writable locations from.
+///
+/// Payload: `{"TMPDIR":"/data/user/0/<pkg>/cache", "HOME":"/data/user/0/<pkg>/files"}`.
+/// A `null` value removes the variable. Only `TMPDIR`, `TEMP`, `TMP`, `HOME` and
+/// `AETHER_*` are accepted; any other name fails the whole call, before a single
+/// variable is written.
+///
+/// Reply: `{"ok":true,"set":{...}}` with the values read back from the
+/// environment, or `{"ok":false,"error":"..."}`.
+#[no_mangle]
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherEnvSet<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass<'a>,
+    payload: JString<'a>,
+) -> JString<'a> {
+    install_logger();
+    let text = jstring_to_rust(&mut env, payload);
+    let reply = match apply_environment(&text) {
+        Ok(value) => value.to_string(),
+        Err(error) => serde_json::json!({ "ok": false, "error": error }).to_string(),
+    };
+    env.new_string(reply).unwrap_or_else(|_| {
+        env.new_string("{\"ok\":false,\"error\":\"the reply could not be encoded\"}")
+            .unwrap()
+    })
+}
+
+/// The engine's own log lines recorded after `since`.
+///
+/// Reply: `{"ok":true,"lines":[{"seq":12,"level":"INFO","text":"..."}]}`. The
+/// caller passes the highest `seq` it has already seen, so a poll returns only
+/// what is new and nothing is repeated. An empty list means "no new lines",
+/// which is the normal answer while a tunnel is quiet.
+#[no_mangle]
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherLogLines<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass<'a>,
+    since: i64,
+) -> JString<'a> {
+    install_logger();
+    let after = if since < 0 { 0 } else { since as u64 };
+    let lines: Vec<serde_json::Value> = {
+        let ring = match log_ring().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        ring.iter()
+            .filter(|line| line.seq > after)
+            .map(|line| {
+                serde_json::json!({
+                    "seq": line.seq,
+                    "level": line.level,
+                    "text": line.text,
+                })
+            })
+            .collect()
+    };
+    let reply = serde_json::json!({ "ok": true, "lines": lines }).to_string();
+    env.new_string(reply).unwrap_or_else(|_| {
+        env.new_string("{\"ok\":false,\"error\":\"the reply could not be encoded\"}")
+            .unwrap()
+    })
 }

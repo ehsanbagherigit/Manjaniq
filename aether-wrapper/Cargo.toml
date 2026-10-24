@@ -14,26 +14,43 @@ path = "src/lib.rs"
 # Path-pinned to vendored third_party/Aether (v2.3.0 peeled 6175b67). Avoids git fetch
 # and allows rust-version patch (1.98 -> 1.56) for CI stable.
 #
-# `features = ["tor"]` is the difference between the tor flags existing and them
-# working. aether/src/tor.rs compiles `run_chain` / `run_only` / `start_reverse`
-# only under that feature and otherwise returns
-# "this build has no tor support" (tor.rs:191-211), so `--tor`, `--tor-reverse`
-# and `--tor-only` would be accepted by cli.rs and then fail at run time. Upstream
-# builds every shipped binary with it - desktop, musl, armv7 and the Android legs
-# (`cargo ndk -t <abi> --platform 24 build --release --features tor`,
-# third_party/Aether/.github/workflows/release.yml:529) - and the Dockerfile does
-# the same (Dockerfile:31). The flag reaches the app through
-# `AetherEngineOptions.AetherTorOptions`, whose code points at the very same
-# source, so the build and the configuration model agree.
+# NO `tor` FEATURE.
 #
-# The feature pulls arti-client 0.46 (already in third_party/Aether/aether/Cargo.lock)
-# with `pt-client` for pluggable transports and `static-sqlite` for tor's state,
-# plus liblzma for compressed directory documents. The transport binaries
-# themselves are not Rust: they are built by scripts/ci/build_helpers.sh and
-# packaged beside libaether.so.
-aether = { path = "../third_party/Aether/aether", features = ["tor"] }
+# The `tor` feature pulls arti-client (+ its `pt-client`, `static-sqlite` and
+# `liblzma` dependencies) into libaether.so. The app has no Tor route any more -
+# the Tor routes and their pluggable transports were removed with the engine
+# options screen - and no argument list this app builds ever contains `--tor*`
+# (`AetherConfig.toAetherArgs`), so that code could never run. Without the
+# feature `tor.rs` compiles its `unsupported()` stubs instead
+# (`tor.rs:210-228`), which is upstream's supported non-tor configuration, and
+# the parts of arti, sqlite and liblzma stop being packaged: a third of the
+# shared library's bytes that nothing on this platform could reach.
+aether = { path = "../third_party/Aether/aether" }
 jni = "0.21.1"
 serde_json = "1"
+# The bridge installs its own `log` sink (logcat + an in-memory ring the app
+# reads back), so the engine's own messages reach the device log and the app's
+# log panel instead of a stderr nobody owns. Same version the core resolves.
+log = "0.4"
 
 # Build requirements documented in aether/README.md:
 # CMake, C++ compiler, Perl required for BoringSSL (NDK provides clang)
+
+# Profile settings only take effect from the workspace root, i.e. from here:
+# `third_party/Aether/aether/Cargo.toml` is a path *dependency* of this crate,
+# so the `[profile.release]` block it carries (lto = "fat", strip = true, …) has
+# never applied to this build. Cargo only reads the profiles of the workspace
+# root, which is why libaether.so has so far shipped unstripped and without
+# link-time optimisation.
+#
+# `strip = "symbols"` removes the symbol tables that were the bulk of the file;
+# `lto = "thin"` lets the cross-crate inlining happen (thin rather than fat keeps
+# the CI build within its time budget) and drops the dead code the JNI surface
+# never reaches. Neither changes behaviour: the JNI exports are `#[no_mangle]`
+# and therefore stay in the dynamic symbol table.
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 16
+panic = "unwind"
+strip = "symbols"

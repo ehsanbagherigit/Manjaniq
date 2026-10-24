@@ -154,9 +154,9 @@ Build/packaging verified: `libaether.so` + `libc++_shared.so` per ABI (arm64-v8a
 
 | Piece | Before | Now |
 |---|---|---|
-| libaether.so | `aether` without features | `aether` with `features = ["tor"]` (`aether-wrapper/Cargo.toml`) - arti-client runs inside the library |
-| Tor pluggable transports | absent | `liblyrebird.so`, built by `scripts/ci/build_helpers.sh` -> `third_party/Aether/pt-build.sh` |
-| Psiphon | absent | `libpsiphon_tunnel_core.so`, same script -> `third_party/Aether/psiphon-build.sh` |
+| libaether.so | `aether` without features | `aether` without features - see Phase 3: the `tor` feature (arti-client, sqlite, liblzma) is not built, because no route in the app can ask for Tor |
+| Tor pluggable transports | absent | not built: the Tor routes were removed with the engine-options screen |
+| Psiphon | absent | `libpsiphon_tunnel_core.so`, built by `scripts/ci/build_helpers.sh` -> `third_party/Aether/psiphon-build.sh` |
 | APK packaging | `useLegacyPackaging = false` | `true`, so the helpers are extracted into `nativeLibraryDir` and can be executed under W^X |
 | Start path | the granular FFI calls | `aether_core_start` only, with the whole configuration as its command line |
 
@@ -168,7 +168,7 @@ unchanged on Android.
 ### Local / CI commands
 
 ```bash
-# 1. Tor-capable libaether.so (arm64 shown; repeat with -t x86_64 for the emulator)
+# 1. libaether.so (arm64 shown; repeat with -t x86_64 for the emulator)
 cd aether-wrapper
 cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release
 
@@ -191,7 +191,7 @@ packaged.
 
 | thing | location | why |
 |---|---|---|
-| `libaether.so`, `liblyrebird.so`, `libpsiphon_tunnel_core.so` | `ApplicationInfo.nativeLibraryDir` | read-only; Android 10+ allows exec only from here (W^X) |
+| `libaether.so`, `libpsiphon_tunnel_core.so`, `libc++_shared.so` | `ApplicationInfo.nativeLibraryDir` | read-only; Android 10+ allows exec only from here (W^X), and it is where the loader resolves `DT_NEEDED` |
 | identity files (`--config`) | `filesDir/<identityPath>` | written by the core |
 | tor state (`--tor-dir`) | `filesDir/aether/tor` | must be writable; never executed |
 | psiphon data (`--psiphon-dir`) | `filesDir/aether/psiphon` | must be writable; never executed |
@@ -220,3 +220,100 @@ holds no executable code.
 Reach per setting is answered in code by the argument list itself;
 `AETHER_CAPABILITIES.md §9` is the
 written version.
+
+## Phase 3: the same start path on a physical device
+
+Everything below exists because the first four items fail *only* on a device:
+none of them can be reproduced on the host, where `libaether.so` is not even
+built.
+
+### 1. Loading `libaether.so` (API 29+)
+
+`AetherBridge` tried `System.loadLibrary("aether")` once, from the object's
+initialiser, with no `Context`. That is the path that reports *"dlopen failed:
+library libc++_shared.so not found"*: `libc++_shared.so` is packaged next to the
+core, but nothing had asked the linker for it yet, and the dependency is resolved
+inside the app's namespace. `AetherBridge.initialize(context)` now
+
+1. loads `c++_shared` by name first (the documented remedy), then `aether`;
+2. on failure, retries with `System.load("<nativeLibraryDir>/libaether.so")` -
+   the absolute path an APK installed without extraction, or with a restricted
+   namespace, needs;
+3. keeps every attempt in `getLoadDiagnostics()`, which the service shows as the
+   start's error instead of a bare "native lib not available".
+
+It is called from `AetherService.onCreate`, before the start, and from
+`MainActivity`. The service still refuses to start without it, with the reason.
+
+### 2. Where the engine may write
+
+Android gives an app neither `TMPDIR` nor a usable `HOME`, and Rust answers
+`std::env::temp_dir()` with `/data/local/tmp` when `TMPDIR` is unset - a
+directory the app may not write. Kotlin cannot `setenv`, so
+`AetherBridge.envSet` (JNI `nativeAetherEnvSet`) sets `TMPDIR` to
+`cacheDir` and `HOME` to `filesDir` before every start. The native side accepts
+only `TMPDIR`, `TEMP`, `TMP`, `HOME` and `AETHER_*` names, validates the whole
+payload before writing any of it, and answers with what the environment holds
+*afterwards*, which the service logs.
+
+### 3. The identity file inside `filesDir`
+
+`--config` is a path, and the core creates it (`config.rs`: a 0600 temporary
+file, then a rename). `AetherPreflight.prepareIdentity` therefore:
+
+* creates the identity's parent directory (a nested `identityPath` used to have
+  none);
+* refuses a path that names a directory, or a file this app cannot read (the core
+  would quarantine it as `*.corrupt` and silently register a new identity);
+* proves the directory is writable by creating, writing and removing a probe
+  file - `canWrite()` alone answers for the directory entry, not for whether this
+  app's SELinux context may create a file in it;
+* tightens an existing identity to owner-only;
+* never creates the identity itself: an empty `aether.toml` is not a valid
+  identity and the core would quarantine it.
+
+### 4. The loopback listener
+
+`socksBind` must be a loopback literal the engine can parse (`localhost` is
+resolved to `127.0.0.1`), the pre-flight binds the port for real, and - new - a
+port that looks busy is probed again for ~400 ms before the start is refused, so
+a start straight after a stop is not rejected by a listener that is still
+closing. The readiness signal is unchanged and is the only one: the service
+connects to `127.0.0.1:<port>` and reports RUNNING only when something accepts
+(and logs when nothing does, rather than inventing a failure).
+
+### 5. No silent failures
+
+The core logs through `log` and installs an `env_logger` writer for stderr -
+under Android, a stream nobody reads. `aether-wrapper` now installs its own sink
+before the engine runs:
+
+* every line goes to logcat under the tag `AetherCore`
+  (`adb logcat -s AetherCore`), and
+* the last 512 lines are kept in memory and read back by the app through
+  `nativeAetherLogLines`, which `AetherService` drains into its log panel during
+  the scan, the readiness wait and while the tunnel runs.
+
+So a start that fails on a device says why - in the panel and in logcat - instead
+of leaving the user with a spinner.
+
+## Phase 4: APK size
+
+| Change | Why |
+|---|---|
+| one architecture per APK (`-Pmanjaniq.abis`) | CI builds an arm64-v8a deliverable and a separate x86_64 APK for the emulator, instead of both architectures in one file |
+| `[profile.release]` in `aether-wrapper/Cargo.toml` | that file is the workspace root, so the profile the vendored `aether` crate declares had never applied: the core shipped unstripped and without LTO. `strip = "symbols"` + `lto = "thin"` now do |
+| no `tor` feature | arti-client, sqlite and liblzma were linked for a route the app cannot select |
+| Go `-trimpath -ldflags="-s -w"` | the Go engine and the Psiphon helper shipped their symbol tables and build paths |
+| `material-icons-extended` removed | five icons are drawn in total; all of them live in `material-icons-core` |
+| `ui-tooling` not packaged | there is no `@Preview` in the project |
+| `scripts/ci/check_apk_size.py` | measures the deliverable, prints what it is made of, emits the numbers as an annotation, and fails over 40 MiB |
+
+```bash
+# the deliverable a physical device installs
+./gradlew assembleDebug -Pmanjaniq.abis=arm64-v8a
+python3 scripts/ci/check_apk_size.py --limit-mb 40 app/build/outputs/apk/debug/*.apk
+
+# the emulator's copy
+./gradlew assembleDebug -Pmanjaniq.abis=x86_64
+```

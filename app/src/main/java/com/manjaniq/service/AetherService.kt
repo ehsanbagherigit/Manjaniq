@@ -57,8 +57,12 @@ class AetherService : Service() {
     override fun onCreate() {
         super.onCreate()
         // A start can arrive from the notification without the activity ever
-        // having composed, so the helper paths are resolved here too.
+        // having composed, so the helper paths are resolved here too - and so is
+        // the native library: `System.loadLibrary` is tried once at class init
+        // without a Context, and the absolute-path retry (the one that also makes
+        // libc++_shared.so resident first) needs the native library directory.
         AetherHelpers.configure(applicationContext)
+        AetherBridge.initialize(applicationContext)
         createChannel()
     }
 
@@ -229,6 +233,10 @@ class AetherService : Service() {
                     endError = poll.exceptionOrNull()?.message ?: "job poll failed"
                 )
             }
+            // Whatever the engine said since the last look: scanning, registering
+            // an identity, dialling a gateway - this is where a device-side
+            // failure becomes visible instead of silent.
+            drainEngineLogs()
             val pollObj = poll.getOrNull()
             if (pollObj != null && pollObj.optString("state") == "done") {
                 val result = pollObj.optJSONObject("result")
@@ -260,6 +268,62 @@ class AetherService : Service() {
         }
     } catch (_: Throwable) {
         false
+    }
+
+    /** Highest engine log sequence number already shown in the app's log panel. */
+    private var engineLogSeq: Long = 0L
+
+    /**
+     * The writable directories the core resolves from the process environment.
+     *
+     * `TMPDIR` because Android's `std::env::temp_dir()` otherwise answers
+     * `/data/local/tmp`, which this app may not write - psiphon's state file
+     * (`psiphon.rs:986`) and the pluggable-transport probe (`bridges.rs:298`)
+     * both write there. `HOME` because a component that keeps a state directory
+     * of its own would look under it, and under Android it is unset or `/`.
+     * The cache directory is the right home for temporary files: the platform
+     * can reclaim it, and nothing here needs a path that survives a reboot.
+     */
+    private fun engineEnvironment(): Map<String, String> = mapOf(
+        "TMPDIR" to cacheDir.absolutePath,
+        "HOME" to filesDir.absolutePath
+    )
+
+    /**
+     * Moves the engine's own log lines into the app's log panel.
+     *
+     * The engine reports every step of a start through `log`, and its own writer
+     * is stderr - which under Android no one reads. Without this, a start that
+     * failed to register an identity, could not bind its listener or was refused
+     * by the gateway produced no line at all beyond the app's own guesses. The
+     * native sink keeps the last 512 lines and also mirrors them to logcat under
+     * `AetherCore`, so `adb logcat -s AetherCore` shows the same thing on a
+     * physical device.
+     *
+     * At most [ENGINE_LOG_LINES_PER_DRAIN] lines are shown per call so a burst of
+     * engine output cannot flood the panel or cause a recomposition storm; the
+     * rest is consumed (the sequence number still advances) and simply not
+     * repeated.
+     */
+    private fun drainEngineLogs() {
+        val lines = AetherBridge.logLines(engineLogSeq).getOrNull() ?: return
+        if (lines.isEmpty()) return
+        var shown = 0
+        for (line in lines) {
+            if (line.seq > engineLogSeq) engineLogSeq = line.seq
+            val text = line.text.trim()
+            if (text.isEmpty() || shown >= ENGINE_LOG_LINES_PER_DRAIN) continue
+            AetherRepository.log(engineLevel(line.level), text)
+            shown++
+        }
+    }
+
+    /** The engine's level names, in the vocabulary the log panel colours. */
+    private fun engineLevel(level: String): String = when (level.uppercase()) {
+        "ERROR" -> "ERROR"
+        "WARN" -> "WARN"
+        "DEBUG", "TRACE" -> "DEBUG"
+        else -> "INFO"
     }
 
     private fun startAether() {
@@ -365,12 +429,44 @@ class AetherService : Service() {
                 AetherRepository.log("INFO", "Identity file: ${it.absolutePath}")
             }
 
+            // The second chance to map libaether.so: the load in the object's
+            // initialiser has no Context, so it cannot pre-load the C++ runtime by
+            // path or retry inside the native library directory.
             if (!AetherBridge.isNativeAvailable) {
-                val err = AetherBridge.getLoadError()?.message ?: "Native lib not available - rebuild with libaether.so"
+                AetherBridge.initialize(applicationContext)
+            }
+            if (!AetherBridge.isNativeAvailable) {
+                val err = AetherBridge.getLoadDiagnostics()
+                    ?: AetherBridge.getLoadError()?.message
+                    ?: "Native lib not available - rebuild with libaether.so"
                 failed(err)
                 stopForegroundAndSelf()
                 return@launch
             }
+
+            // The writable locations the core resolves from the environment.
+            // Android gives an app neither `TMPDIR` (so `std::env::temp_dir()` is
+            // /data/local/tmp, which this app cannot write) nor a usable `HOME`;
+            // both are pointed at this app's own directories before anything
+            // writes a file. See AetherBridge.envSet.
+            val env = AetherBridge.envSet(engineEnvironment())
+            if (env.isFailure) {
+                failed(
+                    "The engine's working directories could not be prepared (" +
+                        (env.exceptionOrNull()?.message ?: "no reason was given") +
+                        "), so Aether was not started: it would have had nowhere to write " +
+                        "its temporary files"
+                )
+                stopForegroundAndSelf()
+                return@launch
+            }
+            val applied = env.getOrNull()?.optJSONObject("set")
+            val temporary = applied?.optString("TMPDIR", "unset") ?: "unset"
+            val home = applied?.optString("HOME", "unset") ?: "unset"
+            AetherRepository.log(
+                "INFO",
+                "Engine working directories: TMPDIR=$temporary, HOME=$home"
+            )
             // Version check
             val verRes = AetherBridge.version()
             if (verRes.isSuccess) {
@@ -567,6 +663,8 @@ class AetherService : Service() {
         )
 
         val exit = pollJob(jobId, timeoutMs = null)
+        // The last words of the job - why it closed - before the ring is dropped.
+        drainEngineLogs()
         AetherBridge.jobFree(jobId)
         synchronized(this@AetherService) { if (currentJobId == jobId) currentJobId = null }
         AetherRepository.setActiveJob(null)
@@ -647,6 +745,7 @@ class AetherService : Service() {
                 AetherRepository.setLastPoll("poll failed: ${poll.exceptionOrNull()?.message}")
                 return poll
             }
+            drainEngineLogs()
             val obj = poll.getOrNull()!!
             AetherRepository.setLastPoll(obj.toString())
             val state = obj.optString("state")
@@ -724,6 +823,9 @@ class AetherService : Service() {
 
         /** Delay between two readiness probes. */
         private const val SOCKS_PROBE_INTERVAL_MS = 500L
+
+        /** Engine log lines copied into the panel per poll, so a burst stays readable. */
+        private const val ENGINE_LOG_LINES_PER_DRAIN = 40
 
         /**
          * Total readiness budget. Aether's own MASQUE startup deadline is 30s
