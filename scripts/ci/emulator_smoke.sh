@@ -192,12 +192,19 @@ import glob, os, sys
 import xml.etree.ElementTree as ET
 d, gradle_exit = sys.argv[1], int(sys.argv[2])
 files = sorted(glob.glob(os.path.join(d, 'TEST-*.xml')))
-required = {
-    'com.manjaniq.LaunchSmokeTest': 'launcherActivityReachesResumedAndRendersRealHome',
-    'com.manjaniq.NavigationTest': 'drawerReachesSettingsLogsAboutAndBackReturnsHome',
-    'com.manjaniq.LocaleRtlTest': 'persianHomeIsRtlWithPersianStrings',
-    'com.manjaniq.EngineLifecycleTest': 'startBindsRealListenerAndStopReleasesIt',
-}
+# (class, method) pairs that must PASS: the UI and RSTA contracts the app
+# ships against, plus the Aether start path - which exists nowhere else, because
+# the host has no libaether.so at all.
+required = [
+    ('com.manjaniq.LaunchSmokeTest', 'launcherActivityReachesResumedAndRendersRealHome'),
+    ('com.manjaniq.NavigationTest', 'drawerReachesSettingsLogsAboutAndBackReturnsHome'),
+    ('com.manjaniq.LocaleRtlTest', 'persianHomeIsRtlWithPersianStrings'),
+    ('com.manjaniq.EngineLifecycleTest', 'startBindsRealListenerAndStopReleasesIt'),
+    ('com.manjaniq.AetherNativeTest', 'libaetherLoadsWithItsCObjectRuntime'),
+    ('com.manjaniq.AetherNativeTest', 'theEngineGetsWritableDirectories'),
+    ('com.manjaniq.AetherNativeTest', 'theIdentityPathIsPreparedInsideFilesDir'),
+    ('com.manjaniq.AetherNativeTest', 'aStartIsReportedByTheJobApiAndTheLogSink'),
+]
 seen = {}
 total = failed = 0
 problems = []
@@ -219,7 +226,7 @@ for f in files:
                 problems.append('%s.%s: %s' % (cls, name, (msg.get('message') or (msg.text or '').strip().splitlines()[0] if msg is not None else '')[:300]))
             seen.setdefault(cls, {})[name] = status
             print('  %-4s %s.%s (%ss)' % (status, cls, name, tc.get('time')))
-for cls, method in required.items():
+for cls, method in required:
     if seen.get(cls, {}).get(method) != 'PASS':
         problems.append('required test did not pass: %s.%s (status=%s)' % (cls, method, seen.get(cls, {}).get(method)))
 print('\ntotal=%d failed=%d gradle_exit=%d' % (total, failed, gradle_exit))

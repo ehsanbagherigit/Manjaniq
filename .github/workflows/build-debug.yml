@@ -202,8 +202,13 @@ jobs:
           echo "--- tail x64 log ---"
           cat /tmp/aether_x64.log 2>&1 | tail -n 100 || echo "no x64 log"
           ls -R app/src/main/jniLibs 2>&1 | head -n 30
-          # Emit first error with file location as annotation (visible via API)
-          if [ -f /tmp/aether_arm64.log ]; then
+          # Emit the first error with its file location as an annotation, but
+          # only when the build failed: cargo prints `--> file:line` for its
+          # warnings too, and an error annotation for a successful build is a red
+          # mark on a green run.
+          BUILT=0
+          if [ "${RC:-1}" -eq 0 ] && [ -f app/src/main/jniLibs/arm64-v8a/libaether.so ]; then BUILT=1; fi
+          if [ "$BUILT" -eq 0 ] && [ -f /tmp/aether_arm64.log ]; then
             LOC=$(grep -E "^\s*--> " /tmp/aether_arm64.log 2>&1 | head -n5 | tr '\n' '|' | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-1200)
             ERR=$(grep -m1 -E "error\[|error: |FAILED|failed to run caml|missing lifetime" /tmp/aether_arm64.log 2>&1 | head -n1 | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-800)
             CTX=$(grep -B2 -A2 -E "missing lifetime" /tmp/aether_arm64.log 2>&1 | head -n10 | tr '\n' '|' | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-1200)
