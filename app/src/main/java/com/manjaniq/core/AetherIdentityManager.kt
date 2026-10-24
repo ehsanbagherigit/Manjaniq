@@ -61,7 +61,7 @@ object AetherIdentityManager {
     private val identityField = Pattern.compile("""^(device_id|ipv4|ipv6)\s*=\s*"([^"]*)""$""")
 
     /** Triple-quote delimiters that open or close a multiline value. */
-    private val multilineDelimiter = Pattern.compile('"""|''''')
+    private val multilineDelimiter = Pattern.compile("\"\"\"|'''")
 
     /** The core's last word in a registration, once every key it was asked for is saved. */
     private val keysRegistered = Pattern.compile("""identities ready: \S""")
