@@ -162,10 +162,6 @@
         <string name="aether_fragment_how_to_change">These values are stored with the route, appear in its exported JSON, and are written into the engine\u2019s environment before each start — Aether reads them per connection (aether/src/fragment.rs).</string>
     <string name="aether_fragment_env_label">Aether reads: %1$s</string>
 
-
-
-
-    <!-- Engine options (the core's own command line, AetherEngineOptions) -->
     <!-- Operational log panel -->
     <string name="aether_log_title">Aether activity</string>
     <string name="aether_log_empty">No Aether events yet. Start the tunnel to see what it does.</string>
