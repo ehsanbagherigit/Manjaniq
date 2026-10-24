@@ -122,7 +122,6 @@ class AetherPanelValidationTest {
         assertEquals("tunnel", sectionKey(R.string.section_tunnel))
         assertEquals("advanced", sectionKey(R.string.section_advanced))
         assertEquals("psiphon", sectionKey(R.string.section_psiphon))
-        assertEquals("tor", sectionKey(R.string.section_tor))
         assertTrue("unknown sections still need a tag", sectionKey(987654).startsWith("section_"))
     }
 

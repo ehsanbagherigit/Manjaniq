@@ -8,6 +8,11 @@
 > `AetherCapabilities.reachOf` no longer exist. File names and line counts below
 > are as they were when this report was written; see
 > [`AETHER_CAPABILITIES.md`](AETHER_CAPABILITIES.md) §9 for the path in use.
+>
+> A later change removed the "ENGINE OPTIONS" group entirely, together with the
+> Tor routes: `AetherEngineOptions`, `AetherTorOptions`/`AetherPsiphonOptions`,
+> `AetherRegistrationOutcome`, `AetherNetworkCheck` and their tests are gone, so
+> any reference to them below is history, not a description of this tree.
 
 Branch: `arena/780f8f24-manjaniq`. Base: `47edd94302f285588844ac9969788778ba84fafb`.
 Companion document: [`AETHER_CAPABILITIES.md`](AETHER_CAPABILITIES.md) (the

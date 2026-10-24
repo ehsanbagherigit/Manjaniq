@@ -4,25 +4,18 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.manjaniq.core.AetherHelpers
 import com.manjaniq.core.models.AetherCapabilities
 import com.manjaniq.core.models.AetherConfig
-import com.manjaniq.core.models.AetherEngineOptions
 import com.manjaniq.core.models.AetherHelperPaths
 import com.manjaniq.core.models.AetherProfile
 import com.manjaniq.core.models.AetherProfileConfig
-import com.manjaniq.core.models.AetherPsiphonMode
-import com.manjaniq.core.models.AetherPsiphonOptions
-import com.manjaniq.core.models.AetherTorBridges
-import com.manjaniq.core.models.AetherTorMode
-import com.manjaniq.core.models.AetherTorOptions
 import com.manjaniq.core.models.AetherTransportChoice
 import com.manjaniq.core.models.getSectionsForProfile
-import com.manjaniq.core.models.profileSupportsFragmenting
+import com.manjaniq.core.models.profileUsesAetherGateway
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
@@ -35,9 +28,10 @@ import java.io.File
  * Aether also exposes granular `identity_open` / `scan_start` / `tunnel_start`
  * calls (`third_party/Aether/aether/src/ffi.rs`), but their payload structs carry
  * only a handful of fields, so those settings could never be applied. They are
- * gone from this app - bindings, service path and UI - and these tests pin the
- * consequences: no mode is stored or selectable, every protocol validates, and
- * every configured feature reaches the argument list the engine is handed.
+ * gone from this app - bindings, service path and UI - together with the
+ * "ENGINE OPTIONS" screen, so these tests pin what is left: no mode is stored or
+ * selectable, every protocol validates, and every setting a route still offers
+ * reaches the argument list the engine is handed.
  *
  * Robolectric, because the configuration is stored as JSON (`org.json` is a stub on
  * the bare host JVM) and because the helper lookups read real files.
@@ -54,6 +48,16 @@ class AetherSingleEngineTest {
     fun aConfigurationNoLongerCarriesAStartMode() {
         val json = JSONObject(AetherConfig.DEFAULT.toJson())
         assertFalse("the stored configuration must not name a start path", json.has("startMode"))
+        assertEquals(
+            "the removed engine-options block must not be written either",
+            setOf(
+                "identityPath", "transport", "scanMode", "noizeProfile", "socksBind",
+                "httpProxyBind", "peer", "upstream", "echEnabled", "dns", "ipVersion",
+                "teamName", "quickReconnect", "fragmentEnabled", "fragmentSize",
+                "fragmentDelay", "fragmentSniSplit"
+            ),
+            json.keys().asSequence().toSet()
+        )
         val parsed = AetherConfig.fromJson("""{"startMode":"granular","transport":"gool"}""")
         assertNotNull("a hand-written import still loads", parsed)
         assertEquals("gool", parsed!!.transport)
@@ -65,15 +69,18 @@ class AetherSingleEngineTest {
         // The value is ignored, not obeyed: there is nothing left to obey it with.
         val legacy = JSONObject(AetherConfig.DEFAULT.toJson()).apply {
             put("startMode", "full")
+            put("engine", JSONObject().put("tor", JSONObject().put("mode", "chain")))
         }
         val restored = AetherConfig.fromJson(legacy.toString())
         assertNotNull(restored)
         assertNull(restored!!.validate())
         assertEquals(AetherConfig.DEFAULT.transport, restored.transport)
+        val args = restored.toAetherArgs(filesDir)
         assertTrue(
             "the argument list is built from the configuration, not from a mode",
-            restored.toAetherArgs(filesDir).contains("--masque")
+            args.contains("--masque")
         )
+        assertFalse("the removed Tor block must not be resurrected", args.contains("--tor"))
     }
 
     // ------------------------------------------------------- every protocol ---
@@ -102,90 +109,118 @@ class AetherSingleEngineTest {
 
     // --------------------------------------------- everything is handed over ---
 
+    /**
+     * Every control the Aether screen still draws has a flag behind it.
+     *
+     * The engine-options group is gone, so the list is short - and that is the
+     * point: a value the screen offers and the command line does not carry would be
+     * exactly the silent mismatch this build removes.
+     */
     @Test
-    fun everyAdvancedFeatureReachesTheArgumentList() {
+    fun everySettingTheScreenOffersReachesTheArgumentList() {
         val configured = AetherConfig.DEFAULT.copy(
             transport = "gool",
+            scanMode = "ironclad",
+            ipVersion = "both",
+            peer = "198.51.100.7:2408",
+            socksBind = "127.0.0.1:1919",
+            httpProxyBind = "127.0.0.1:1920",
             upstream = "socks5://127.0.0.1:1080",
             dns = "9.9.9.9",
+            noizeProfile = "gfw",
+            echEnabled = true,
             quickReconnect = false,
             teamName = "example-team",
-            engine = AetherEngineOptions(
-                tor = AetherTorOptions(
-                    mode = AetherTorMode.CHAIN,
-                    pt = listOf("obfs4=/data/app/lib/arm64/liblyrebird.so")
-                ),
-                psiphon = AetherPsiphonOptions(
-                    mode = AetherPsiphonMode.ONLY,
-                    bin = "/data/app/lib/arm64/libpsiphon_tunnel_core.so"
-                ),
-                timing = com.manjaniq.core.models.AetherTimingOptions(mark = "255"),
-                stats = com.manjaniq.core.models.AetherStatsOptions(enabled = true),
-                routing = com.manjaniq.core.models.AetherRoutingOptions(
-                    routesFile = "/data/user/0/com.manjaniq/files/aether/routes.txt",
-                    block = "keyword:doubleclick"
-                ),
-                gateway = com.manjaniq.core.models.AetherGatewayOptions(enabled = true)
-            )
+            fragmentEnabled = true,
+            fragmentSize = "24-48",
+            fragmentDelay = "3-9"
         )
-        assertNull("nothing about this route is refused any more", configured.validate())
+        assertNull("nothing about this route is refused", configured.validate())
         val args = configured.toAetherArgs(filesDir)
 
         fun valueOf(flag: String) = args.getOrNull(args.indexOf(flag) + 1)
         listOf(
-            "--gool", "--tor", "--psiphon-only", "--gateway", "--team", "--stats", "--mark",
-            "--routes", "--route-block", "--dns", "--upstream", "--no-quick-reconnect"
+            "--gool", "--scan", "--dual", "--peer", "--bind", "--http-proxy", "--upstream",
+            "--dns", "--noize", "--ech", "--team", "--no-quick-reconnect", "--fragment",
+            "--fragment-size", "--fragment-delay", "--config", "--h2"
         ).forEach { flag ->
             assertTrue("$flag must reach aether_core_start: $args", args.contains(flag))
         }
+        assertEquals("ironclad", valueOf("--scan"))
+        assertEquals("198.51.100.7:2408", valueOf("--peer"))
+        assertEquals("127.0.0.1:1919", valueOf("--bind"))
+        assertEquals("127.0.0.1:1920", valueOf("--http-proxy"))
         assertEquals("socks5://127.0.0.1:1080", valueOf("--upstream"))
         assertEquals("9.9.9.9", valueOf("--dns"))
-        assertEquals("255", valueOf("--mark"))
-        assertEquals("keyword:doubleclick", valueOf("--route-block"))
+        assertEquals("gfw", valueOf("--noize"))
+        assertEquals("auto", valueOf("--ech"))
         assertEquals("example-team", valueOf("--team"))
+        assertEquals("24-48", valueOf("--fragment-size"))
+        assertEquals("3-9", valueOf("--fragment-delay"))
+        assertEquals("$filesDir/${configured.identityPath}", valueOf("--config"))
     }
 
+    // --------------------------------------------- the Psiphon route is left ---
+
     /**
-     * The route stores a compact Tor/Psiphon form next to the full engine options.
-     * They are the same `AETHER_*` variables, so they have to travel with the
-     * command line - a value on that screen that never reached the engine would be
-     * exactly the silent mismatch this build removes.
+     * The Psiphon route stores its own compact form of `--psiphon*`. Those values
+     * have to travel with the command line, and the packaged child process has to
+     * be named: it is not on `PATH` under Android, and API 29 refuses to execute
+     * anything in the app's writable directory.
      */
     @Test
-    fun theRoutesOwnTorAndPsiphonValuesReachTheCommandLineToo() {
+    fun thePsiphonRouteCarriesItsValuesAndNamesThePackagedHelper() {
         val route = AetherProfileConfig(
-            profileId = AetherProfile.TOR_PSIPHON.id,
+            profileId = AetherProfile.AETHER_PSIPHON.id,
             base = AetherConfig.DEFAULT.copy(transport = "masque"),
             psiphonEnabled = true,
             psiphonEndpoint = "127.0.0.1:1821",
-            psiphonRegion = "NL",
-            torSocks = "127.0.0.1:9050",
-            torBridges = "obfs4 192.0.2.55:38114 cert=abc\nsnowflake 192.0.2.9:443",
-            torUseBridges = true
+            psiphonRegion = "NL"
         )
-        val args = route.toAetherArgs(filesDir)
+        val helpers = AetherHelperPaths(
+            psiphonBinary = "/data/app/lib/arm64/libpsiphon_tunnel_core.so",
+            psiphonDirectory = "$filesDir/aether/psiphon"
+        )
+        val args = route.toAetherArgs(filesDir, helpers)
         assertTrue(args.toString(), args.contains("--psiphon"))
         assertEquals("NL", args[args.indexOf("--psiphon-region") + 1])
         assertEquals("127.0.0.1:1821", args[args.indexOf("--psiphon-bind") + 1])
-        assertEquals("127.0.0.1:9050", args[args.indexOf("--tor-bind") + 1])
-        assertEquals("both bridge lines are named", 2, args.count { it == "--tor-bridge" })
-        // One value owns AETHER_TOR_BRIDGES (`tor.rs:121-150`), so the named lines
-        // are never combined with the automatic fetch.
-        assertFalse(args.contains("--tor-bridges"))
+        assertEquals(
+            "the helper must be named, not looked up on PATH",
+            helpers.psiphonBinary,
+            args[args.indexOf("--psiphon-bin") + 1]
+        )
+        assertEquals(
+            helpers.psiphonDirectory,
+            args[args.indexOf("--psiphon-dir") + 1]
+        )
+        // One value owns AETHER_PSIPHON, so the mode is never asked for twice.
+        assertEquals(1, args.count { it == "--psiphon" })
+        assertEquals(1, args.count { it == "--psiphon-bin" })
+    }
+
+    @Test
+    fun aRouteWithoutPsiphonEmitsNoneOfItsFlags() {
+        val args = AetherProfileConfig(profileId = AetherProfile.WARP_DIRECT.id)
+            .toAetherArgs(filesDir, AetherHelperPaths(psiphonBinary = "/lib/libpsiphon_tunnel_core.so"))
+        assertFalse(
+            "an off toggle must not start the helper: $args",
+            args.any { it.startsWith("--psiphon") }
+        )
     }
 
     /**
-     * Every flag those shortcut values turn into is one the core accepts. Read from
+     * Every flag the Psiphon route turns into is one the core accepts. Read from
      * `cli.rs` here, because `parse_args` aborts the whole run on an unknown option
      * (`cli.rs:639-644`): a typo would look like a start that fails for no reason.
      */
     @Test
-    fun theRouteShortcutFlagsExistInTheCoreCli() {
+    fun thePsiphonFlagsExistInTheCoreCli() {
         val source = listOf(
             "../third_party/Aether/aether/src/cli.rs",
             "third_party/Aether/aether/src/cli.rs"
         ).map { File(it) }.firstOrNull { it.isFile }
-        assumeTrue("the vendored CLI source is not present", source != null)
+        org.junit.Assume.assumeTrue("the vendored CLI source is not present", source != null)
         val accepted = source!!.readLines()
             .filter { it.contains("=>") }
             .flatMap { line ->
@@ -193,66 +228,20 @@ class AetherSingleEngineTest {
                     .map { it.groupValues[1] }.toList()
             }
             .toSet()
-        listOf(
-            "--psiphon", "--psiphon-region", "--psiphon-bind",
-            "--tor-bind", "--tor-bridge", "--tor-bridges"
-        ).forEach { flag ->
-            assertTrue("cli.rs does not accept '$flag'", accepted.contains(flag))
-        }
+        listOf("--psiphon", "--psiphon-region", "--psiphon-bind", "--psiphon-bin", "--psiphon-dir")
+            .forEach { flag ->
+                assertTrue("cli.rs does not accept '$flag'", accepted.contains(flag))
+            }
     }
 
-    /** The detailed editor is the one that wins when both name the same flag. */
-    @Test
-    fun theDetailedEngineOptionsWinOverTheRoutesShortcutValues() {
-        val route = AetherProfileConfig(
-            profileId = AetherProfile.AETHER_PSIPHON.id,
-            base = AetherConfig.DEFAULT.copy(
-                engine = AetherEngineOptions(
-                    psiphon = AetherPsiphonOptions(
-                        mode = AetherPsiphonMode.ONLY,
-                        region = "DE",
-                        bind = "127.0.0.1:1900"
-                    ),
-                    tor = AetherTorOptions(mode = AetherTorMode.CHAIN, bridges = AetherTorBridges.AUTO)
-                )
-            ),
-            psiphonEnabled = true,
-            psiphonRegion = "NL",
-            psiphonEndpoint = "127.0.0.1:1821",
-            torSocks = "127.0.0.1:9050",
-            torUseBridges = true
-        )
-        val args = route.toAetherArgs(filesDir)
-        assertEquals(1, args.count { it == "--psiphon-only" })
-        assertFalse("one Psiphon mode only", args.contains("--psiphon"))
-        assertEquals("DE", args[args.indexOf("--psiphon-region") + 1])
-        assertEquals("127.0.0.1:1900", args[args.indexOf("--psiphon-bind") + 1])
-        assertEquals("127.0.0.1:9050", args[args.indexOf("--tor-bind") + 1])
-        assertEquals(1, args.count { it == "--tor-bridges" })
-    }
-
-    /**
-     * The route's own team field is the compact form of `--team`, and the detailed
-     * editor's is the same variable. Whichever is set reaches the engine, and the
-     * detailed one decides when both are - never both flags, which would make the
-     * last one win by accident.
-     */
     @Test
     fun theTeamFieldReachesTheTeamFlagExactlyOnce() {
-        val fromRoute = AetherConfig.DEFAULT.copy(teamName = "route-team").toAetherArgs(filesDir)
-        assertEquals("route-team", fromRoute[fromRoute.indexOf("--team") + 1])
-        assertEquals(1, fromRoute.count { it == "--team" })
+        val args = AetherConfig.DEFAULT.copy(teamName = "route-team").toAetherArgs(filesDir)
+        assertEquals("route-team", args[args.indexOf("--team") + 1])
+        assertEquals(1, args.count { it == "--team" })
 
-        val both = AetherConfig.DEFAULT.copy(
-            teamName = "route-team",
-            engine = AetherEngineOptions(api = com.manjaniq.core.models.AetherApiOptions(team = "editor-team"))
-        ).toAetherArgs(filesDir)
-        assertEquals(
-            "the detailed editor owns the flag when both name a team",
-            "editor-team",
-            both[both.indexOf("--team") + 1]
-        )
-        assertEquals(1, both.count { it == "--team" })
+        val blank = AetherConfig.DEFAULT.toAetherArgs(filesDir)
+        assertFalse("a blank team writes no flag at all: $blank", blank.contains("--team"))
     }
 
     @Test
@@ -271,59 +260,12 @@ class AetherSingleEngineTest {
 
     // ------------------------------------------------------------- helpers ---
 
-    private val helpers = AetherHelperPaths(
-        psiphonBinary = "/data/app/lib/arm64/libpsiphon_tunnel_core.so",
-        ptBinary = "/data/app/lib/arm64/liblyrebird.so",
-        ptDirectory = "/data/app/lib/arm64",
-        torDirectory = "/data/user/0/com.manjaniq/files/aether/tor",
-        psiphonDirectory = "/data/user/0/com.manjaniq/files/aether/psiphon"
-    )
-
-    @Test
-    fun thePackagedHelpersAreNamedOnTheCommandLine() {
-        val configured = AetherConfig.DEFAULT.copy(
-            engine = AetherEngineOptions(
-                tor = AetherTorOptions(mode = AetherTorMode.CHAIN),
-                psiphon = AetherPsiphonOptions(mode = AetherPsiphonMode.ONLY)
-            )
-        )
-        val args = configured.toAetherArgs(filesDir, helpers)
-        assertTrue(args.contains("--tor"))
-        assertTrue(args.contains("--psiphon-only"))
-        assertEquals(helpers.psiphonBinary, args[args.indexOf("--psiphon-bin") + 1])
-        assertEquals(helpers.psiphonDirectory, args[args.indexOf("--psiphon-dir") + 1])
-        assertEquals(helpers.torDirectory, args[args.indexOf("--tor-dir") + 1])
-        assertEquals(helpers.ptDirectory, args[args.indexOf("--tor-pt-dir") + 1])
-        // One binary serves every transport Aether may ask for, and each is named
-        // separately because bridges.rs resolves the transport by name.
-        val pts = args.withIndex().filter { it.value == "--tor-pt" }.map { args[it.index + 1] }
-        assertTrue(pts.toString(), pts.contains("obfs4=${helpers.ptBinary}"))
-        assertTrue(pts.toString(), pts.contains("snowflake=${helpers.ptBinary}"))
-        assertTrue(pts.toString(), pts.contains("webtunnel=${helpers.ptBinary}"))
-    }
-
-    @Test
-    fun aPathTheUserNamedWinsOverThePackagedOne() {
-        val configured = AetherConfig.DEFAULT.copy(
-            engine = AetherEngineOptions(
-                tor = AetherTorOptions(mode = AetherTorMode.ONLY, pt = listOf("snowflake=/opt/snowflake")),
-                psiphon = AetherPsiphonOptions(mode = AetherPsiphonMode.CHAIN, bin = "/opt/psiphon")
-            )
-        )
-        val args = configured.toAetherArgs(filesDir, helpers)
-        assertEquals("/opt/psiphon", args[args.indexOf("--psiphon-bin") + 1])
-        // The transport is named in the value itself (`<name>=<path>`), which is
-        // the shape bridges.rs parses; the path alone would be a bare binary.
-        assertEquals("snowflake=/opt/snowflake", args[args.indexOf("--tor-pt") + 1])
-        assertFalse(args.contains("obfs4=${helpers.ptBinary}"))
-    }
-
     @Test
     fun aHelperOutsideTheLibraryDirectoryIsNeverAccepted() {
         val root = File(System.getProperty("java.io.tmpdir") ?: ".", "aether-helpers-${System.nanoTime()}")
         val library = File(root, "lib").apply { mkdirs() }
-        val inside = File(library, "liblyrebird.so").apply { writeText("#\n") }
-        val outside = File(root, "liblyrebird.so").apply { writeText("#\n") }
+        val inside = File(library, AetherHelpers.PSIPHON_FILE).apply { writeText("#\n") }
+        val outside = File(root, AetherHelpers.PSIPHON_FILE).apply { writeText("#\n") }
         val madeExecutable = listOf(inside, outside).all { it.setExecutable(true) }
         try {
             assertFalse(
@@ -340,9 +282,7 @@ class AetherSingleEngineTest {
             // Nothing configured means nothing claimed: AetherHelpers never
             // guesses a path it has not seen.
             assertNull(AetherHelpers.psiphonBinary())
-            assertNull(AetherHelpers.lyrebirdBinary())
             assertFalse(AetherHelpers.hasPsiphon())
-            assertFalse(AetherHelpers.hasPluggableTransport())
         } finally {
             inside.delete()
             outside.delete()
@@ -368,29 +308,28 @@ class AetherSingleEngineTest {
         }
     }
 
-    /**
-     * A route may only name a setting the screen can draw: `getSectionsForProfile`
-     * refuses an unknown key outright, and this pins the other direction - every key
-     * a route names really is in the inventory - so the two lists cannot drift.
-     */
+    /** A setting the removed screens owned is no longer named by any route. */
     @Test
-    fun everyKeyARouteCanNameIsDrawn() {
-        AetherProfile.values().forEach { profile ->
-            getSectionsForProfile(profile).flatMap { it.keys }.forEach { key ->
-                assertTrue("$profile names '$key'", AetherCapabilities.knows(key))
+    fun theRemovedSettingsAreNotOfferedAnyMore() {
+        listOf("torSocks", "torBridges", "torUseBridges").forEach { key ->
+            assertFalse("'$key' was removed with the Tor section", AetherCapabilities.knows(key))
+            AetherProfile.values().forEach { profile ->
+                val keys = getSectionsForProfile(profile).flatMap { it.keys }
+                assertFalse("$profile still offers '$key'", keys.contains(key))
             }
         }
-        assertFalse("a typo is refused", AetherCapabilities.knows("fragmening"))
+        assertFalse("a typo is still refused", AetherCapabilities.knows("fragmening"))
     }
 
     @Test
-    fun fragmentingIsOfferedExactlyWhereMasqueCanRun() {
-        assertTrue(profileSupportsFragmenting(AetherProfile.WARP_DIRECT))
-        assertTrue(profileSupportsFragmenting(AetherProfile.AETHER_PSIPHON))
-        assertTrue(profileSupportsFragmenting(AetherProfile.AETHER_TOR))
-        assertTrue(profileSupportsFragmenting(AetherProfile.TOR_AETHER))
-        assertFalse(profileSupportsFragmenting(AetherProfile.TOR_DIRECT))
-        assertFalse(profileSupportsFragmenting(AetherProfile.TOR_PSIPHON))
+    fun onlyRoutesWithAGatewayReportFragmenting() {
+        assertTrue(profileUsesAetherGateway(AetherProfile.WARP_DIRECT))
+        assertTrue(profileUsesAetherGateway(AetherProfile.AETHER_PSIPHON))
+        assertEquals(
+            "the Tor routes were removed with the Tor configuration",
+            listOf("warp_direct", "aether_psiphon"),
+            AetherProfile.ALL.map { it.id }
+        )
     }
 
     /**

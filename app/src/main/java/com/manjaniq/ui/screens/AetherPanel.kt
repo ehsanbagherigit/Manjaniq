@@ -395,9 +395,6 @@ private fun AetherRouteSettings(
     var infoRes by remember(profile) { mutableStateOf<Int?>(null) }
     var pendingRestart by remember(profile) { mutableStateOf<AetherProfileConfig?>(null) }
     var confirmReset by remember(profile) { mutableStateOf(false) }
-    // Collapsed by default: the route's own groups come first, and these are the
-    // flags most routes never touch.
-    var engineOpen by remember(profile) { mutableStateOf(false) }
 
     val sections = remember(profile) { getSectionsForProfile(profile) }
     // Only the first group starts open: the route is chosen, the rest is one tap
@@ -478,17 +475,6 @@ private fun AetherRouteSettings(
                     }
                 }
             }
-
-            // Every remaining flag the core accepts (Tor, Psiphon, Zero Trust,
-            // routing, TLS/ECH, statistics, registration). They are edited in the
-            // route's draft, so Save stores them with the route exactly like the
-            // groups above.
-            AetherEngineOptionsSection(
-                base = draft.base,
-                onChange = { next -> onDraftChange(draft.copy(base = next)) },
-                expanded = engineOpen,
-                onToggle = { engineOpen = !engineOpen }
-            )
 
             if (saveProfile != null && resetProfile != null) {
                 if (errorText != null) {
@@ -805,31 +791,6 @@ private fun AetherSetting(
             labelRes = R.string.psiphon_region,
             hintRes = R.string.psiphon_region_hint,
             tag = "aether_psiphon_region_field"
-        )
-
-        "torSocks" -> AetherField(
-            value = draft.torSocks,
-            onValueChange = { v -> onDraftChange(draft.copy(torSocks = v)) },
-            labelRes = R.string.tor_socks,
-            hintRes = R.string.tor_socks_hint,
-            tag = "aether_tor_socks_field"
-        )
-
-        "torBridges" -> AetherField(
-            value = draft.torBridges,
-            onValueChange = { v -> onDraftChange(draft.copy(torBridges = v)) },
-            labelRes = R.string.tor_bridges,
-            hintRes = R.string.tor_bridges_hint,
-            minLines = 2,
-            tag = "aether_tor_bridges_field"
-        )
-
-        "torUseBridges" -> AetherToggleRow(
-            titleRes = R.string.tor_use_bridges,
-            descRes = R.string.tor_use_bridges_desc,
-            checked = draft.torUseBridges,
-            onCheckedChange = { v -> onDraftChange(draft.copy(torUseBridges = v)) },
-            tag = "aether_tor_bridges_toggle"
         )
     }
 }
@@ -1421,7 +1382,6 @@ internal fun sectionKey(titleRes: Int): String = when (titleRes) {
     R.string.section_tunnel -> "tunnel"
     R.string.section_advanced -> "advanced"
     R.string.section_psiphon -> "psiphon"
-    R.string.section_tor -> "tor"
     else -> "section_$titleRes"
 }
 
@@ -1456,8 +1416,6 @@ private fun sectionSummary(titleRes: Int, draft: AetherProfileConfig): String {
         }
 
         "psiphon" -> draft.psiphonEndpoint.ifBlank { notSet }
-
-        "tor" -> draft.torSocks.ifBlank { notSet }
 
         else -> ""
     }

@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
 # Build the helper executables Aether spawns, for one Android ABI.
 #
-# Aether spawns two kinds of helper process:
+# Aether spawns one helper process: `psiphon-tunnel-core` - `psiphon.rs:749`
+# starts it with piped stdout/stderr and `kill_on_drop(true)`, and the app points
+# at it with `--psiphon-bin`. (The Tor pluggable transport was removed together
+# with the Tor routes, so lyrebird is no longer built or packaged.)
 #
-#   * a Tor pluggable transport - `bridges.rs` starts the binary named by
-#     `--tor-pt` for obfs4/snowflake/webtunnel/meek bridges. Upstream's
-#     `pt-build.sh` builds lyrebird, which serves all of them from one binary;
-#   * `psiphon-tunnel-core` - `psiphon.rs:749` spawns it with piped
-#     stdout/stderr and `kill_on_drop(true)`, and is pointed at it by
-#     `--psiphon-bin`.
-#
-# Both are built exactly the way upstream's own Android release job builds them
+# It is built exactly the way upstream's own Android release job builds it
 # (third_party/Aether/.github/workflows/release.yml, `android` job): as static
 # `GOOS=linux CGO_ENABLED=0` ELFs. A pure-Go binary needs no libc at all, so the
 # same file runs under Android and Termux - which is why the check in that job is
@@ -98,7 +94,6 @@ build_one() {
 }
 
 results=()
-results+=("$(build_one lyrebird pt-build.sh lyrebird liblyrebird.so)")
 results+=("$(build_one psiphon psiphon-build.sh psiphon-tunnel-core libpsiphon_tunnel_core.so)")
 
 echo "=== helpers for $goarch ==="

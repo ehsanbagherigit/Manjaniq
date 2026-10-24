@@ -15,8 +15,7 @@ import com.manjaniq.R
 import com.manjaniq.core.AetherConfigStore
 import com.manjaniq.core.AetherHelpers
 import com.manjaniq.core.AetherJobPolling
-import com.manjaniq.core.AetherNetworkCheck
-import com.manjaniq.core.AetherRegistrationOutcome
+import com.manjaniq.core.AetherPreflight
 import com.manjaniq.core.AetherRepository
 import com.manjaniq.core.models.AetherState
 import kotlinx.coroutines.CoroutineScope
@@ -33,8 +32,9 @@ import org.json.JSONObject
  * Phase 1: SOCKS5 only (no VpnService/TUN). It starts the Aether core through
  * `aether_core_start` - the core's own command line - and keeps it running while
  * the user is in other apps. That is the only start path: it applies the whole
- * configuration (protocol, scan, Tor/Psiphon layering, Zero Trust, routing,
- * upstream, DNS, statistics and marks), so no setting is stored-but-ignored.
+ * configuration the route stores (protocol, scan, IP version, peer, the two local
+ * listeners, upstream, DNS, team, quick reconnect and the Psiphon toggle), so no
+ * setting is stored-but-ignored.
  * RSTA EngineService remains separate; this service is independent and must not
  * corrupt RSTA's EngineRepository.
  *
@@ -296,8 +296,8 @@ class AetherService : Service() {
             }
 
             // The route's stored configuration. Its base holds everything the
-            // settings screen edits, and its own Tor/Psiphon values are the compact
-            // form of the engine's flags, so both reach the command line.
+            // settings screen edits, and its own Psiphon values are the compact form
+            // of the engine's flags, so both reach the command line.
             val profileStore = com.manjaniq.core.AetherProfileStore(this@AetherService)
             val profile = try {
                 profileStore.getSelectedProfile()
@@ -351,6 +351,20 @@ class AetherService : Service() {
                     return@launch
                 }
             }
+            // What the start needs from the device itself, checked before the
+            // engine is asked: the identity path the core will write to, and the two
+            // loopback ports it will bind. Each of these used to surface - if at all -
+            // as an engine message in the middle of a tunnel attempt.
+            val preflight = AetherPreflight.check(cfg, applicationContext.filesDir.absolutePath)
+            if (preflight != null) {
+                failed(preflight)
+                stopForegroundAndSelf()
+                return@launch
+            }
+            AetherPreflight.identityFile(cfg, applicationContext.filesDir.absolutePath)?.let {
+                AetherRepository.log("INFO", "Identity file: ${it.absolutePath}")
+            }
+
             if (!AetherBridge.isNativeAvailable) {
                 val err = AetherBridge.getLoadError()?.message ?: "Native lib not available - rebuild with libaether.so"
                 failed(err)
@@ -402,10 +416,9 @@ class AetherService : Service() {
 
             // `aether_core_start` runs the core's own command line, which is the
             // only path that applies the whole configuration: the protocol flags,
-            // the Tor and Psiphon layering, Zero Trust, routing, the upstream
-            // proxy, the in-tunnel DNS list, statistics and marks. There is no
-            // second start path, so what the settings screen stores is what the
-            // engine is handed.
+            // the upstream proxy, the in-tunnel DNS list, the team and the quick
+            // reconnect. There is no second start path, so what the settings screen
+            // stores is what the engine is handed.
             startEngine(
                 cfg = cfg,
                 profileCfg = profileCfg,
@@ -420,13 +433,12 @@ class AetherService : Service() {
      * Starts Aether through `aether_core_start` - the core's own command line -
      * and holds the job until it ends.
      *
-     * The argument list is [com.manjaniq.core.models.AetherConfig.toAetherArgs],
+     * The argument list is [com.manjaniq.core.models.AetherProfileConfig.toAetherArgs],
      * i.e. the same model the settings screen edits, so nothing is translated
-     * twice and every control in the UI has a flag behind it: gool and mim
-     * (`--gool`, `--mim`), the Tor and Psiphon layering (`--tor*`,
-     * `--psiphon*`), Zero Trust (`--team`, `--access-*`, `--gateway`), routing
-     * (`--routes`, `--route-block`, `--route-direct`), `--upstream`, `--dns`,
-     * `--quick-reconnect`, `--stats`, `--mark` and `--register`.
+     * twice and every control in the UI has a flag behind it: the four protocols
+     * (`--masque`, `--wg`, `--gool`, `--mim`), `--scan`, the IP version, `--peer`,
+     * `--bind`, `--http-proxy`, `--upstream`, `--dns`, `--team`,
+     * `--quick-reconnect` and, on the Psiphon route, `--psiphon*`.
      *
      * The readiness signal: `awaitTunnelServing` polls the job and probes the
      * loopback SOCKS listener, and Aether binds that listener only after the
@@ -476,65 +488,6 @@ class AetherService : Service() {
         }
         AetherRepository.setActiveJob(jobId)
         synchronized(this@AetherService) { currentJobId = jobId }
-
-        // `--register` registers identities and exits without scanning or
-        // tunnelling (cli.rs), so it is a one-shot job with a registration
-        // budget, not a tunnel that will ever answer on SOCKS.
-        if (cfg.engine.api.register.isNotBlank()) {
-            val registerBudget = AetherJobPolling.identityTimeoutMs()
-            AetherRepository.log(
-                "INFO",
-                "Register-only run: Aether registers '${cfg.engine.api.register}' and exits " +
-                    "(up to ${registerBudget / 1000}s for the WARP API)"
-            )
-            val done = pollJob(jobId, registerBudget)
-            AetherBridge.jobFree(jobId)
-            synchronized(this@AetherService) { if (currentJobId == jobId) currentJobId = null }
-            AetherRepository.setActiveJob(null)
-            when {
-                !isCurrent() -> AetherRepository.log(
-                    "INFO",
-                    "Superseded Aether registration finished"
-                )
-                done == null || done.isFailure -> {
-                    val raw = done?.exceptionOrNull()?.message
-                    // When registration could not reach the API, say what this
-                    // device could see at that moment: read-only platform facts,
-                    // no connection of our own.
-                    when (AetherRegistrationOutcome.classify(raw)) {
-                        AetherRegistrationOutcome.Failure.NO_ANSWER,
-                        AetherRegistrationOutcome.Failure.TLS,
-                        AetherRegistrationOutcome.Failure.ECH,
-                        AetherRegistrationOutcome.Failure.TIMEOUT -> {
-                            val facts = AetherNetworkCheck.factsOf(applicationContext)
-                            AetherRepository.log("INFO", AetherNetworkCheck.summarize(facts))
-                            if (facts != null && !AetherNetworkCheck.looksReachable(facts)) {
-                                AetherRepository.log(
-                                    "WARN",
-                                    "The device itself was not on a usable network, so this is " +
-                                        "not an Aether fault: bring the device online and try again"
-                                )
-                            }
-                        }
-                        else -> Unit
-                    }
-                    onFail(
-                        AetherRegistrationOutcome.report(raw, registerBudget) +
-                            " No identity was registered."
-                    )
-                }
-                else -> {
-                    AetherRepository.log(
-                        "OK",
-                        "Identities registered for '${cfg.engine.api.register}'; " +
-                            "the files are beside the configured identity path"
-                    )
-                    AetherRepository.onServiceActionFinished(null, AetherState.STOPPED)
-                }
-            }
-            if (isCurrent()) stopForegroundAndSelf()
-            return
-        }
 
         val readinessBudget =
             AetherJobPolling.scanTimeoutFor(cfg.transport, cfg.scanMode) + SOCKS_READY_BUDGET_MS
@@ -595,6 +548,16 @@ class AetherService : Service() {
 
         AetherRepository.updateState(AetherState.RUNNING)
         AetherRepository.setEndpoint(cfg.peer.trim().ifEmpty { "scan" }, cfg.socksBind)
+        // State the posture, because it is not obvious from "connected": the app has
+        // no VpnService, so this is a SOCKS5 (and optional HTTP) proxy on loopback.
+        // Only apps configured to use it are tunnelled.
+        AetherRepository.log(
+            "INFO",
+            "Aether is a local proxy, not a VPN: point apps at SOCKS5 " +
+                "${cfg.bindLiteral(cfg.socksBind)}" +
+                (if (cfg.httpProxyBind.isBlank()) "" else
+                    " (or HTTP ${cfg.bindLiteral(cfg.httpProxyBind)})")
+        )
         goForeground("Aether SOCKS5 ${cfg.socksBind} [${cfg.transport}, ${cfg.scanMode}]")
         AetherRepository.onServiceActionFinished(null, AetherState.RUNNING)
         AetherRepository.log(

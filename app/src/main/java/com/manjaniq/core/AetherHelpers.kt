@@ -10,10 +10,11 @@ import java.io.File
  * WHAT NEEDS A HELPER
  * -------------------
  *  * `psiphon-tunnel-core` - `psiphon.rs:749` spawns it for every `--psiphon*`
- *    mode, and `--psiphon-bin` names it;
- *  * a Tor pluggable transport - `bridges.rs` spawns it for obfs4, snowflake and
- *    webtunnel bridges, and `--tor-pt [name=]<path>` names it. One lyrebird
- *    binary serves all three.
+ *    mode, and `--psiphon-bin` names it.
+ *
+ * That is the only child process this app has left: the Tor routes and their
+ * pluggable transports were removed with the engine-options screen, so no Tor
+ * helper is resolved or shipped any more.
  *
  * WHERE IT MAY LIVE
  * -----------------
@@ -30,14 +31,11 @@ import java.io.File
  * outside that directory even if one is handed to it, so nothing here can turn
  * the data directory into an execution surface.
  *
- * The state a helper needs (tor's directory cache, psiphon's data) is the other
- * way round: that *must* be writable, so `--tor-dir` and `--psiphon-dir` point
- * into `filesDir`. Data is writable, code is not.
+ * The state the helper needs (psiphon's data) is the other way round: that
+ * *must* be writable, so `--psiphon-dir` points into `filesDir`. Data is
+ * writable, code is not.
  */
 object AetherHelpers {
-
-    /** Packaged name of the Tor pluggable transport (lyrebird). */
-    const val LYREBIRD_FILE = "liblyrebird.so"
 
     /** Packaged name of the Psiphon client. */
     const val PSIPHON_FILE = "libpsiphon_tunnel_core.so"
@@ -72,14 +70,8 @@ object AetherHelpers {
      */
     fun psiphonBinary(): String? = executable(PSIPHON_FILE)
 
-    /** Absolute path of the packaged Tor pluggable transport, or null. */
-    fun lyrebirdBinary(): String? = executable(LYREBIRD_FILE)
-
     /** True when this build ships a Psiphon client that can be started. */
     fun hasPsiphon(): Boolean = psiphonBinary() != null
-
-    /** True when this build ships a Tor pluggable transport that can be started. */
-    fun hasPluggableTransport(): Boolean = lyrebirdBinary() != null
 
     /**
      * The helper path for [name] inside the native library directory, or null.
@@ -118,19 +110,18 @@ object AetherHelpers {
     }
 
     /**
-     * Everything a start needs to name the helpers, with writable state
-     * directories created under `filesDir`.
+     * Everything a start needs to name the helper, with its writable state
+     * directory created under `filesDir`.
      *
      * Safe to call on any thread: it only reads the recorded directory and
-     * creates three directories, ignoring a failure (a start that cannot create
+     * creates two directories, ignoring a failure (a start that cannot create
      * one will fail later with the engine's own message rather than here).
      */
     fun paths(context: Context): AetherHelperPaths {
         configure(context)
         val base = File(context.filesDir, STATE_DIR)
-        val tor = File(base, "tor")
         val psiphon = File(base, "psiphon")
-        listOf(base, tor, psiphon).forEach { dir ->
+        listOf(base, psiphon).forEach { dir ->
             try {
                 dir.mkdirs()
             } catch (_: Throwable) {
@@ -139,12 +130,6 @@ object AetherHelpers {
         }
         return AetherHelperPaths(
             psiphonBinary = psiphonBinary() ?: "",
-            ptBinary = lyrebirdBinary() ?: "",
-            // The library directory is where the packaged transport lives; Aether
-            // searches it for a binary when a bridge names a transport without a
-            // path of its own.
-            ptDirectory = nativeLibraryDirectory ?: "",
-            torDirectory = tor.absolutePath,
             psiphonDirectory = psiphon.absolutePath
         )
     }

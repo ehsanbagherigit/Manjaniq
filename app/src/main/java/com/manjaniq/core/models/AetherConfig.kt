@@ -1,6 +1,5 @@
 package com.manjaniq.core.models
 
-import com.manjaniq.core.AetherHelpers
 import org.json.JSONObject
 
 /**
@@ -54,15 +53,7 @@ data class AetherConfig(
      * [toAetherArgs] cannot express it; it reaches the engine through
      * `AetherBridge.fragmentingApply`, which writes the variable directly.
      */
-    val fragmentSniSplit: Boolean = AetherFragmenting.DEFAULT_SNI_SPLIT,
-    /**
-     * Everything else the core accepts, modelled against `aether/src/cli.rs`.
-     *
-     * One field rather than a hundred: the families are grouped, each renders its own
-     * flags, and a default renders nothing at all so the engine keeps its own value.
-     * See [AetherEngineOptions].
-     */
-    val engine: AetherEngineOptions = AetherEngineOptions()
+    val fragmentSniSplit: Boolean = AetherFragmenting.DEFAULT_SNI_SPLIT
 ) {
     fun validate(): String? {
         // socksBind must be loopback
@@ -93,6 +84,15 @@ data class AetherConfig(
                 return "SOCKS and HTTP proxy must listen on different ports"
             }
         }
+        // The identity file is written by the core at this path (`--config`), so
+        // it has to stay inside the app's private directory: a leading '/' or a
+        // '..' would put it somewhere a later start cannot read.
+        val identity = identityPath.trim()
+        if (identity.isEmpty() || identity.startsWith("/") || identity.startsWith("\\") ||
+            identity.split('/', '\\').contains("..")
+        ) {
+            return "Identity path must be a relative file name inside the app's data directory"
+        }
         // Every protocol in AetherTransportChoice is a real `cli.rs` protocol,
         // and the engine is always started through that command line, so each one
         // is accepted here.
@@ -113,29 +113,28 @@ data class AetherConfig(
         // consumer, masque_h2.rs, so Aether writes them only on the MASQUE-over-HTTP/2
         // carrier; a WireGuard route therefore carries the setting without using it,
         // and the screen says so instead of refusing the start.
-        engine.validate()?.let { return it }
-        // Psiphon and the Tor bridges each need a helper process. A packaged one
-        // is resolved by AetherHelpers in the read-only native library directory
-        // (scripts/ci/build_helpers.sh puts it there); without one, the start is
-        // refused here rather than failing deep inside the engine with no
-        // explanation. Naming a path is always accepted: the check is about a
-        // missing binary, not about the feature.
-        if (engine.psiphon.isEnabled() && engine.psiphon.bin.isBlank() && !AetherHelpers.hasPsiphon()) {
-            return "Psiphon needs the ${AetherEngineOptions.HELPER_PSIPHON} executable and this " +
-                "build does not ship it: set its path, or ship it as a native library (see " +
-                "AETHER_CAPABILITIES.md §6)"
-        }
-        if (engine.tor.needsHelperBinary() &&
-            engine.tor.pt.isEmpty() &&
-            engine.tor.ptDir.isEmpty() &&
-            !AetherHelpers.hasPluggableTransport()
-        ) {
-            return "These Tor bridges need a pluggable-transport executable such as " +
-                "${AetherEngineOptions.HELPER_TOR_PT} and this build does not ship it: name one " +
-                "with the PT or PT directory setting, or ship it as a native library (see " +
-                "AETHER_CAPABILITIES.md §6)"
-        }
         return null
+    }
+
+    /**
+     * A `host:port` literal the engine can parse.
+     *
+     * Aether parses both listeners with `SocketAddr::parse` and treats a failure as
+     * "not configured": an unparsable `AETHER_SOCKS` silently falls back to
+     * `127.0.0.1:1819`, and an unparsable `AETHER_HTTP_PROXY` is logged as
+     * "ignoring an unparsable http proxy address" and then never bound
+     * (`lib.rs:2572-2585`). `localhost` is a valid address for a person but not for
+     * that parser, so it is resolved here rather than being silently dropped
+     * (a user who typed `localhost:1820` and got a tunnel with no HTTP proxy would
+     * have been told the start succeeded).
+     */
+    fun bindLiteral(value: String): String {
+        val trimmed = value.trim()
+        return when {
+            trimmed.startsWith("localhost:") -> "127.0.0.1:" + trimmed.substringAfterLast(':')
+            trimmed == "localhost" -> "127.0.0.1"
+            else -> trimmed
+        }
     }
 
     /**
@@ -169,7 +168,6 @@ data class AetherConfig(
         put("fragmentSize", fragmentSize)
         put("fragmentDelay", fragmentDelay)
         put("fragmentSniSplit", fragmentSniSplit)
-        put("engine", engine.toJson())
     }.toString()
 
     /**
@@ -177,28 +175,21 @@ data class AetherConfig(
      * (`AetherBridge.coreStart`).
      *
      * This is the only start path the app has, so everything the settings screen
-     * can express - gool/mim, the Tor and Psiphon layering, Zero Trust, routing,
-     * `--upstream`, `--dns`, `--quick-reconnect`, `--stats`, `--mark` and
-     * `--register` - travels through this list.
+     * can express - the protocol, the scan, the IP version, the peer, the two local
+     * listeners, `--upstream`, `--dns`, `--team` and `--quick-reconnect` - travels
+     * through this list.
      *
      * Fragmenting also reaches the engine through
      * [AetherBridge.fragmentingApply] (`AetherService.applyFragmenting`), which
      * writes the SNI-split variable Aether reads but has no CLI flag for; these
      * flags carry the rest of the same decision so the two never disagree.
-     *
-     * [helpers] supplies the paths of the packaged child processes, resolved by
-     * [com.manjaniq.core.AetherHelpers]. A setting the user left blank is filled
-     * from it; a setting the user named always wins.
      */
-    fun toAetherArgs(
-        contextFilesDir: String,
-        helpers: AetherHelperPaths = AetherHelperPaths.none
-    ): List<String> {
+    fun toAetherArgs(contextFilesDir: String): List<String> {
         val args = mutableListOf<String>()
-        // bind is required; Aether defaults to 127.0.0.1:1819 but we set explicitly
-        args += "--bind"; args += socksBind.ifEmpty { "127.0.0.1:1819" }
+        // bind is required; Aether defaults to 127.0.0.1:1819 but we set explicitly.
+        args += "--bind"; args += bindLiteral(socksBind.ifEmpty { "127.0.0.1:1819" })
         if (httpProxyBind.trim().isNotEmpty()) {
-            args += "--http-proxy"; args += httpProxyBind.trim()
+            args += "--http-proxy"; args += bindLiteral(httpProxyBind.trim())
         }
         // protocol
         when (transport) {
@@ -229,11 +220,10 @@ data class AetherConfig(
         if (upstream.isNotEmpty()) {
             args += "--upstream"; args += upstream
         }
-        // ech. `echEnabled` keeps meaning what it always meant - ask for the key over
-        // DoH - unless the engine options name one, in which case that more specific
-        // setting owns the flag and this stays out of its way.
-        if (echEnabled && engine.ech.value.isBlank()) {
-            args += "--ech"; args += AetherEchOptions.AUTO
+        // ech. `echEnabled` keeps meaning what it always meant: ask for the key over
+        // DoH, which is `--ech auto` (`cli.rs` writes AETHER_ECH=`auto`).
+        if (echEnabled) {
+            args += "--ech"; args += "auto"
         }
         // dns
         if (dns.isNotEmpty()) {
@@ -272,43 +262,10 @@ data class AetherConfig(
         args += "--config"; args += fullPath
         // quick reconnect
         if (quickReconnect) args += "--quick-reconnect" else args += "--no-quick-reconnect"
-        // Zero Trust team. The route's own field is the compact form of `--team`, and
-        // the detailed editor's `AetherApiOptions.team` owns the same variable
-        // (`cli.rs:612-613`), so the detailed one wins instead of the two being
-        // written one after the other with the last one silently deciding.
-        if (teamName.isNotBlank() && engine.api.team.isBlank()) {
+        // Zero Trust team: the route's own field is the compact form of `--team`
+        // (`cli.rs:612-613`), so it is written exactly once.
+        if (teamName.isNotBlank()) {
             args += "--team"; args += teamName.trim()
-        }
-        // Every remaining family the core accepts (cli.rs:469-647), each emitting
-        // nothing when it is left at the engine's own default.
-        args += engine.toArgs()
-        // The child processes. Both are spawned by the engine (psiphon by
-        // psiphon.rs:749, the Tor transport by bridges.rs) and neither is on PATH
-        // under Android, so the exact file is named here. Only fields the user
-        // left blank are filled in; a path the user named always wins.
-        if (engine.psiphon.isEnabled()) {
-            if (engine.psiphon.bin.isBlank() && helpers.psiphonBinary.isNotEmpty()) {
-                args += "--psiphon-bin"; args += helpers.psiphonBinary
-            }
-            if (engine.psiphon.dir.isBlank() && helpers.psiphonDirectory.isNotEmpty()) {
-                args += "--psiphon-dir"; args += helpers.psiphonDirectory
-            }
-        }
-        if (engine.tor.isEnabled()) {
-            if (engine.tor.pt.isEmpty() && engine.tor.ptDir.isEmpty() && helpers.ptBinary.isNotEmpty()) {
-                // One lyrebird binary serves every transport Aether asks for
-                // (obfs4, snowflake, webtunnel), so it is named once per
-                // transport rather than left to a lookup that cannot see it.
-                listOf("obfs4", "snowflake", "webtunnel").forEach { name ->
-                    args += "--tor-pt"; args += "$name=${helpers.ptBinary}"
-                }
-            }
-            if (engine.tor.ptDir.isEmpty() && helpers.ptDirectory.isNotEmpty()) {
-                args += "--tor-pt-dir"; args += helpers.ptDirectory
-            }
-            if (engine.tor.dir.isBlank() && helpers.torDirectory.isNotEmpty()) {
-                args += "--tor-dir"; args += helpers.torDirectory
-            }
         }
         return args
     }
@@ -337,11 +294,11 @@ data class AetherConfig(
                     fragmentSize = o.optString("fragmentSize", AetherFragmenting.DEFAULT_SIZE),
                     fragmentDelay = o.optString("fragmentDelay", AetherFragmenting.DEFAULT_DELAY),
                     fragmentSniSplit = o.optBoolean("fragmentSniSplit", AetherFragmenting.DEFAULT_SNI_SPLIT),
-                    // A configuration written by an earlier build carries a
-                    // "startMode" member. It is ignored: there is one engine and
-                    // one way to start it, so the stored value cannot change what
-                    // happens, and dropping the field is what forgets it.
-                    engine = AetherEngineOptions.fromJson(o.optJSONObject("engine"))
+                    // A configuration written by an earlier build carries
+                    // "startMode" and "engine" members. They are ignored: this build
+                    // has one start path and models no per-engine-option block, so a
+                    // stored value cannot change what happens, and not reading it is
+                    // what forgets it.
                 )
             } catch (e: Exception) { null }
         }

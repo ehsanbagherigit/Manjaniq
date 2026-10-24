@@ -405,9 +405,10 @@ that chooses not to ship one), both paths fail closed:
 ### 9.3 Reach
 
 Every setting the screen offers is in the argument list, and
-`AetherEngineOptionsTest` proves each flag exists in `cli.rs`
-(`everyFlagThisModelEmitsExistsInTheCoreCli`) and that every flag the core
-accepts is reachable from the app (`everyFlagTheCoreAcceptsIsReachableFromTheApp`).
+`AetherSingleEngineTest.everySettingTheScreenOffersReachesTheArgumentList` proves
+it by reading the argument list the service is handed. The "ENGINE OPTIONS"
+group and its model (`AetherEngineOptions`) were removed, so the table below is
+the whole surface: what is not listed is not configurable in this build.
 
 | setting | applied through |
 |---|---|
@@ -416,12 +417,15 @@ accepts is reachable from the app (`everyFlagTheCoreAcceptsIsReachableFromTheApp
 | fragmentEnabled/Size/Delay | `--h2`/`--h3`, `--fragment`/`--no-fragment`, `--fragment-size`, `--fragment-delay` |
 | fragmentSniSplit | `AETHER_MASQUE_H2_FRAGMENT_SNI` through `AetherBridge.fragmentingApply` (upstream has no flag) |
 | dns, upstream, quickReconnect | `--dns`, `--upstream`, `--quick-reconnect` |
-| gool, mim | `--gool`/`--gool-*`, `--mim`/`--mim-*` |
-| Tor layering, bridges, relays, PT paths | `--tor*`; a PT path is auto-filled from the packaged lyrebird |
-| Psiphon layering, region, CDN fronting | `--psiphon*`; the packaged psiphon-tunnel-core is auto-filled |
-| Zero Trust (`--team`, `--access-*`, `--gateway`) | the matching flags |
-| routing (`--routes`, `--route-block`, `--route-direct`) | the matching flags |
-| `--stats`, `--exit-loc`, `--mark`, `--register`, `--tls-*`, `--ech*` | the matching flags |
+| gool, mim | `--gool`, `--mim` (per-protocol endpoints were part of the removed group) |
+| Psiphon (toggle, region, listener) on the Psiphon route | `--psiphon`, `--psiphon-region`, `--psiphon-bind`; the packaged `psiphon-tunnel-core` is named with `--psiphon-bin`/`--psiphon-dir` |
+| Zero Trust team | `--team` (written once, from the route field) |
+
+Removed with the group: Tor layering and bridges, the gool/mim endpoint
+overrides, the Zero Trust service-token credentials and gateway toggle, routing
+lists, TLS/ECH overrides, timing/stats/marks, log levels and `--register`. Their
+models, strings, tests and the four Tor routes were deleted with them; a stored
+configuration that still names any of it loads and is simply not applied.
 
 ### 9.4 UI
 
@@ -432,23 +436,15 @@ accepts is reachable from the app (`everyFlagTheCoreAcceptsIsReachableFromTheApp
 * No reach note is printed: a setting shown on screen is a setting the engine is
   handed. `AetherPanelUiTest.everyProtocolIsOfferedAndClickable` pins that no
   "not selectable"/"recorded only" label survives.
-* An **Engine options** group edits every remaining flag (`AetherEngineOptionsPanel`):
-  Tor mode/bridges/lines/bridge file/relays/relay ports/PT and PT directories/
-  SOCKS and HTTP addresses/state directory, Psiphon mode/region/CDN mode, edge
-  sets, IPs, SNIs/server entries/own config/listeners/data directory/executable,
-  Zero Trust team and service-token/email/JWT credentials plus the gateway
-  toggle and `--enroll-address`, routing lists and routes file, TLS
-  ciphers/groups/GREASE/verify/QUIC version, ECH key/DoH resolver/domain, the
-  gool and MASQUE-in-MASQUE hops (`--gool-*`, `--mim-*`), the per-carrier
-  endpoints (`--h2-peer`, `--wg-peer`, `--masque-config`, `--wg-config`), the
-  timing budgets (`--startup-secs`, `--reconnect-secs`, `--validate-secs`,
-  `--keepalive`, `--no-data-check`, `--no-profile-retry`), `--mark`,
-  `--exit-loc` and its re-check interval, `--stats`, `--register`, `--api-fragment`
-  and the log level/verbose/perf profile.
-* Two tests keep that claim honest: `AetherEngineOptionsTest` proves each field
-  reaches argv, and `AetherEngineUiCoverageTest` reads the model and the panel
-  and fails if any option property has no `copy(... = ...)` in the UI.
-  `AetherPanelUiTest` opens the group and checks a control per family renders.
+* The route list has two entries: `Warp direct` and `Aether + Psiphon`. The four
+  Tor routes and the **Engine options** group were deleted together with their
+  model, strings and tests; the remaining controls are the route's own sections
+  (gateway, tunnel, advanced, and Psiphon where the route uses it) plus the
+  fragmenting area.
+* `AetherSingleEngineTest.everySettingARouteOffersCanBeRendered` and
+  `theRemovedSettingsAreNotOfferedAnyMore` keep that claim honest: every key a
+  route names is drawable, and a key that belonged to the deleted group is not
+  offered by any route.
 
 ### 9.5 One start begins from its own argument list
 
@@ -465,12 +461,23 @@ argument list exists, so each start is decided by the configuration and nothing
 else. A reset that cannot be reported stops the start with that reason, rather than
 running a configuration that might be half the previous one.
 
-### 9.6 Registration (headless identities)
+### 9.6 Identity and the removed registration run
 
-`--register <masque|wg|gool|mim|all>` registers identities and exits without
-scanning or tunnelling (`cli.rs`). It is edited in the engine options group and
-run by the same `aether_core_start` job as a one-shot run bounded by the engine's
-own registration budget (`AetherJobPolling.identityTimeoutMs`), with failures
-reported through `AetherRegistrationOutcome` and the device's own connectivity
-logged through `AetherNetworkCheck`. `--enroll-address` (custom WARP API
-endpoint) and `--dns` (custom tunnel DNS) are part of the same argument list.
+Registration is now what the core does on its own: a start without an identity
+file registers one at `--config` before it dials. The explicit `--register`
+one-shot run, its budget (`AetherJobPolling.identityTimeoutMs`), the failure
+reporting (`AetherRegistrationOutcome`) and the connectivity snapshot
+(`AetherNetworkCheck`) belonged to the removed engine-options group and were
+deleted with it.
+
+What replaced it is a preflight that makes the identity path and the two
+listeners the app's business before the core is asked to run
+(`AetherPreflight`):
+
+* the identity path must be relative and stay inside `filesDir`, and its
+  directory is created before the start (a nested path used to have none);
+* `localhost:PORT` is rewritten to `127.0.0.1:PORT`, because the core parses
+  both listeners with `SocketAddr::parse` and otherwise falls back to its own
+  default (SOCKS) or drops the listener silently (HTTP proxy, `lib.rs:2572-2585`);
+* both ports are probed for a bind conflict first, so "already in use" is said in
+  the app's words instead of arriving as an engine error mid-tunnel.

@@ -18,8 +18,7 @@ object AetherCapabilities {
         "transport", "scanMode", "ipVersion", "peer",
         "socksBind", "httpProxyBind", "dns", "upstream",
         "noizeProfile", "echEnabled", "quickReconnect", "teamName", "identityPath",
-        "psiphonEnabled", "psiphonEndpoint", "psiphonRegion",
-        "torSocks", "torBridges", "torUseBridges"
+        "psiphonEnabled", "psiphonEndpoint", "psiphonRegion"
     )
 
     /** True when [key] names a setting the Aether screen can draw. */

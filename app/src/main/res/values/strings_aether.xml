@@ -67,19 +67,6 @@
     <string name="profile_aether_psiphon_title">Aether → Psiphon</string>
     <string name="profile_aether_psiphon_route">Phone → Aether → Psiphon</string>
     <string name="profile_aether_psiphon_desc">Route through Psiphon after Aether tunnel. Requires running Psiphon proxy.</string>
-    <string name="profile_tor_direct_title">Tor Direct</string>
-    <string name="profile_tor_direct_route">Phone → Tor</string>
-    <string name="profile_tor_direct_desc">Direct Tor connection via installed Tor daemon or bridge. No Aether.</string>
-    <string name="profile_aether_tor_title">Aether → Tor</string>
-    <string name="profile_aether_tor_route">Phone → Aether → Tor</string>
-    <string name="profile_aether_tor_desc">Aether gateway then Tor exit. Upstream must be Tor SOCKS.</string>
-    <string name="profile_tor_psiphon_title">Tor → Psiphon</string>
-    <string name="profile_tor_psiphon_route">Phone → Tor → Psiphon</string>
-    <string name="profile_tor_psiphon_desc">Tor circuit then Psiphon. Verify chain order and reachability.</string>
-    <string name="profile_tor_aether_title">Tor → Aether</string>
-    <string name="profile_tor_aether_route">Phone → Tor → Aether</string>
-    <string name="profile_tor_aether_desc">Tor as upstream for Aether dial-out. Requires Tor SOCKS upstream.</string>
-
     <!-- Capabilities -->
     <!-- badge_available is in strings.xml canonical -->
     <string name="badge_needs_config">Needs config</string>
@@ -90,7 +77,6 @@
     <!-- Sections -->
     <string name="section_gateway">Gateway</string>
     <string name="section_tunnel">Local proxy</string>
-    <string name="section_tor">Tor</string>
     <string name="section_psiphon">Psiphon</string>
     <string name="section_advanced">Advanced</string>
 
@@ -99,13 +85,6 @@
     <string name="psiphon_endpoint_hint">127.0.0.1:1821 — where your Psiphon instance listens</string>
     <string name="psiphon_region">Psiphon region</string>
     <string name="psiphon_region_hint">DE, US — optional country code</string>
-    <string name="tor_socks">Tor SOCKS</string>
-    <string name="tor_socks_hint">127.0.0.1:9050 — Tor daemon SOCKS address</string>
-    <string name="tor_bridges">Tor bridges (obfs4 / snowflake)</string>
-    <string name="tor_bridges_hint">One bridge per line; used when "Use bridges" enabled</string>
-    <string name="tor_use_bridges">Use bridges</string>
-    <string name="tor_use_bridges_desc">Route Tor through the listed bridges</string>
-
     <!-- Profile UI -->
     <string name="aether_profiles_title">Connection profiles</string>
     <string name="aether_profiles_intro">Choose a routing profile. Only settings relevant to the selected profile are shown. Advanced options are collapsed by default.</string>
@@ -187,73 +166,6 @@
 
 
     <!-- Engine options (the core's own command line, AetherEngineOptions) -->
-    <string name="aether_engine_section">Engine options</string>
-    <string name="aether_engine_section_desc">Every remaining flag the Aether core accepts, modelled one-to-one against aether/src/cli.rs. All of them are handed to aether_core_start on every start.</string>
-
-    <string name="aether_engine_tor_mode">Tor layering</string>
-    <string name="aether_engine_tor_bridges">Bridge source</string>
-    <string name="aether_engine_tor_bridge_lines">Bridge lines</string>
-    <string name="aether_engine_tor_bridge_lines_hint">One bridge per line, in the shape torrc uses: obfs4 1.2.3.4:443 FINGERPRINT cert=… iat-mode=0</string>
-    <string name="aether_engine_tor_relays">Onionoo relays</string>
-    <string name="aether_engine_tor_relays_hint">auto, only, off, or a count such as 80</string>
-    <string name="aether_engine_tor_pt">Pluggable transport</string>
-    <string name="aether_engine_tor_pt_hint">Absolute path to a transport binary, e.g. /data/app/…/liblyrebird.so</string>
-    <string name="aether_engine_tor_dir">Tor state directory</string>
-
-    <string name="aether_engine_psiphon_mode">Psiphon layering</string>
-    <string name="aether_engine_psiphon_region">Psiphon egress region</string>
-    <string name="aether_engine_psiphon_region_hint">Two-letter country code, or empty for automatic</string>
-    <string name="aether_engine_psiphon_cdn_mode">Psiphon mode</string>
-    <string name="aether_engine_psiphon_cdn_mode_hint">auto, cdn or direct</string>
-    <string name="aether_engine_psiphon_cdn_ips">CDN fronting IPs</string>
-    <string name="aether_engine_psiphon_cdn_ips_hint">Comma or space separated addresses; empty uses Psiphon\u2019s own list</string>
-    <string name="aether_engine_psiphon_cdn_sni">CDN fronting SNIs</string>
-
-    <string name="aether_engine_zt_team">Zero Trust team name</string>
-    <string name="aether_engine_zt_access_id">Access client id</string>
-    <string name="aether_engine_zt_access_secret">Access client secret</string>
-    <string name="aether_engine_zt_access_email">Access email</string>
-    <string name="aether_engine_zt_access_email_hint">Sign in with a one-time code sent to this address</string>
-    <string name="aether_engine_zt_access_token">Access token</string>
-    <string name="aether_engine_zt_gateway">Route through the Zero Trust gateway</string>
-    <string name="aether_engine_zt_gateway_desc">Sends HTTP and HTTPS through the organization\u2019s gateway proxy so its filtering and logging apply. It adds a hop inside the tunnel.</string>
-
-    <string name="aether_engine_route_block">Blocked routes</string>
-    <string name="aether_engine_route_block_hint">example.com, full:host, keyword:text, regexp:^ad[0-9]+, 10.0.0.0/8, port:25, private</string>
-    <string name="aether_engine_route_direct">Direct routes</string>
-    <string name="aether_engine_route_file">Routes file</string>
-    <string name="aether_engine_route_file_hint">TOML with a [block] and a [direct] section</string>
-
-    <string name="aether_engine_tls_ciphers">TLS 1.2 cipher suites</string>
-    <string name="aether_engine_tls_groups">TLS groups</string>
-    <string name="aether_engine_tls_grease">Disable GREASE</string>
-    <string name="aether_engine_tls_grease_desc">Leave out the GREASE values (RFC 8701) Chrome\u2019s fingerprint carries by default.</string>
-    <string name="aether_engine_ech_value">ECH key</string>
-    <string name="aether_engine_ech_value_hint">auto, or a base64 Encrypted Client Hello config list</string>
-    <string name="aether_engine_ech_dns">ECH DNS resolver</string>
-    <string name="aether_engine_ech_dns_hint">udp://ip[:port], tcp://ip[:port] or an https:// DoH URL, with @address= / @sni= overrides</string>
-    <string name="aether_engine_ech_domain">ECH domain</string>
-
-    <string name="aether_engine_misc">Routing and reporting</string>
-    <string name="aether_engine_mark">Firewall mark (SO_MARK)</string>
-    <string name="aether_engine_mark_hint">Needs root or CAP_NET_ADMIN; a name is resolved outside the mark</string>
-    <string name="aether_engine_stats">Log tunnel traffic statistics</string>
-    <string name="aether_engine_stats_desc">How much went up and down and how long the tunnel has been up.</string>
-    <string name="aether_engine_stats_secs">Statistics interval (s)</string>
-    <string name="aether_engine_exit_loc">Exit country filter</string>
-    <string name="aether_engine_exit_loc_hint">!IR,AZ,RU blocks those; DE,SE allows only those. Empty disables the check.</string>
-    <string name="aether_engine_register">Register identities and exit</string>
-    <string name="aether_engine_register_hint">masque, wg, gool, mim or all (the --register flag)</string>
-
-    <string name="aether_engine_off">Off</string>
-    <string name="aether_engine_chain">Chain</string>
-    <string name="aether_engine_reverse">Reverse</string>
-    <string name="aether_engine_only">Only</string>
-    <string name="aether_engine_bridges_default">Engine default</string>
-    <string name="aether_engine_bridges_auto">Fetch bridges</string>
-    <string name="aether_engine_bridges_off">Never bridges</string>
-    <string name="aether_engine_bridges_custom">The lines below</string>
-
     <!-- Operational log panel -->
     <string name="aether_log_title">Aether activity</string>
     <string name="aether_log_empty">No Aether events yet. Start the tunnel to see what it does.</string>
@@ -276,92 +188,4 @@
     <string name="aether_log_state_error">Error</string>
 
     <!-- Engine options, second half: the families that had no control yet. -->
-    <string name="aether_engine_carrier">Carrier endpoints</string>
-    <string name="aether_engine_h2_peer">HTTP/2 peer</string>
-    <string name="aether_engine_h2_peer_hint">ip:port the HTTP/2 MASQUE carrier dials</string>
-    <string name="aether_engine_masque_config">MASQUE config path</string>
-    <string name="aether_engine_masque_config_hint">A JSON config laid over the built-in MASQUE settings</string>
-    <string name="aether_engine_wg_config">WireGuard config path</string>
-    <string name="aether_engine_wg_config_hint">A WireGuard config to use instead of registering one</string>
-    <string name="aether_engine_wg_peer">WireGuard peer</string>
-    <string name="aether_engine_wg_peer_hint">ip:port, or empty for the scanned endpoint</string>
-    <string name="aether_engine_gool">Gool (WARP inside WARP)</string>
-    <string name="aether_engine_gool_classic">Classic gool</string>
-    <string name="aether_engine_gool_classic_desc">Carry WireGuard inside WireGuard instead of inside MASQUE. The older shape, for networks that block MASQUE.</string>
-    <string name="aether_engine_gool_peer">Gool inner peer</string>
-    <string name="aether_engine_gool_peer_hint">ip:port the inner WireGuard tunnel dials; naming it selects gool</string>
-    <string name="aether_engine_gool_inner">Inner hop</string>
-    <string name="aether_engine_gool_inner_hint">ip:port, reached through the outer hop</string>
-    <string name="aether_engine_gool_outer">Outer hop</string>
-    <string name="aether_engine_gool_outer_hint">ip:port, the hop the network sees</string>
-    <string name="aether_engine_gool_peers">Both hops</string>
-    <string name="aether_engine_gool_peers_hint">outer,inner or just the outer address</string>
-    <string name="aether_engine_gool_scan">Scan for both hops</string>
-    <string name="aether_engine_gool_scan_desc">Ignore any endpoint above and let the core scan. Replaces an explicit peer list.</string>
-    <string name="aether_engine_mim">MASQUE-in-MASQUE</string>
-    <string name="aether_engine_mim_inner">Inner hop</string>
-    <string name="aether_engine_mim_inner_hint">ip:port, the second MASQUE hop</string>
-    <string name="aether_engine_mim_outer">Outer hop</string>
-    <string name="aether_engine_mim_outer_hint">ip:port, the first MASQUE hop</string>
-    <string name="aether_engine_mim_peers">Both hops</string>
-    <string name="aether_engine_mim_peers_hint">outer,inner; the two must differ</string>
-    <string name="aether_engine_mim_scan">Scan for both hops</string>
-    <string name="aether_engine_mim_scan_desc">Let the core pick both hops. Replaces an explicit peer list.</string>
-    <string name="aether_engine_tor_bridge_file">Bridge file</string>
-    <string name="aether_engine_tor_bridge_file_hint">A file of bridge lines, as an alternative to the box above</string>
-    <string name="aether_engine_tor_relay_ports">Relay ports</string>
-    <string name="aether_engine_tor_relay_ports_hint">443, 80, 9001 or a range such as 443-9001</string>
-    <string name="aether_engine_tor_pt_dir">Pluggable transport directories</string>
-    <string name="aether_engine_tor_pt_dir_hint">One directory per line; the bundled transport lives in the native library directory</string>
-    <string name="aether_engine_tor_bind">Tor SOCKS address</string>
-    <string name="aether_engine_tor_bind_hint">127.0.0.1:9050 style; also where --tor-only serves</string>
-    <string name="aether_engine_tor_http">Tor HTTP proxy address</string>
-    <string name="aether_engine_tor_http_hint">127.0.0.1:port, optional second listener</string>
-    <string name="aether_engine_psiphon_cdn_sets">CDN edge sets</string>
-    <string name="aether_engine_psiphon_cdn_sets_hint">psiphon-akamai, psiphon-bunny, vercel, github, cloudfront</string>
-    <string name="aether_engine_psiphon_config">Psiphon config path</string>
-    <string name="aether_engine_psiphon_config_hint">A psiphon JSON config laid over the generated one</string>
-    <string name="aether_engine_psiphon_server_entries">Server entries</string>
-    <string name="aether_engine_psiphon_server_entries_hint">Base64 server entries, comma separated</string>
-    <string name="aether_engine_psiphon_bind">Psiphon SOCKS address</string>
-    <string name="aether_engine_psiphon_bind_hint">127.0.0.1:1821 by default</string>
-    <string name="aether_engine_psiphon_http">Psiphon HTTP proxy address</string>
-    <string name="aether_engine_psiphon_http_hint">127.0.0.1:port, optional second listener</string>
-    <string name="aether_engine_psiphon_dir">Psiphon state directory</string>
-    <string name="aether_engine_psiphon_dir_hint">Must be writable; the bundled default is used when empty</string>
-    <string name="aether_engine_psiphon_bin">Psiphon executable</string>
-    <string name="aether_engine_psiphon_bin_hint">Empty uses the packaged libpsiphon_tunnel_core.so</string>
-    <string name="aether_engine_tls_verify">Verify the TLS chain</string>
-    <string name="aether_engine_tls_verify_desc">Turn certificate verification back on. Off is the engine default, chosen for a censored network.</string>
-    <string name="aether_engine_tls_no_quic_v2">Disable QUIC v2</string>
-    <string name="aether_engine_tls_no_quic_v2_desc">Force QUIC version 1, which some middleboxes treat differently from v2.</string>
-    <string name="aether_engine_timing">Timing</string>
-    <string name="aether_engine_startup_secs">Startup budget (s)</string>
-    <string name="aether_engine_startup_secs_hint">How long a start may take before it is called a failure</string>
-    <string name="aether_engine_reconnect_secs">Reconnect delay (s)</string>
-    <string name="aether_engine_validate_secs">Validation interval (s)</string>
-    <string name="aether_engine_keepalive_secs">Keepalive (s)</string>
-    <string name="aether_engine_no_data_check">Skip the post-connect data check</string>
-    <string name="aether_engine_no_data_check_desc">Accept a tunnel as up without waiting for traffic to come back through it.</string>
-    <string name="aether_engine_no_profile_retry">Do not retry other profiles</string>
-    <string name="aether_engine_no_profile_retry_desc">Stay on the profile that was chosen instead of falling back after a failure.</string>
-    <string name="aether_engine_exit_loc_secs">Exit check interval (s)</string>
-    <string name="aether_engine_exit_loc_secs_hint">How often the exit country is re-checked; empty uses the core default</string>
-    <string name="aether_engine_api_fragment">Reach the API over the fragmented route</string>
-    <string name="aether_engine_api_fragment_desc">Registration and identity calls go through the same fragmented ClientHello as the tunnel.</string>
-    <string name="aether_engine_enroll_address">Enrolment endpoint</string>
-    <string name="aether_engine_enroll_address_hint">A custom WARP API base address, for a self-hosted enrolment</string>
-    <string name="aether_engine_logging">Logging</string>
-    <string name="aether_engine_log_level">Log level</string>
-    <string name="aether_engine_verbose">Verbose</string>
-    <string name="aether_engine_verbose_desc">Shorthand for debug level, kept because the core parses it.</string>
-    <string name="aether_engine_perf">Performance profile</string>
-    <string name="aether_engine_perf_hint">A named profile the core reports timings under</string>
-    <string name="aether_engine_log_default">Engine default</string>
-    <string name="aether_engine_log_error">Error</string>
-    <string name="aether_engine_log_warn">Warning</string>
-    <string name="aether_engine_log_info">Info</string>
-    <string name="aether_engine_log_debug">Debug</string>
-    <string name="aether_engine_log_trace">Trace</string>
-
 </resources>

@@ -209,8 +209,9 @@ holds no executable code.
   `aether_scan_start` / `aether_tunnel_start` bindings were removed from
   `AetherBridge`, from `aether-wrapper` and from the service, because their
   payloads could not carry most of the configuration.
-* `--register` (in the engine options group) runs the same job as a one-shot
-  registration and exits, bounded by `AetherJobPolling.identityTimeoutMs()`.
+* Registration is the core's own first-run behaviour: a start with no identity
+  file at `--config` registers one before dialling. The explicit `--register`
+  run and the engine-options group that edited it were removed.
 * Each start first calls `AetherBridge.envReset()`, which removes every `AETHER_*`
   variable the previous start left in the process environment. Without it, turning
   a layer off in the screen would leave the previous value in force, because the

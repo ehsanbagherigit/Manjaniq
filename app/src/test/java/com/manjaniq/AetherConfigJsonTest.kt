@@ -118,23 +118,38 @@ class AetherConfigJsonTest {
     @Test
     fun profileConfigCarriesBaseAndRouteExtras() {
         val pc = AetherProfileConfig(
-            profileId = AetherProfile.AETHER_TOR.id,
-            // Deliberately a combination validate() refuses to start: persistence is a
-            // dumb carrier, so a stored value must survive the round trip rather than be
+            profileId = AetherProfile.AETHER_PSIPHON.id,
+            // Deliberately a combination the start refuses: persistence is a dumb
+            // carrier, so a stored value must survive the round trip rather than be
             // dropped or silently rewritten on the way through JSON.
             base = AetherConfig.DEFAULT.copy(transport = "wg", fragmentEnabled = true),
             psiphonEnabled = true,
             psiphonEndpoint = "127.0.0.1:1821",
-            psiphonRegion = "DE",
-            torSocks = "127.0.0.1:9050",
-            torBridges = "obfs4 198.51.100.9:443 ABCD cert=xyz iat-mode=0",
-            torUseBridges = true
+            psiphonRegion = "DE"
         )
         val back = AetherProfileConfig.fromJson(pc.toJson())
         assertEquals(pc, back)
         assertEquals("wg", back!!.base.transport)
         assertTrue(back.base.fragmentEnabled)
-        assertEquals("127.0.0.1:9050", back.torSocks)
+        assertEquals("DE", back.psiphonRegion)
+    }
+
+    /**
+     * A route stored by a build that still had the Tor fields and the engine
+     * options: the removed members are simply not read, and nothing else shifts.
+     */
+    @Test
+    fun aRouteStoredWithTheRemovedSectionsStillLoads() {
+        val legacy = """
+            {"profileId":"warp_direct","torSocks":"127.0.0.1:9050",
+             "torBridges":"obfs4 198.51.100.9:443","torUseBridges":true,
+             "base":{"transport":"gool","engine":{"tor":{"mode":"chain"}}}}
+        """.trimIndent()
+        val back = AetherProfileConfig.fromJson(legacy)
+        assertNotNull("a stored route from an older build must still load", back)
+        assertEquals("warp_direct", back!!.profileId)
+        assertEquals("gool", back.base.transport)
+        assertNull(back.validateForProfile(AetherProfile.WARP_DIRECT))
     }
 
     @Test
@@ -147,11 +162,12 @@ class AetherConfigJsonTest {
 
     @Test
     fun routeExtrasAreValidatedForTheirOwnRoute() {
-        val base = AetherProfileConfig(profileId = AetherProfile.TOR_DIRECT.id)
-        assertNull(base.validateForProfile(AetherProfile.TOR_DIRECT))
-        assertNotNull(
-            base.copy(torSocks = "127.0.0.1:http").validateForProfile(AetherProfile.TOR_DIRECT)
-        )
+        val base = AetherProfileConfig(profileId = AetherProfile.AETHER_PSIPHON.id)
+        // No helper is packaged on the host, so asking for Psiphon is refused with
+        // the executable named rather than started and left to fail.
+        val message = base.copy(psiphonEnabled = true).validateForProfile(AetherProfile.AETHER_PSIPHON)
+        assertNotNull("Psiphon without its helper must not validate", message)
+        assertTrue(message!!.contains("psiphon"))
         assertNotNull(
             base.copy(psiphonEnabled = true, psiphonEndpoint = "127.0.0.1:1")
                 .validateForProfile(AetherProfile.AETHER_PSIPHON)
@@ -159,7 +175,7 @@ class AetherConfigJsonTest {
         // An unusable base config is rejected through the profile wrapper too.
         assertNotNull(
             base.copy(base = AetherConfig.DEFAULT.copy(socksBind = "0.0.0.0:1819"))
-                .validateForProfile(AetherProfile.TOR_DIRECT)
+                .validateForProfile(AetherProfile.AETHER_PSIPHON)
         )
     }
 }
