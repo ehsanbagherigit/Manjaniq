@@ -173,7 +173,7 @@
     <string name="aether_fragment_status_on">Applied — this route runs MASQUE over HTTP/2</string>
     <string name="aether_fragment_status_off">Off — this route runs MASQUE over HTTP/3 (QUIC)</string>
     <string name="aether_fragment_carrier_switch">Turning fragmenting on switches this route\u2019s MASQUE carrier from HTTP/3 (QUIC) to HTTP/2 (TCP), because the fragments are written into that carrier\u2019s TLS ClientHello (aether/src/masque_h2.rs). The scan and the tunnel both follow the carrier, so nothing is left half applied.</string>
-    <string name="aether_fragment_needs_masque">These values are stored with the route and sent to Aether, which writes the fragments into the MASQUE-over-HTTP/2 carrier's ClientHello only. This route uses %1$s, so the tunnel carries the setting without using it.</string>
+    <string name="aether_fragment_needs_masque">These values are stored with the route and sent to Aether, which writes the fragments into the MASQUE-over-HTTP/2 carrier\'s ClientHello only. This route uses %1$s, so the tunnel carries the setting without using it.</string>
     <string name="aether_fragment_saved">Fragmenting saved with the route; Aether applies it on the next start.</string>
     <string name="aether_fragment_saved_restart">Fragmenting saved; Aether is restarting with it.</string>
     <string name="aether_fragment_scope">One carrier only: MASQUE over HTTP/2. Turning fragmenting on selects that carrier for you - on masque, gool and mim alike - and turning it off selects QUIC again. WireGuard has no such carrier, so a WireGuard route carries the setting without using it.</string>
