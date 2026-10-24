@@ -119,8 +119,9 @@ class AetherPanelUiTest {
         // here: a host-JVM viewport is not a device viewport.
         // The selected route owns its settings, and they start open.
         compose.onNodeWithTag(AetherTestTags.routeSettings("warp_direct")).assertExists()
-        // Routes that need an external component stay listed, never hidden.
-        listOf("tor_direct", "aether_psiphon", "aether_tor", "tor_psiphon", "tor_aether").forEach {
+        // The one route that needs an external component stays listed, never
+        // hidden. (The four Tor routes were removed with the Tor configuration.)
+        listOf("warp_direct", "aether_psiphon").forEach {
             compose.onNodeWithTag(AetherTestTags.routeCard(it)).assertExists()
         }
     }
@@ -453,8 +454,8 @@ class AetherPanelUiTest {
         // The panel flags unsaved edits instead of silently keeping them.
         waitForText(UNSAVED_HINT, present = true)
 
-        toggle(AetherTestTags.routeCard("tor_aether"))
-        waitForNode(AetherTestTags.routeSettings("tor_aether"), present = true)
+        toggle(AetherTestTags.routeCard("aether_psiphon"))
+        waitForNode(AetherTestTags.routeSettings("aether_psiphon"), present = true)
 
         toggle(AetherTestTags.routeCard("warp_direct"))
         waitForNode(AetherTestTags.routeSettings("warp_direct"), present = true)
