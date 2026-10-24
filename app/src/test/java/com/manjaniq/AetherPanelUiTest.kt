@@ -16,7 +16,6 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.manjaniq.core.AetherRepository
-import com.manjaniq.core.AetherScanOutcome
 import com.manjaniq.core.models.AetherState
 import com.manjaniq.ui.AetherTestTags
 import com.manjaniq.ui.components.MAX_RENDERED_LINES
@@ -223,9 +222,9 @@ class AetherPanelUiTest {
         openAether()
         AetherRepository.clearLogs()
 
-        // Failure: the exact text AetherService publishes when a scan verifies
-        // candidates and none of them pass.
-        val report = AetherScanOutcome.report("prober: no clean endpoint found", 140_000L)
+        // Failure: the text the engine reports when a scan verifies candidates and
+        // none of them pass.
+        val report = "Aether failed: prober: no clean endpoint found"
         AetherRepository.log("ERROR", report)
         AetherRepository.updateState(AetherState.ERROR, report)
 
@@ -306,10 +305,10 @@ class AetherPanelUiTest {
         compose.onNodeWithTag(AetherTestTags.FRAGMENT_DELAY).assertExists()
         compose.onNodeWithTag(AetherTestTags.FRAGMENT_SNI).assertExists()
         waitForText("AETHER_MASQUE_H2_FRAGMENT", present = true)
-        // Which transports it would apply to is stated, so it can never be read
-        // as a global "all transports" control.
+        // Which carrier it belongs to is stated, so it can never be read as a
+        // global "all transports" control.
         waitForText("MASQUE over HTTP/2", present = true)
-        waitForText("never to WireGuard", present = true)
+        waitForText("WireGuard route carries the setting without using it", present = true)
 
         toggle(AetherTestTags.sectionToggle("tunnel"))
         waitForNode("aether_socks_field", present = true)
@@ -334,22 +333,22 @@ class AetherPanelUiTest {
     }
 
     @Test
-    fun choicesThisBuildCannotForwardSaySoAndAreNotClickable() {
+    fun everyProtocolIsOfferedAndClickable() {
         openAether()
-        // gool and mim are real Aether protocols, but api::Transport::parse maps
-        // everything that is not wg to Masque on the path this build uses.
-        compose.onNodeWithTag(AetherTestTags.transportChip("masque")).assert(hasClickAction())
-        compose.onNodeWithTag(AetherTestTags.transportChip("wg")).assert(hasClickAction())
-        compose.onNodeWithTag(AetherTestTags.transportChip("gool")).assert(hasNoClickAction())
-        compose.onNodeWithTag(AetherTestTags.transportChip("mim")).assert(hasNoClickAction())
-        // The reason is on screen next to them, not in a manual somewhere.
-        waitForText("aether_tunnel_start", present = true)
+        // All four ids are real `cli.rs` protocols, and aether_core_start is the
+        // only start path, so none of them may be greyed out.
+        listOf("masque", "wg", "gool", "mim").forEach { id ->
+            compose.onNodeWithTag(AetherTestTags.transportChip(id)).assert(hasClickAction())
+        }
+        // The two debug-era disclaimers are gone from the panel.
+        waitForText("Not selectable here", present = false)
+        waitForText("Recorded only", present = false)
+        waitForText("Start path", present = false)
 
-        // A setting this build really cannot forward still says so: dns and upstream
-        // are environment-only upstream and have no field on any payload in use.
+        // A setting that used to be labelled "recorded only" is a plain field now.
         toggle(AetherTestTags.sectionToggle("tunnel"))
         waitForNode("aether_dns_field", present = true)
-        waitForText(NOT_FORWARDED_LABEL, present = true)
+        waitForText(NOT_FORWARDED_LABEL, present = false)
     }
 
     /**
@@ -446,12 +445,13 @@ class AetherPanelUiTest {
     }
 
     /**
-     * A route whose transport has no HTTP/2 carrier gets an explanation instead of a
-     * switch: a control that could not reach Aether would be a lie, and the stored
-     * values stay visible.
+     * A route whose transport has no HTTP/2 carrier keeps the same controls: nothing
+     * on this screen is locked behind a mode any more. The one thing the screen says
+     * is where the engine writes the fragments, so the setting is never read as
+     * applying to WireGuard.
      */
     @Test
-    fun fragmentingSaysWhyItIsUnavailableOnAWireGuardRoute() {
+    fun fragmentingStaysEditableOnAWireGuardRouteAndSaysWhereItApplies() {
         openAether()
         // Point the selected route at WireGuard and store it. The gateway group is the
         // one that starts open, so its chips are already on screen.
@@ -461,11 +461,17 @@ class AetherPanelUiTest {
 
         toggle(AetherTestTags.FRAGMENT_SECTION_TOGGLE)
         waitForNode(AetherTestTags.FRAGMENT_UNAVAILABLE, present = true)
-        waitForText("Fragmenting needs the MASQUE transport", present = true)
-        // The stored values are still shown, read-only, so nothing is hidden.
+        waitForText("writes the fragments into the MASQUE-over-HTTP/2 carrier", present = true)
+
+        // Still editable, still saveable: every value here is a flag in the one
+        // `aether_core_start` command line, whatever the transport is.
+        waitForNode(AetherTestTags.FRAGMENT_TOGGLE_SWITCH, present = true)
         compose.onNodeWithTag(AetherTestTags.FRAGMENT_SIZE).assertExists()
-        compose.onAllNodes(hasTestTag(AetherTestTags.FRAGMENT_SAVE)).assertCountEquals(0)
-        compose.onAllNodes(hasTestTag(AetherTestTags.FRAGMENT_TOGGLE_SWITCH)).assertCountEquals(0)
+        compose.onNodeWithTag(AetherTestTags.FRAGMENT_DELAY).assertExists()
+        compose.onNodeWithTag(AetherTestTags.FRAGMENT_SNI_SWITCH).assertExists()
+        toggle(AetherTestTags.FRAGMENT_TOGGLE_SWITCH)
+        waitForText(UNSAVED_HINT, present = true)
+        compose.onNodeWithTag(AetherTestTags.FRAGMENT_SAVE).assertIsEnabled()
     }
 
     @Test
@@ -521,18 +527,12 @@ class AetherPanelUiTest {
     private fun hasClickAction() =
         SemanticsMatcher("Has an OnClick action") { it.config.contains(SemanticsActions.OnClick) }
 
-    private fun hasNoClickAction() =
-        SemanticsMatcher("Has no OnClick action") { !it.config.contains(SemanticsActions.OnClick) }
-
     private companion object {
         /** Must stay in sync with [com.manjaniq.core.AetherLogSanitizer.MASK]. */
         const val MASK_TEXT = "[redacted]"
 
-        /** `R.string.aether_choice_not_forwarded`. */
+        /** A label the single-engine UI no longer prints anywhere. */
         const val NOT_FORWARDED_LABEL = "Recorded only"
-
-        /** `R.string.aether_choice_partial`. */
-        const val PARTIAL_LABEL = "Partly applied"
 
         /** `R.string.aether_unsaved_hint`. */
         const val UNSAVED_HINT = "Unsaved changes"

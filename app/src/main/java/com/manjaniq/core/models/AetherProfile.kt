@@ -38,8 +38,8 @@ enum class AetherProfile(
         iconRes = R.drawable.ic_aether_logo,
         descriptionRes = R.string.profile_tor_direct_desc,
         // tor is compiled into libaether.so (`features = ["tor"]`), so this route
-        // no longer needs a component the build lacks - it needs the full-engine
-        // start path and, for bridges, a pluggable transport.
+        // needs no component the build lacks - only, for bridges, a pluggable
+        // transport.
         capability = ProfileCapability.NeedsConfiguration
     ),
     AETHER_TOR(
@@ -72,8 +72,8 @@ enum class AetherProfile(
      *
      * The static [capability] above is the shipping table: WARP over Aether is
      * always available, the Tor routes need configuration (tor is compiled in,
-     * but a route only applies its settings on the full-engine start path), and
-     * the Psiphon routes need the psiphon-tunnel-core child process.
+     * but bridges need a pluggable transport), and the Psiphon routes need the
+     * psiphon-tunnel-core child process.
      *
      * That last part is not a constant: CI builds the helper and packages it, so
      * a build can ship it or not. [AetherHelpers] answers from the installation
@@ -120,6 +120,50 @@ data class AetherProfileConfig(
     val torBridges: String = "",
     val torUseBridges: Boolean = false
 ) {
+    /**
+     * The engine's command line for this route: [base]'s own arguments, plus the
+     * quick Tor/Psiphon values this data class stores on top of it.
+     *
+     * Those values are the compact form of flags the engine options group edits in
+     * full (`--tor-bind`, `--tor-bridge`/`--tor-bridges`, `--psiphon`,
+     * `--psiphon-region`, `--psiphon-bind`). They fill in only where the detailed
+     * editor left the same flag at the engine's default, so the two editors cannot
+     * emit one flag twice and the detailed one always wins. Nothing here is stored
+     * and then dropped: a value on this screen is a value on the command line.
+     */
+    fun toAetherArgs(
+        contextFilesDir: String,
+        helpers: AetherHelperPaths = AetherHelperPaths.none
+    ): List<String> {
+        val args = base.toAetherArgs(contextFilesDir, helpers).toMutableList()
+        val engine = base.engine
+        if (psiphonEnabled && engine.psiphon.mode == AetherPsiphonMode.OFF) {
+            args += "--psiphon"
+        }
+        if (psiphonRegion.isNotBlank() && engine.psiphon.region.isBlank()) {
+            args += "--psiphon-region"; args += psiphonRegion.trim()
+        }
+        // `psiphonEndpoint` is the local address the child process binds, which is
+        // `--psiphon-bind` (cli.rs:519); an empty value leaves Aether's own choice.
+        if (psiphonEndpoint.isNotBlank() && engine.psiphon.bind.isBlank()) {
+            args += "--psiphon-bind"; args += psiphonEndpoint.trim()
+        }
+        if (torSocks.isNotBlank() && engine.tor.bind.isBlank()) {
+            args += "--tor-bind"; args += torSocks.trim()
+        }
+        // One value owns AETHER_TOR_BRIDGES (`cli.rs:501-506`), so either the named
+        // lines are appended or the automatic fetch is asked for - never both.
+        if (engine.tor.bridges == AetherTorBridges.DEFAULT) {
+            val lines = torBridges.lines().map { it.trim() }.filter { it.isNotEmpty() }
+            if (lines.isNotEmpty()) {
+                lines.forEach { line -> args += "--tor-bridge"; args += line }
+            } else if (torUseBridges) {
+                args += "--tor-bridges"
+            }
+        }
+        return args
+    }
+
     fun validateForProfile(profile: AetherProfile): String? {
         // First validate base
         val baseErr = base.validate()
@@ -184,6 +228,21 @@ data class SettingSection(
 )
 
 /**
+ * One row of the settings screen: a localised title and the keys it draws.
+ *
+ * Every key is checked against [AetherCapabilities.knows], so a route can never
+ * name a setting the screen has no composable for: a typo fails loudly here
+ * instead of making a control disappear without a word. The check runs in the
+ * app too, not only in tests - a settings screen missing a control is exactly
+ * the class of bug this build removes.
+ */
+private fun section(titleRes: Int, vararg keys: String): SettingSection {
+    val unknown = keys.filterNot { AetherCapabilities.knows(it) }
+    require(unknown.isEmpty()) { "unknown Aether setting key(s) $unknown" }
+    return SettingSection(titleRes, keys.toList())
+}
+
+/**
  * The settings a profile owns, in the order the Aether CLI asks for them
  * (protocol -> scan -> IP version -> carrier -> obfuscation -> local proxy).
  *
@@ -193,62 +252,59 @@ data class SettingSection(
  */
 fun getSectionsForProfile(profile: AetherProfile): List<SettingSection> {
     // Keys shared by every route that dials an Aether gateway.
-    val gateway = SettingSection(
-        R.string.section_gateway,
-        listOf("transport", "scanMode", "ipVersion", "peer")
-    )
+    val gateway = section(R.string.section_gateway, "transport", "scanMode", "ipVersion", "peer")
     // Fragmenting is deliberately NOT a per-route section: it belongs to one carrier
     // (MASQUE over HTTP/2) rather than to a route, so it is edited once, in its own
-    // area at the bottom of the Aether screen, for whichever route is selected - and
-    // refused there when the selected transport has no HTTP/2 carrier to fragment on.
-    // aether_tunnel_start has no field for it (ffi.rs:246-260); AetherService applies
-    // it through AetherBridge.fragmentingApply before the scan starts.
-    // See AETHER_CAPABILITIES.md §3.
+    // area at the bottom of the Aether screen, for whichever route is selected.
+    // On the one start path it is a flag of the same `aether_core_start` job -
+    // `--fragment`/`--no-fragment`, `--fragment-size`, `--fragment-delay`, plus the
+    // `--h2`/`--h3` carrier choice - so nothing has to be refused or applied out of
+    // band any more. See AETHER_CAPABILITIES.md §3.
     return when (profile) {
         AetherProfile.WARP_DIRECT -> listOf(
             gateway,
-            SettingSection(R.string.section_tunnel, listOf("socksBind", "httpProxyBind", "dns", "upstream")),
-            SettingSection(
+            section(R.string.section_tunnel, "socksBind", "httpProxyBind", "dns", "upstream"),
+            section(
                 R.string.section_advanced,
-                listOf("noizeProfile", "echEnabled", "quickReconnect", "teamName", "identityPath")
+                "noizeProfile", "echEnabled", "quickReconnect", "teamName", "identityPath"
             )
         )
         AetherProfile.AETHER_PSIPHON -> listOf(
             gateway,
-            SettingSection(R.string.section_psiphon, listOf("psiphonEnabled", "psiphonEndpoint", "psiphonRegion")),
-            SettingSection(R.string.section_tunnel, listOf("socksBind", "httpProxyBind", "dns", "upstream")),
-            SettingSection(
+            section(R.string.section_psiphon, "psiphonEnabled", "psiphonEndpoint", "psiphonRegion"),
+            section(R.string.section_tunnel, "socksBind", "httpProxyBind", "dns", "upstream"),
+            section(
                 R.string.section_advanced,
-                listOf("noizeProfile", "echEnabled", "quickReconnect", "teamName", "identityPath")
+                "noizeProfile", "echEnabled", "quickReconnect", "teamName", "identityPath"
             )
         )
         AetherProfile.TOR_DIRECT -> listOf(
-            SettingSection(R.string.section_tor, listOf("torSocks", "torBridges", "torUseBridges")),
-            SettingSection(R.string.section_tunnel, listOf("socksBind", "dns")),
-            SettingSection(R.string.section_advanced, listOf("ipVersion"))
+            section(R.string.section_tor, "torSocks", "torBridges", "torUseBridges"),
+            section(R.string.section_tunnel, "socksBind", "dns"),
+            section(R.string.section_advanced, "ipVersion")
         )
         AetherProfile.AETHER_TOR -> listOf(
             gateway,
-            SettingSection(R.string.section_tor, listOf("torSocks", "torBridges", "torUseBridges")),
-            SettingSection(R.string.section_tunnel, listOf("socksBind", "httpProxyBind", "dns", "upstream")),
-            SettingSection(
+            section(R.string.section_tor, "torSocks", "torBridges", "torUseBridges"),
+            section(R.string.section_tunnel, "socksBind", "httpProxyBind", "dns", "upstream"),
+            section(
                 R.string.section_advanced,
-                listOf("noizeProfile", "echEnabled", "quickReconnect", "teamName", "identityPath")
+                "noizeProfile", "echEnabled", "quickReconnect", "teamName", "identityPath"
             )
         )
         AetherProfile.TOR_PSIPHON -> listOf(
-            SettingSection(R.string.section_tor, listOf("torSocks", "torBridges", "torUseBridges")),
-            SettingSection(R.string.section_psiphon, listOf("psiphonEnabled", "psiphonEndpoint", "psiphonRegion")),
-            SettingSection(R.string.section_tunnel, listOf("socksBind", "upstream")),
-            SettingSection(R.string.section_advanced, listOf("dns"))
+            section(R.string.section_tor, "torSocks", "torBridges", "torUseBridges"),
+            section(R.string.section_psiphon, "psiphonEnabled", "psiphonEndpoint", "psiphonRegion"),
+            section(R.string.section_tunnel, "socksBind", "upstream"),
+            section(R.string.section_advanced, "dns")
         )
         AetherProfile.TOR_AETHER -> listOf(
-            SettingSection(R.string.section_tor, listOf("torSocks", "torBridges", "torUseBridges")),
+            section(R.string.section_tor, "torSocks", "torBridges", "torUseBridges"),
             gateway,
-            SettingSection(R.string.section_tunnel, listOf("socksBind", "httpProxyBind", "dns", "upstream")),
-            SettingSection(
+            section(R.string.section_tunnel, "socksBind", "httpProxyBind", "dns", "upstream"),
+            section(
                 R.string.section_advanced,
-                listOf("noizeProfile", "echEnabled", "quickReconnect", "teamName", "identityPath")
+                "noizeProfile", "echEnabled", "quickReconnect", "teamName", "identityPath"
             )
         )
     }

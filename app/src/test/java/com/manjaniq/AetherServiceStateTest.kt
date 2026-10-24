@@ -1,11 +1,8 @@
 package com.manjaniq
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.manjaniq.core.AetherJobPolling
 import com.manjaniq.core.AetherRepository
-import com.manjaniq.core.AetherScanOutcome
 import com.manjaniq.core.models.AetherState
-import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -17,13 +14,13 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 /**
- * What the Aether screen is told after each scan outcome.
+ * What the Aether screen is told after each start outcome.
  *
  * `AetherService` cannot run on the host JVM - it is a foreground service over
  * the real FFI and real sockets - so these tests drive the repository exactly as
  * the service does. [begin], [succeed] and [fail] mirror `startAether()` step for
  * step: `requestStart` publishes busy+STARTING and clears the previous error, a
- * finished scan publishes the endpoint and RUNNING, and `failed()` reports a stop
+ * started engine publishes the endpoint and RUNNING, and `failed()` reports a stop
  * the user asked for as STOPPED with no error and anything else as ERROR.
  *
  * What is pinned here is the contract the panel renders: no outcome may leave
@@ -33,7 +30,7 @@ import org.robolectric.annotation.Config
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34])
-class AetherScanStateTest {
+class AetherServiceStateTest {
 
     @Before
     fun resetState() {
@@ -60,14 +57,17 @@ class AetherScanStateTest {
         AetherRepository.updateState(AetherState.STARTING)
     }
 
-    /** `AetherService` after a successful scan: endpoint, log line, RUNNING. */
-    private fun succeed(reply: JSONObject, socks: String = "127.0.0.1:1819"): String {
-        val endpoint = AetherScanOutcome.endpointFrom(reply)
-            ?: throw IllegalStateException("fixture must carry a usable endpoint")
-        AetherRepository.log("OK", "Scan chose endpoint $endpoint")
-        AetherRepository.setEndpoint(endpoint, socks)
+    /**
+     * `AetherService.startEngine` once the loopback probe is answered: it publishes
+     * the configured peer (or `scan` when the engine is doing the choosing), the
+     * listener it probes, and RUNNING.
+     */
+    private fun succeed(peer: String = "", socks: String = "127.0.0.1:1819"): String {
+        val published = peer.trim().ifEmpty { "scan" }
+        AetherRepository.log("OK", "SOCKS5 $socks is accepting connections")
+        AetherRepository.setEndpoint(published, socks)
         AetherRepository.onServiceActionFinished(null, AetherState.RUNNING)
-        return endpoint
+        return published
     }
 
     /** `AetherService.failed()`, including its cancellation branch. */
@@ -83,55 +83,65 @@ class AetherScanStateTest {
     private fun messages(level: String) =
         AetherRepository.logs.value.filter { it.level == level }.map { it.message }
 
-    private fun scanReply(ip: String = "198.51.100.7", port: Int = 443) =
-        JSONObject("""{"ok":true,"endpoint":{"ip":"$ip","port":$port,"rtt_ms":37}}""")
-
     @Test
-    fun aSuccessfulScanPublishesTheChosenEndpointAndTheRunningState() {
+    fun aStartThatReachesAServingTunnelPublishesTheEndpointAndRunning() {
         begin()
         assertTrue(AetherRepository.uiState.value.busy)
         assertEquals(AetherState.STARTING, AetherRepository.uiState.value.state)
 
-        val endpoint = succeed(scanReply())
+        val endpoint = succeed()
 
         val ui = AetherRepository.uiState.value
-        assertEquals("198.51.100.7:443", endpoint)
+        assertEquals("scan", endpoint)
         assertEquals(AetherState.RUNNING, ui.state)
         assertTrue(ui.state.isRunning())
         assertFalse("the start button must not stay in its loading state", ui.busy)
         assertNull(ui.lastError)
         assertEquals(endpoint, ui.endpoint)
         assertEquals("127.0.0.1:1819", ui.socksEndpoint)
-        assertTrue(messages("OK").any { it.contains("Scan chose endpoint 198.51.100.7:443") })
+        assertTrue(messages("OK").any { it.contains("SOCKS5 127.0.0.1:1819 is accepting connections") })
         assertTrue("a success reports no error", messages("ERROR").isEmpty())
     }
 
     @Test
-    fun noCleanEndpointLeavesAetherInErrorAndNeverRunning() {
+    fun aForcedPeerIsWhatThePanelIsTold() {
         begin()
-        fail(AetherScanOutcome.report("prober: no clean endpoint found", 140_000L))
+        val endpoint = succeed(peer = "203.0.113.9:443")
+
+        val ui = AetherRepository.uiState.value
+        assertEquals("203.0.113.9:443", endpoint)
+        assertEquals("203.0.113.9:443", ui.endpoint)
+        assertEquals(AetherState.RUNNING, ui.state)
+    }
+
+    @Test
+    fun aFailedStartLeavesAetherInErrorAndNeverRunning() {
+        begin()
+        fail("Aether failed: prober: no clean endpoint found")
 
         val ui = AetherRepository.uiState.value
         assertEquals(AetherState.ERROR, ui.state)
         assertFalse("Aether must not look like it is running", ui.state.isRunning())
         assertFalse("and it must not look like it is still starting", ui.busy)
-        assertEquals("no endpoint may be published for a scan that chose none", "", ui.endpoint)
+        assertEquals("no endpoint may be published for a start that failed", "", ui.endpoint)
         val error = ui.lastError
         assertTrue("the failure is shown: $error", error != null && error.contains("no clean endpoint"))
         assertTrue(messages("ERROR").isNotEmpty())
     }
 
     @Test
-    fun anExpiredPollDeadlineIsATimeoutAndNotARunningTunnel() {
+    fun anEngineThatNeverCameUpIsAnErrorAndNotARunningTunnel() {
         begin()
-        val timeoutMs = AetherJobPolling.scanTimeoutFor("masque", "ironclad")
-        fail(AetherScanOutcome.report(null, timeoutMs))
+        fail("Aether failed: the job ended before SOCKS5 127.0.0.1:1819 came up (state=closed)")
 
         val ui = AetherRepository.uiState.value
         assertEquals(AetherState.ERROR, ui.state)
         assertFalse(ui.busy)
         assertEquals("", ui.endpoint)
-        assertTrue("says it timed out: ${ui.lastError}", ui.lastError!!.contains("timed out after ${timeoutMs / 1000}s"))
+        assertTrue(
+            "says what happened: ${ui.lastError}",
+            ui.lastError!!.contains("before SOCKS5 127.0.0.1:1819 came up")
+        )
     }
 
     @Test
@@ -139,7 +149,7 @@ class AetherScanStateTest {
         begin()
         // Aether answers a cancelled job with an error, so the service's
         // cancellation branch is what turns it back into a cancellation.
-        fail(AetherScanOutcome.report("cancelled", 60_000L), cancelled = true)
+        fail("Aether stopped", cancelled = true)
 
         val ui = AetherRepository.uiState.value
         assertEquals(AetherState.STOPPED, ui.state)
@@ -166,9 +176,9 @@ class AetherScanStateTest {
     }
 
     @Test
-    fun aRetryAfterAFailedScanClearsTheFailureAndCanSucceed() {
+    fun aRetryAfterAFailedStartClearsTheFailureAndCanSucceed() {
         begin()
-        fail(AetherScanOutcome.report("prober: no clean endpoint found", 140_000L))
+        fail("Aether failed: prober: no clean endpoint found")
         assertEquals(AetherState.ERROR, AetherRepository.uiState.value.state)
 
         begin()
@@ -177,7 +187,7 @@ class AetherScanStateTest {
         assertEquals(AetherState.STARTING, afterRetryStart.state)
         assertTrue(afterRetryStart.busy)
 
-        succeed(scanReply(ip = "203.0.113.9"))
+        succeed(peer = "203.0.113.9:443")
 
         val ui = AetherRepository.uiState.value
         assertEquals(AetherState.RUNNING, ui.state)
@@ -188,12 +198,12 @@ class AetherScanStateTest {
     @Test
     fun aRetryAfterACancelledStartAlsoWorks() {
         begin()
-        fail(AetherScanOutcome.report("cancelled", 60_000L), cancelled = true)
+        fail("Aether stopped", cancelled = true)
         assertEquals(AetherState.STOPPED, AetherRepository.uiState.value.state)
 
         begin()
         assertEquals(AetherState.STARTING, AetherRepository.uiState.value.state)
-        succeed(scanReply())
+        succeed()
         assertEquals(AetherState.RUNNING, AetherRepository.uiState.value.state)
     }
 
@@ -211,7 +221,7 @@ class AetherScanStateTest {
         rawMessages.forEach { raw ->
             resetState()
             begin()
-            fail(AetherScanOutcome.report(raw, 140_000L))
+            fail(raw?.let { "Aether failed: $it" } ?: "Aether failed: unknown error")
             val ui = AetherRepository.uiState.value
             assertFalse("$raw must not leave Aether running", ui.state.isRunning())
             assertFalse("$raw must not leave a transition behind", ui.busy)
@@ -227,10 +237,10 @@ class AetherScanStateTest {
         // resetState() implements, and the reason three assertions about "no
         // endpoint published" used to fail depending on JUnit's method order.
         begin()
-        succeed(scanReply())
+        succeed()
         val dirty = AetherRepository.uiState.value
         assertEquals(AetherState.RUNNING, dirty.state)
-        assertEquals("198.51.100.7:443", dirty.endpoint)
+        assertEquals("scan", dirty.endpoint)
         assertTrue(AetherRepository.logs.value.isNotEmpty())
 
         resetState()
@@ -247,7 +257,7 @@ class AetherScanStateTest {
     @Test
     fun theFailureTextReachesTheOperationalLogAsAnErrorEntry() {
         begin()
-        val report = AetherScanOutcome.report("prober: no clean endpoint found", 140_000L)
+        val report = "Aether failed: prober: no clean endpoint found"
         fail(report)
 
         val errors = messages("ERROR")

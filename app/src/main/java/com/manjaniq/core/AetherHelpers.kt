@@ -148,15 +148,4 @@ object AetherHelpers {
             psiphonDirectory = psiphon.absolutePath
         )
     }
-
-    /**
-     * One line for the log and the settings screen: which helpers this
-     * installation can start. No paths are invented - a missing helper is named
-     * as missing.
-     */
-    fun summary(): String {
-        val psiphon = if (hasPsiphon()) "psiphon-tunnel-core present" else "psiphon-tunnel-core missing"
-        val lyrebird = if (hasPluggableTransport()) "lyrebird present" else "lyrebird missing"
-        return "helpers: $psiphon, $lyrebird"
-    }
 }

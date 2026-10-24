@@ -81,6 +81,6 @@ routes refuse to start with that reason instead of failing inside the engine.
   packages. Plain Tor needs no child process.
 - **Psiphon** (`--psiphon*`): needs the `psiphon-tunnel-core` child process,
   which CI builds and packages. See the GPL-3.0 note above.
-- **Full engine path:** every flag is applied only when a route's start mode is
-  `full` (`aether_core_start`). The granular path still reports each step and is
-  the default; the settings screen says which features a route's mode applies.
+- **One start path:** the app starts Aether through `aether_core_start`, the
+  core's own command line, so every flag a setting produces is applied. The
+  granular FFI calls of earlier builds are no longer used or bound.

@@ -76,87 +76,33 @@ pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherJobFree<'a>(mut env
     c_string_to_jstring(&mut env, ptr)
 }
 
+/// Clears every `AETHER_*` variable this process holds, before a start.
+///
+/// `run_with` reads its settings from the process environment, and `cli::parse_args`
+/// writes them there (`cli.rs:647-653`). An Android process outlives one tunnel, so a
+/// value set by the previous start would otherwise survive into the next one: turning
+/// Tor off would leave `AETHER_TOR=chain` behind, and the engine would keep chaining
+/// through Tor while the screen said it was off. Nothing else can clear it - the app
+/// has no `setenv` of its own, and the core only clears the variables it writes.
+///
+/// Only names that start with `AETHER_` are removed, so this cannot touch anything the
+/// platform or another library set. It is called synchronously, before
+/// `nativeAetherCoreStart` spawns the job that parses the argument list, so a start
+/// always begins from the argument list and nothing else.
+///
+/// Reply: `{"ok":true,"cleared":<n>}`.
 #[no_mangle]
-pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherIdentityOpen<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>, payload: JString<'a>,
+pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherEnvReset<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
 ) -> JString<'a> {
-    let rust_payload = jstring_to_rust(&mut env, payload);
-    let c_payload = match CString::new(rust_payload) {
-        Ok(c) => c,
-        Err(_) => {
-            return env
-                .new_string("{\"ok\":false,\"error\":\"payload contained null byte\"}")
-                .unwrap()
-        }
-    };
-    let ptr = unsafe { aether::ffi::aether_identity_open(c_payload.as_ptr()) };
-    c_string_to_jstring(&mut env, ptr)
-}
-
-#[no_mangle]
-pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherIdentitySummary<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
-    id: i64,
-) -> JString<'a> {
-    let ptr = aether::ffi::aether_identity_summary(id as u64);
-    c_string_to_jstring(&mut env, ptr)
-}
-
-#[no_mangle]
-pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherIdentityFree<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
-    id: i64,
-) -> JString<'a> {
-    let ptr = aether::ffi::aether_identity_free(id as u64);
-    c_string_to_jstring(&mut env, ptr)
-}
-
-#[no_mangle]
-pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherScanStart<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
-    identityId: i64, payload: JString<'a>,
-) -> JString<'a> {
-    let rust_payload = jstring_to_rust(&mut env, payload);
-    let c_payload = match CString::new(rust_payload) {
-        Ok(c) => c,
-        Err(_) => {
-            return env
-                .new_string("{\"ok\":false,\"error\":\"payload contained null byte\"}")
-                .unwrap()
-        }
-    };
-    let ptr = unsafe { aether::ffi::aether_scan_start(identityId as u64, c_payload.as_ptr()) };
-    c_string_to_jstring(&mut env, ptr)
-}
-
-#[no_mangle]
-pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherVerifyStart<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
-    identityId: i64, payload: JString<'a>,
-) -> JString<'a> {
-    let rust_payload = jstring_to_rust(&mut env, payload);
-    let c_payload = match CString::new(rust_payload) {
-        Ok(c) => c,
-        Err(_) => {
-            return env
-                .new_string("{\"ok\":false,\"error\":\"payload contained null byte\"}")
-                .unwrap()
-        }
-    };
-    let ptr = unsafe { aether::ffi::aether_verify_start(identityId as u64, c_payload.as_ptr()) };
-    c_string_to_jstring(&mut env, ptr)
-}
-
-#[no_mangle]
-pub extern "C" fn Java_com_manjaniq_AetherBridge_nativeAetherTunnelStart<'a>(mut env: JNIEnv<'a>, _class: JClass<'a>,
-    identityId: i64, payload: JString<'a>,
-) -> JString<'a> {
-    let rust_payload = jstring_to_rust(&mut env, payload);
-    let c_payload = match CString::new(rust_payload) {
-        Ok(c) => c,
-        Err(_) => {
-            return env
-                .new_string("{\"ok\":false,\"error\":\"payload contained null byte\"}")
-                .unwrap()
-        }
-    };
-    let ptr = unsafe { aether::ffi::aether_tunnel_start(identityId as u64, c_payload.as_ptr()) };
-    c_string_to_jstring(&mut env, ptr)
+    let names: Vec<String> = std::env::vars()
+        .map(|(key, _)| key)
+        .filter(|key| key.starts_with("AETHER_"))
+        .collect();
+    for name in &names {
+        std::env::remove_var(name);
+    }
+    let reply = format!("{{\"ok\":true,\"cleared\":{}}}", names.len());
+    env.new_string(reply).unwrap_or_else(|_| env.new_string("{\"ok\":false,\"error\":\"could not report the reset\"}").unwrap())
 }
 
 #[no_mangle]

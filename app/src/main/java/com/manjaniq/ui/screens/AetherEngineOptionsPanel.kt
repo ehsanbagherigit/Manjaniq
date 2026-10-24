@@ -22,7 +22,6 @@ import com.manjaniq.core.models.AetherConfig
 import com.manjaniq.core.models.AetherEngineOptions
 import com.manjaniq.core.models.AetherLogLevel
 import com.manjaniq.core.models.AetherPsiphonMode
-import com.manjaniq.core.models.AetherStartMode
 import com.manjaniq.core.models.AetherTorBridges
 import com.manjaniq.core.models.AetherTorMode
 import com.manjaniq.ui.AetherAccentSoft
@@ -40,10 +39,8 @@ import com.manjaniq.ui.components.AetherSection
  * own default. Nothing is translated twice - `AetherConfig.toAetherArgs` is what
  * the service passes to `aether_core_start`.
  *
- * These flags only take effect on the full-engine start path, because the
- * granular FFI payloads have no field for them (`ffi.rs:215-260`). The section
- * says so instead of letting a saved value look applied, and every route shows
- * the same information through `AetherConfig.commandLineOnlyFeatures()`.
+ * These flags are handed to the engine on every start: the app has one start
+ * path, `aether_core_start`, and it runs exactly this command line.
  *
  * Secrets (the Zero Trust client secret and access token) are ordinary text
  * fields here for exactly as long as they are being edited; they are never
@@ -645,11 +642,6 @@ fun AetherEngineOptionsSection(
             }
         )
 
-        Text(
-            text = stringResource(R.string.aether_engine_helper_note),
-            color = AetherAccentSoft,
-            fontSize = 11.sp
-        )
     }
 }
 
@@ -826,7 +818,3 @@ private fun engineOptionsSummary(engine: AetherEngineOptions): String {
         parts.joinToString(" · ")
     }
 }
-
-/** True when [base] runs the core's command line, i.e. when the flags above apply. */
-fun engineOptionsApply(base: AetherConfig): Boolean =
-    AetherStartMode.isFullEngine(base.startMode)

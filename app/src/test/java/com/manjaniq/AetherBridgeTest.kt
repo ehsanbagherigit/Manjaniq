@@ -1,6 +1,8 @@
 package com.manjaniq
 
-import org.junit.Assert.*
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -34,6 +36,7 @@ class AetherBridgeTest {
         AetherBridge.testBridge()
         AetherBridge.version()
         AetherBridge.jobPoll(1)
-        AetherBridge.identitySummary(1)
+        AetherBridge.jobFree(1)
+        AetherBridge.coreStart(listOf("--bind", "127.0.0.1:1819"))
     }
 }

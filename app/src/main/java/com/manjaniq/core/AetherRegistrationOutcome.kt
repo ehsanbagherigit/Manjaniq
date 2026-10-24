@@ -4,7 +4,7 @@ package com.manjaniq.core
  * What an Aether registration (identity open) failure actually means, classified
  * from the message the engine itself returned.
  *
- * The path is app -> [com.manjaniq.AetherBridge.identityOpen] ->
+ * The path is app -> [com.manjaniq.AetherBridge.coreStart] (`--register`) ->
  * `aether_identity_open` (ffi.rs:331-368) -> `api::open_identity`
  * (api.rs:319-338), which **loads** the identity file when it exists and only
  * **provisions** one when it does not, so every message below comes from a
@@ -23,7 +23,7 @@ package com.manjaniq.core
  *    while 429/408/5xx are retried (`worth_retrying`, account.rs:279-288) and may
  *    sleep a `Retry-After` of up to 30 s (account.rs:253, 293-304).
  *
- * This mirrors [AetherScanOutcome]: pure, testable, and it never turns a failure
+ * This is pure and testable, and it never turns a failure
  * into a success - it only says, in addition to the engine's own words, which
  * layer failed and what the recoveries are. It does not relax any check: the
  * engine keeps its certificate validation, pinning and fingerprint.

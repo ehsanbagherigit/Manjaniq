@@ -103,9 +103,17 @@ class AetherFragmentingWiringTest {
     // ---- the pairing the engine requires ----
 
     @Test
-    fun theCarrierFollowsFragmentingAndOnlyOnMasque() {
+    fun theCarrierFollowsFragmentingOnEveryProtocolThatHasOne() {
         assertTrue(masque.copy(fragmentEnabled = true).usesHttp2Carrier())
         assertFalse(masque.copy(fragmentEnabled = false).usesHttp2Carrier())
+        // gool and mim run over the MASQUE carrier too, so fragments have somewhere
+        // to go there: `--h2` on `--mim` is HTTP/2 in HTTP/2 (cli.rs:577).
+        listOf("gool", "mim").forEach { id ->
+            val args = AetherConfig.DEFAULT.copy(transport = id, fragmentEnabled = true)
+                .toAetherArgs(filesDir)
+            assertTrue("$id must select the carrier it fragments on: $args", args.contains("--h2"))
+            assertFalse("$id must not also ask for QUIC", args.contains("--h3"))
+        }
         assertFalse(
             "WireGuard has no HTTP/2 carrier to fragment on",
             AetherConfig.DEFAULT.copy(transport = "wg", fragmentEnabled = true).usesHttp2Carrier()
@@ -114,25 +122,31 @@ class AetherFragmentingWiringTest {
 
     // ---- validation and edge cases ----
 
+    /**
+     * Fragmenting is a setting, not a lock: it is stored with the route, exported
+     * with it, and put on the command line whatever the transport is. Only WireGuard
+     * has nowhere to put the fragments, and there the flags still travel - the engine
+     * ignores values whose carrier never runs, and the screen says which carrier they
+     * belong to instead of disabling the control.
+     */
     @Test
-    fun fragmentingOnAnotherTransportIsRefusedBeforeAnythingStarts() {
-        val problem = AetherConfig.DEFAULT.copy(transport = "wg", fragmentEnabled = true).validate()
-        assertNotNull(problem)
-        assertTrue(problem!!, problem.contains("Fragmenting needs the MASQUE transport"))
-    }
-
-    @Test
-    fun goolAndMimAreRefusedBeforeTheFragmentingRuleOnTheGranularPath() {
-        // Transport selectability is checked first, so a stored gool or mim route
-        // cannot reach the fragmenting rule and be started as plain MASQUE. The
-        // reason names the start path now, because the protocols are real on the
-        // full-engine path - that is what makes the refusal a choice rather than a
-        // limitation.
-        listOf("gool", "mim").forEach { id ->
-            val problem = AetherConfig.DEFAULT.copy(transport = id, fragmentEnabled = true).validate()
-            assertNotNull(id, problem)
-            assertTrue(id, problem!!.contains("needs the full-engine start mode"))
+    fun fragmentingIsStoredAndSentOnEveryTransport() {
+        listOf("masque", "wg", "gool", "mim").forEach { id ->
+            val cfg = AetherConfig.DEFAULT.copy(
+                transport = id,
+                fragmentEnabled = true,
+                fragmentSize = "24-48"
+            )
+            assertNull("$id must validate", cfg.validate())
+            val args = cfg.toAetherArgs(filesDir)
+            assertTrue("$id must carry the fragmenting flag: $args", args.contains("--fragment"))
+            assertEquals("24-48", args[args.indexOf("--fragment-size") + 1])
         }
+        // Turning it off is explicit rather than "leave the environment alone".
+        assertTrue(
+            AetherConfig.DEFAULT.copy(transport = "wg").toAetherArgs(filesDir)
+                .contains("--no-fragment")
+        )
     }
 
     @Test

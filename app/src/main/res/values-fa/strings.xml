@@ -8,7 +8,6 @@
     <string name="nav_logs">گزارش‌ها</string>
     <string name="nav_about">درباره</string>
     <string name="nav_open">باز کردن منوی پیمایش</string>
-    <string name="nav_close">بستن منوی پیمایش</string>
 
     <!-- Top Bar -->
     <string name="app_subtitle">کلاینت شبکهٔ چند هسته‌ای</string>
@@ -20,7 +19,6 @@
     <string name="aether_name">ایثر</string>
     <string name="aether_description">کلاینت دور زدن سانسور، طراحی‌شده برای شبکه‌های به‌شدت محدود</string>
     <string name="badge_available">در دسترس</string>
-    <string name="badge_ready">آماده</string>
 
     <!-- Connection Status -->
     <string name="connection_status">وضعیت اتصال</string>
@@ -62,7 +60,6 @@
     <string name="fake_sni_hint">نامی که DPI باید ببیند</string>
     <string name="ttl_trick">ترفند TTL / کاوش hello جعلی</string>
     <string name="ttl_trick_desc">برای fake_sni و combined استفاده می‌شود</string>
-    <string name="fragment_strategy">راهبرد تکه‌تکه‌سازی</string>
     <string name="fragment_delay">تاخیر بین تکه‌ها (ثانیه، ۰ تا ۵)</string>
     <string name="monitor_enabled">نظارت بر اتصال</string>
     <string name="monitor_enabled_desc">جمع‌آوری آمار و نمایش رویدادها در گزارش‌ها</string>
@@ -99,7 +96,6 @@
     <string name="theme_dark">تیره</string>
     <string name="theme_dark_desc">حالت تیره حرفه‌ای (پیش‌فرض)</string>
     <string name="general">عمومی</string>
-    <string name="settings_saved">تنظیمات ذخیره شد. در شروع بعدی اعمال می‌شود.</string>
     <string name="settings_saved_restart">تنظیمات ذخیره و موتور در حال راه‌اندازی مجدد.</string>
     <string name="settings_saved_next">تنظیمات ذخیره شد؛ در شروع دستی بعدی اعمال می‌شود.</string>
     <string name="defaults_restored">مقادیر پیش‌فرض بازیابی شد.</string>
@@ -119,20 +115,17 @@
     <string name="logs_empty">هنوز گزارشی نیست.\n\nموتور را روشن کنید (نظارت روشن، حالت بی‌صدا خاموش)، سپس کلاینت را به پروکسی محلی وصل کنید.</string>
     <string name="logs_paused">نمایش متوقف — موتور همچنان گزارش می‌دهد.</string>
     <string name="filter_all">همه</string>
-    <string name="filter_rsta">RSTA</string>
     <string name="filter_info">اطلاع</string>
     <string name="filter_warn">هشدار</string>
     <string name="filter_error">خطا</string>
 
     <!-- About -->
     <string name="about_title">درباره</string>
-    <string name="about_subtitle">اطلاعات برنامه منجنیق</string>
     <string name="about_description">منجنیق یک کلاینت شبکهٔ ماژولار اندروید است که هسته‌های شخص ثالث را برای دسترسی به اینترنت در محیط‌های شبکه‌ای محدود یکپارچه می‌کند. این برنامه شامل روش‌هایی است که به دور زدن سانسور و فیلتر کردن مبتنی بر DPI کمک می‌کند.</string>
     <string name="version">نسخه</string>
     <string name="engine">موتور</string>
     <string name="engine_name">چند هسته‌ای</string>
     <string name="repository">مخزن</string>
-    <string name="license">مجوز</string>
 
     <!-- Connection Details Expanded -->
     <string name="live_statistics">آمار زنده</string>
@@ -152,10 +145,8 @@
     <string name="cd_manjaniq_logo">لوگوی منجنیق</string>
     <string name="cd_rsta_logo">لوگوی RSTA</string>
     <string name="cd_aether_logo">لوگوی ایثر</string>
-    <string name="cd_status_indicator">نشانگر وضعیت</string>
 
     <!-- Errors -->
-    <string name="validation_error">خطای اعتبارسنجی</string>
     <string name="listen_port_number">پورت شنود باید عدد باشد</string>
     <string name="target_port_number">پورت مقصد باید عدد باشد</string>
     <string name="fragment_delay_number">تاخیر تکه‌تکه‌سازی باید عدد باشد</string>

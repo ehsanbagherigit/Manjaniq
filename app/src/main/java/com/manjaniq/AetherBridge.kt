@@ -82,12 +82,7 @@ object AetherBridge {
     private external fun nativeAetherJobPoll(id: Long): String
     private external fun nativeAetherJobCancel(id: Long): String
     private external fun nativeAetherJobFree(id: Long): String
-    private external fun nativeAetherIdentityOpen(payload: String): String
-    private external fun nativeAetherIdentitySummary(id: Long): String
-    private external fun nativeAetherIdentityFree(id: Long): String
-    private external fun nativeAetherScanStart(identityId: Long, payload: String): String
-    private external fun nativeAetherVerifyStart(identityId: Long, payload: String): String
-    private external fun nativeAetherTunnelStart(identityId: Long, payload: String): String
+    private external fun nativeAetherEnvReset(): String
     private external fun nativeAetherCoreStart(argsJson: String): String
     private external fun nativeAetherFragmentingApply(payload: String): String
     private external fun nativeAetherTeamSignIn(payload: String): String
@@ -118,99 +113,6 @@ object AetherBridge {
     fun jobCancel(id: Long): Result<JSONObject> = safeJsonCall { nativeAetherJobCancel(id) }
     fun jobFree(id: Long): Result<JSONObject> = safeJsonCall { nativeAetherJobFree(id) }
 
-    fun identityOpen(
-        path: String,
-        transport: String? = null,
-        model: String? = null,
-        locale: String? = null,
-        team: JSONObject? = null
-    ): Result<JSONObject> {
-        val payload = JSONObject().apply {
-            put("path", path)
-            if (transport != null) put("transport", transport)
-            if (model != null) put("model", model)
-            if (locale != null) put("locale", locale)
-            if (team != null) put("team", team)
-        }
-        return safeJsonCall { nativeAetherIdentityOpen(payload.toString()) }
-    }
-
-    fun identitySummary(id: Long): Result<JSONObject> =
-        safeJsonCall { nativeAetherIdentitySummary(id) }
-
-    fun identityFree(id: Long): Result<JSONObject> =
-        safeJsonCall { nativeAetherIdentityFree(id) }
-
-    fun scanStart(
-        identityId: Long,
-        transport: String? = null,
-        mode: String? = null,
-        ip: String? = null,
-        profile: String? = null,
-        ports: List<Int>? = null,
-        excluded: List<String>? = null,
-        ech: Boolean? = null
-    ): Result<JSONObject> {
-        val payload = JSONObject().apply {
-            if (transport != null) put("transport", transport)
-            if (mode != null) put("mode", mode)
-            if (ip != null) put("ip", ip)
-            if (profile != null) put("profile", profile)
-            if (ports != null) put("ports", org.json.JSONArray(ports))
-            if (excluded != null) put("excluded", org.json.JSONArray(excluded))
-            if (ech != null) put("ech", ech)
-        }
-        return safeJsonCall { nativeAetherScanStart(identityId, payload.toString()) }
-    }
-
-    fun verifyStart(
-        identityId: Long,
-        peer: String,
-        transport: String? = null,
-        socks: String? = null,
-        http: String? = null,
-        profile: String? = null,
-        keepalive: Int? = null,
-        ech: Boolean? = null
-    ): Result<JSONObject> {
-        val payload = JSONObject().apply {
-            put("peer", peer)
-            if (transport != null) put("transport", transport)
-            if (socks != null) put("socks", socks)
-            if (http != null) put("http", http)
-            if (profile != null) put("profile", profile)
-            if (keepalive != null) put("keepalive", keepalive)
-            if (ech != null) put("ech", ech)
-        }
-        return safeJsonCall { nativeAetherVerifyStart(identityId, payload.toString()) }
-    }
-
-    fun tunnelStart(
-        identityId: Long,
-        peer: String,
-        transport: String? = null,
-        socks: String? = null,
-        http: String? = null,
-        profile: String? = null,
-        keepalive: Int? = null,
-        ech: Boolean? = null
-    ): Result<JSONObject> {
-        val payload = JSONObject().apply {
-            put("peer", peer)
-            if (transport != null) put("transport", transport)
-            if (socks != null) put("socks", socks)
-            if (http != null) put("http", http)
-            if (profile != null) put("profile", profile)
-            if (keepalive != null) put("keepalive", keepalive)
-            if (ech != null) put("ech", ech)
-        }
-        return safeJsonCall { nativeAetherTunnelStart(identityId, payload.toString()) }
-    }
-
-    /**
-     * Low-level core start: args as JSON array of strings, e.g. ["--bind","127.0.0.1:1819","--masque"]
-     * Use empty string for default args.
-     */
     /**
      * Applies the TLS ClientHello fragmenting configuration to the engine.
      *
@@ -244,6 +146,27 @@ object AetherBridge {
         }
         return safeJsonCall { nativeAetherFragmentingApply(payload.toString()) }
     }
+
+    /**
+     * Starts the core with its own command line: `aether_core_start`
+     * (`third_party/Aether/aether/src/ffi.rs`), which runs `cli::parse_args` and
+     * then `run_with` as a pollable, cancellable job.
+     *
+     * [args] is the argument list built by
+     * [com.manjaniq.core.models.AetherConfig.toAetherArgs]; an empty list means
+     * "the engine's own defaults" and is accepted by the FFI too.
+     */
+    /**
+     * Clears the engine's own `AETHER_*` environment before a start.
+     *
+     * `run_with` reads its settings from the process environment and `cli` writes
+     * them there, so a value from the previous start would otherwise survive into
+     * this one - turning Tor off would leave `AETHER_TOR=chain` set and the engine
+     * would keep chaining through it. The app has no `setenv` of its own; this is
+     * the JNI call that does it (`aether-wrapper/src/lib.rs`). Only `AETHER_*`
+     * names are touched.
+     */
+    fun envReset(): Result<JSONObject> = safeJsonCall { nativeAetherEnvReset() }
 
     fun coreStart(args: List<String> = emptyList()): Result<JSONObject> {
         val json = if (args.isEmpty()) "[]" else org.json.JSONArray(args).toString()

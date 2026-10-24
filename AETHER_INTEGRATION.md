@@ -3,10 +3,10 @@
 > Implementation phase 1: SOCKS5-only, no VpnService/TUN, Tor/Psiphon excluded.
 >
 > **Phase 2 (this branch):** the `tor` feature is compiled in, the two child
-> processes (lyrebird, psiphon-tunnel-core) are built and packaged, and a
-> per-route **full-engine** start path (`aether_core_start`) applies every flag
-> the core accepts. See the last section of this file; the phase-1 statements
-> below are kept for history where they still describe the granular path.
+> processes (lyrebird, psiphon-tunnel-core) are built and packaged, and the app
+> starts Aether through one path - `aether_core_start`, the core's own command
+> line - so every flag the core accepts is applied. See the last section of this
+> file; the phase-1 statements below are kept for history.
 
 ## Pinned version
 - Tag `v2.3.0`, annotated object `db75c53543b8156f27ca73563e5c40148426e76a`, peeled commit `6175b67df370ab856bcee07fe85b524031903956`
@@ -148,7 +148,7 @@ Build/packaging verified: `libaether.so` + `libc++_shared.so` per ABI (arm64-v8a
 
 ---
 
-## Phase 2: tor, helper processes, and the full-engine start path
+## Phase 2: tor, helper processes, and the single core start path
 
 ### What changed in the build
 
@@ -158,7 +158,7 @@ Build/packaging verified: `libaether.so` + `libc++_shared.so` per ABI (arm64-v8a
 | Tor pluggable transports | absent | `liblyrebird.so`, built by `scripts/ci/build_helpers.sh` -> `third_party/Aether/pt-build.sh` |
 | Psiphon | absent | `libpsiphon_tunnel_core.so`, same script -> `third_party/Aether/psiphon-build.sh` |
 | APK packaging | `useLegacyPackaging = false` | `true`, so the helpers are extracted into `nativeLibraryDir` and can be executed under W^X |
-| Start path | granular only | granular (default) or full engine, chosen per route |
+| Start path | the granular FFI calls | `aether_core_start` only, with the whole configuration as its command line |
 
 Both helper builds follow upstream's own android release job: static
 `GOOS=linux CGO_ENABLED=0` ELFs (`third_party/Aether/.github/workflows/release.yml`,
@@ -202,15 +202,20 @@ holds no executable code.
 
 ### How a start runs
 
-* `AetherStartMode.GRANULAR` - `aether_identity_open` -> `aether_scan_start` ->
-  `aether_tunnel_start`, per-step reporting (what earlier builds did).
-* `AetherStartMode.FULL_ENGINE` - `aether_core_start` with
-  `AetherConfig.toAetherArgs(...)`, one job that scans, connects and serves;
-  `AetherService.startFullEngine` polls it and probes the loopback SOCKS listener
-  for readiness, exactly like the granular path.
-* `--register` (in the engine options group) runs that job as a one-shot
+* `aether_core_start` with `AetherConfig.toAetherArgs(...)`: one job that scans,
+  connects and serves. `AetherService.startEngine` polls it and probes the
+  loopback SOCKS listener for readiness.
+* There is no second start path: the granular `aether_identity_open` /
+  `aether_scan_start` / `aether_tunnel_start` bindings were removed from
+  `AetherBridge`, from `aether-wrapper` and from the service, because their
+  payloads could not carry most of the configuration.
+* `--register` (in the engine options group) runs the same job as a one-shot
   registration and exits, bounded by `AetherJobPolling.identityTimeoutMs()`.
+* Each start first calls `AetherBridge.envReset()`, which removes every `AETHER_*`
+  variable the previous start left in the process environment. Without it, turning
+  a layer off in the screen would leave the previous value in force, because the
+  engine keeps its settings there (`cli.rs` writes exactly those names).
 
-Reach per setting is answered in code by
-`AetherCapabilities.reachOf(key, mode)`; `AETHER_CAPABILITIES.md §9` is the
+Reach per setting is answered in code by the argument list itself;
+`AETHER_CAPABILITIES.md §9` is the
 written version.

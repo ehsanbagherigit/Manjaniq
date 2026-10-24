@@ -42,10 +42,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.manjaniq.R
-import com.manjaniq.core.AetherHelpers
 import com.manjaniq.core.AetherLog
 import com.manjaniq.core.AetherUiState
-import com.manjaniq.core.models.AetherCapabilities
 import com.manjaniq.core.models.AetherConfig
 import com.manjaniq.core.models.AetherFragmenting
 import com.manjaniq.core.models.AetherIpChoice
@@ -53,7 +51,6 @@ import com.manjaniq.core.models.AetherNoizeChoice
 import com.manjaniq.core.models.AetherProfile
 import com.manjaniq.core.models.AetherProfileConfig
 import com.manjaniq.core.models.AetherScanChoice
-import com.manjaniq.core.models.AetherStartMode
 import com.manjaniq.core.models.AetherState
 import com.manjaniq.core.models.AetherTransportChoice
 import com.manjaniq.core.models.getSectionsForProfile
@@ -63,7 +60,6 @@ import com.manjaniq.ui.components.AetherLogPanel
 import com.manjaniq.ui.components.AetherOption
 import com.manjaniq.ui.components.AetherOptionGroup
 import com.manjaniq.ui.components.AetherProfileCard
-import com.manjaniq.ui.components.AetherReachNote
 import com.manjaniq.ui.components.AetherSection
 import com.manjaniq.ui.components.AetherStatusCard
 import com.manjaniq.ui.components.ProfileStatusBanner
@@ -460,45 +456,6 @@ private fun AetherRouteSettings(
                 )
             }
 
-            // Which path starts the engine. It is stored with the route and it
-            // decides what the reach notes below can promise: the full-engine path
-            // runs Aether's own command line, which is the only way gool, mim, Tor,
-            // Psiphon, Zero Trust, routing, an upstream proxy or the in-tunnel DNS
-            // list reach the core at all.
-            AetherSettingLabel(R.string.aether_start_mode)
-            AetherOptionGroup(
-                options = startModeOptions(),
-                selectedId = draft.base.startMode,
-                onSelect = { id ->
-                    onDraftChange(draft.copy(base = draft.base.copy(startMode = id)))
-                },
-                tagPrefix = "aether_start_mode_"
-            )
-            Text(
-                text = stringResource(R.string.aether_start_mode_note),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 11.sp
-            )
-            // Which child processes this installation can actually start. Read
-            // from the native library directory, never from the writable data
-            // directory, because Android 10+ refuses to execute from there.
-            AetherReadOnlyRow(
-                labelRes = R.string.aether_helpers_title,
-                value = AetherHelpers.summary(),
-                tag = "aether_helpers_summary"
-            )
-            val commandLineOnly = draft.base.commandLineOnlyFeatures()
-            if (commandLineOnly.isNotEmpty()) {
-                Text(
-                    text = stringResource(
-                        R.string.aether_command_line_only,
-                        commandLineOnly.joinToString(", ")
-                    ),
-                    color = AetherAccentSoft,
-                    fontSize = 11.sp
-                )
-            }
-
             sections.forEach { section ->
                 val isOpen = section.titleRes in open
                 AetherSection(
@@ -657,8 +614,8 @@ private fun AetherRouteSettings(
 
 /**
  * One Aether setting, drawn according to what it is: a choice, a toggle or a
- * value. Settings this build cannot forward stay visible with the reason beside
- * them instead of pretending to work.
+ * value. Every key here maps to a flag the engine is started with, so a control
+ * on screen is a setting Aether applies.
  */
 @Composable
 private fun AetherSetting(
@@ -668,20 +625,16 @@ private fun AetherSetting(
 ) {
     val base = draft.base
     fun updateBase(mut: (AetherConfig) -> AetherConfig) = onDraftChange(draft.copy(base = mut(base)))
-    // What this configuration's start path can apply: the reach notes below are
-    // read through it, so a setting shown as applied really is applied.
-    val startMode = AetherStartMode.byId(base.startMode) ?: AetherStartMode.GRANULAR
 
     when (key) {
         "transport" -> {
             AetherSettingLabel(R.string.aether_transport)
             AetherOptionGroup(
-                options = transportOptions(base.transport, startMode),
+                options = transportOptions(),
                 selectedId = base.transport,
                 onSelect = { id -> updateBase { it.copy(transport = id) } },
                 tagPrefix = "aether_transport_"
             )
-            AetherKeyReachNote("transport", startMode)
         }
 
         "scanMode" -> if (base.peer.isBlank()) {
@@ -692,7 +645,6 @@ private fun AetherSetting(
                 onSelect = { mode -> updateBase { it.copy(scanMode = mode) } },
                 tagPrefix = "aether_scan_"
             )
-            AetherKeyReachNote("scanMode", startMode)
         }
 
         "ipVersion" -> if (base.peer.isBlank()) {
@@ -703,7 +655,6 @@ private fun AetherSetting(
                 onSelect = { ip -> updateBase { it.copy(ipVersion = ip) } },
                 tagPrefix = "aether_ip_"
             )
-            AetherKeyReachNote("ipVersion", startMode)
         }
 
         "peer" -> {
@@ -721,7 +672,6 @@ private fun AetherSetting(
                     fontSize = 11.sp
                 )
             }
-            AetherKeyReachNote("peer", startMode)
         }
 
         "socksBind" -> {
@@ -741,7 +691,6 @@ private fun AetherSetting(
                 errorText = problem,
                 tag = "aether_socks_field"
             )
-            AetherKeyReachNote("socksBind", startMode)
         }
 
         "httpProxyBind" -> {
@@ -761,7 +710,6 @@ private fun AetherSetting(
                 errorText = problem,
                 tag = "aether_http_field"
             )
-            AetherKeyReachNote("httpProxyBind", startMode)
         }
 
         "dns" -> {
@@ -772,7 +720,6 @@ private fun AetherSetting(
                 hintRes = R.string.aether_dns_hint,
                 tag = "aether_dns_field"
             )
-            AetherKeyReachNote("dns", startMode)
         }
 
         "upstream" -> {
@@ -783,7 +730,6 @@ private fun AetherSetting(
                 hintRes = R.string.aether_upstream_hint,
                 tag = "aether_upstream_field"
             )
-            AetherKeyReachNote("upstream", startMode)
         }
 
         "noizeProfile" -> {
@@ -794,7 +740,6 @@ private fun AetherSetting(
                 onSelect = { p -> updateBase { it.copy(noizeProfile = p) } },
                 tagPrefix = "aether_noize_"
             )
-            AetherKeyReachNote("noizeProfile", startMode)
         }
 
         "echEnabled" -> {
@@ -805,7 +750,6 @@ private fun AetherSetting(
                 onCheckedChange = { v -> updateBase { it.copy(echEnabled = v) } },
                 tag = "aether_ech_toggle"
             )
-            AetherKeyReachNote("echEnabled", startMode)
         }
 
         "quickReconnect" -> {
@@ -816,7 +760,6 @@ private fun AetherSetting(
                 onCheckedChange = { v -> updateBase { it.copy(quickReconnect = v) } },
                 tag = "aether_quick_toggle"
             )
-            AetherKeyReachNote("quickReconnect", startMode)
         }
 
         "teamName" -> {
@@ -826,7 +769,6 @@ private fun AetherSetting(
                 labelRes = R.string.aether_team,
                 tag = "aether_team_field"
             )
-            AetherKeyReachNote("teamName", startMode)
         }
 
         "identityPath" -> {
@@ -837,7 +779,6 @@ private fun AetherSetting(
                 hintRes = R.string.aether_identity_hint,
                 tag = "aether_identity_field"
             )
-            AetherKeyReachNote("identityPath", startMode)
         }
 
         "psiphonEnabled" -> {
@@ -848,7 +789,6 @@ private fun AetherSetting(
                 onCheckedChange = { v -> onDraftChange(draft.copy(psiphonEnabled = v)) },
                 tag = "aether_psiphon_toggle"
             )
-            AetherKeyReachNote("psiphonEnabled", startMode)
         }
 
         "psiphonEndpoint" -> AetherField(
@@ -922,10 +862,11 @@ private fun AetherSetting(
  *    starts, and why enabling fragmenting also selects the carrier: without
  *    `AETHER_MASQUE_HTTP2` the fragments would have nowhere to be written.
  *
- * So the controls here are real. What they cannot do is apply to a transport that
- * has no HTTP/2 carrier, and in that case no switch is shown at all - a control that
- * changes nothing would be a lie - while the stored values stay visible, persisted
- * and exported with the route.
+ * So the controls here are real, and they are the same controls on every transport:
+ * the values are stored with the route, exported with it, and put on the engine's
+ * command line either way. The one thing the screen states rather than decides is
+ * that Aether writes the fragments only into the MASQUE carrier's ClientHello, so a
+ * route that does not use that carrier carries the setting without using it.
  */
 @Composable
 private fun AetherFragmentingControl(
@@ -941,8 +882,9 @@ private fun AetherFragmentingControl(
     var pendingRestart by remember { mutableStateOf<AetherConfig?>(null) }
 
     // The carrier fragmenting needs. `AetherConfig.usesHttp2Carrier()` pairs the two
-    // for the engine; this is the same condition, for the screen.
-    val applies = draft.transport == AetherTransportChoice.MASQUE.id
+    // for the engine; this is the same condition, for the screen: every protocol that
+    // runs over the MASQUE carrier can carry fragments, WireGuard cannot.
+    val applies = draft.transport != AetherTransportChoice.WIREGUARD.id
     val dirty = draft.fragmentEnabled != config.fragmentEnabled ||
         draft.fragmentSize != config.fragmentSize ||
         draft.fragmentDelay != config.fragmentDelay ||
@@ -1033,10 +975,6 @@ private fun AetherFragmentingControl(
                         fontSize = 11.sp,
                         lineHeight = 15.sp
                     )
-                    AetherReachNote(
-                        reach = AetherCapabilities.reachOf("fragmentEnabled"),
-                        reasonRes = AetherCapabilities.reasonResFor("fragmentEnabled")
-                    )
                     Text(
                         text = if (routeName != null) {
                             stringResource(R.string.aether_fragment_recorded_for, routeName)
@@ -1048,9 +986,14 @@ private fun AetherFragmentingControl(
                         lineHeight = 15.sp
                     )
 
+                    // Every transport keeps the same editable controls. The values are
+                    // stored with the route and go on the command line
+                    // (`--fragment`/`--no-fragment`, `--fragment-size`,
+                    // `--fragment-delay`) whatever the transport is. What the note
+                    // below states is the one thing the engine decides: Aether writes
+                    // the fragments into the MASQUE carrier's ClientHello, so on a route
+                    // that does not use that carrier they are accepted and never used.
                     if (!applies) {
-                        // No controls: this transport has no HTTP/2 carrier, so nothing
-                        // here could reach Aether. The stored values stay visible.
                         Text(
                             text = stringResource(
                                 R.string.aether_fragment_needs_masque,
@@ -1059,41 +1002,13 @@ private fun AetherFragmentingControl(
                                         ?: R.string.aether_transport_masque
                                 )
                             ),
-                            color = MaterialTheme.colorScheme.error,
+                            color = AetherAccentSoft,
                             fontSize = 11.sp,
                             lineHeight = 15.sp,
                             modifier = Modifier.testTag(AetherTestTags.FRAGMENT_UNAVAILABLE)
                         )
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(AetherAccentDeep, RoundedCornerShape(12.dp))
-                                .padding(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            AetherReadOnlyRow(
-                                labelRes = R.string.aether_fragment_enable,
-                                value = onOffLabel(config.fragmentEnabled),
-                                tag = AetherTestTags.FRAGMENT_TOGGLE
-                            )
-                            AetherReadOnlyRow(
-                                labelRes = R.string.aether_fragment_size,
-                                value = config.fragmentSize.ifBlank { AetherFragmenting.DEFAULT_SIZE },
-                                tag = AetherTestTags.FRAGMENT_SIZE
-                            )
-                            AetherReadOnlyRow(
-                                labelRes = R.string.aether_fragment_delay,
-                                value = config.fragmentDelay.ifBlank { AetherFragmenting.DEFAULT_DELAY },
-                                tag = AetherTestTags.FRAGMENT_DELAY
-                            )
-                            AetherReadOnlyRow(
-                                labelRes = R.string.aether_fragment_sni,
-                                value = onOffLabel(config.fragmentSniSplit),
-                                tag = AetherTestTags.FRAGMENT_SNI
-                            )
-                        }
-                    } else {
-                        Column(
+                    }
+                    Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(AetherAccentDeep, RoundedCornerShape(12.dp))
@@ -1213,7 +1128,6 @@ private fun AetherFragmentingControl(
                                     .testTag(AetherTestTags.FRAGMENT_SAVE)
                             ) { Text(stringResource(R.string.save_settings), fontSize = 12.sp) }
                         }
-                    }
 
                     Text(
                         text = stringResource(
@@ -1313,52 +1227,12 @@ private fun AetherFragmentSwitchRow(
 }
 
 @Composable
-private fun AetherReadOnlyRow(labelRes: Int, value: String, tag: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 32.dp)
-            .testTag(tag),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = stringResource(labelRes),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 12.sp,
-            modifier = Modifier.weight(1f)
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = value,
-            color = AetherAccentSoft,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium
-        )
-    }
-}
-
-/** Localised on/off wording for read-only value rows. */
-@Composable
-private fun onOffLabel(value: Boolean): String =
-    stringResource(if (value) R.string.aether_choice_on else R.string.aether_choice_off)
-
-@Composable
 private fun AetherSettingLabel(labelRes: Int) {
     Text(
         text = stringResource(labelRes),
         fontWeight = FontWeight.SemiBold,
         fontSize = 13.sp,
         color = MaterialTheme.colorScheme.onSurface
-    )
-}
-
-/** Reach note for one setting key; silent for settings that are fully applied. */
-@Composable
-private fun AetherKeyReachNote(key: String, mode: AetherStartMode) {
-    if (AetherCapabilities.of(key) == null) return
-    AetherReachNote(
-        reach = AetherCapabilities.reachOf(key, mode),
-        reasonRes = AetherCapabilities.reasonResFor(key, mode)
     )
 }
 
@@ -1507,32 +1381,12 @@ private fun AetherProfileImportExport(
 // ---------------------------------------------------------------- choices ----
 
 @Composable
-private fun startModeOptions(): List<AetherOption> = AetherStartMode.ALL.map { mode ->
+private fun transportOptions(): List<AetherOption> = AetherTransportChoice.ALL.map { choice ->
     AetherOption(
-        id = mode.id,
-        label = stringResource(mode.labelRes),
-        detail = stringResource(mode.detailRes)
+        id = choice.id,
+        label = stringResource(choice.labelRes),
+        detail = stringResource(choice.detailRes)
     )
-}
-
-@Composable
-private fun transportOptions(current: String, mode: AetherStartMode): List<AetherOption> {
-    val reason = stringResource(R.string.aether_transport_unreachable)
-    return AetherTransportChoice.ALL.map { choice ->
-        // The full-engine path runs cli.rs, where all four ids are protocols; the
-        // granular path must stay on the two api::Transport parses.
-        val selectable = AetherTransportChoice.isSelectable(choice.id, mode.fullEngine) ||
-            choice.id == current
-        AetherOption(
-            id = choice.id,
-            label = stringResource(choice.labelRes),
-            detail = stringResource(choice.detailRes),
-            // A value already stored (for example from an imported config) stays
-            // visible and selected rather than disappearing from the list.
-            enabled = selectable,
-            note = if (selectable) null else reason
-        )
-    }
 }
 
 @Composable

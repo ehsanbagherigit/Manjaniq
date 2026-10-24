@@ -3,188 +3,53 @@ package com.manjaniq.core.models
 import com.manjaniq.R
 
 /**
- * How far an Aether setting actually reaches inside this build.
+ * The inventory of Aether settings this screen can render.
  *
- * Manjaniq drives Aether v2.3.0 through three FFI calls
- * (`third_party/Aether/aether/src/ffi.rs`):
- *
- *  - `aether_identity_open`  → path, transport, model, locale, team
- *  - `aether_scan_start`     → transport, mode, ip, profile, ports, excluded, ech
- *  - `aether_tunnel_start`   → peer, transport, socks, http, profile, keepalive, ech
- *
- * A setting that is not one of those payload fields only takes effect through
- * `aether_core_start` (the full CLI, which sets `AETHER_*` environment
- * variables). `AetherBridge.coreStart` exists for that path but nothing in the
- * app calls it, and Android offers no public API for setting the process
- * environment from Kotlin — so those settings are recorded and shown, but they
- * are not applied. The UI says so instead of pretending otherwise.
- */
-enum class AetherReach {
-    /** Sent in an FFI payload the service actually issues; Aether applies it. */
-    Applied,
-
-    /** Sent, but Aether only honours it on part of the path (see the reason text). */
-    Partial,
-
-    /** Captured and persisted, but no field for it exists on the FFI path in use. */
-    NotForwarded
-}
-
-/** One row of the reachability matrix. */
-data class AetherSettingInfo(
-    val key: String,
-    val reach: AetherReach,
-    /** Why the setting is or is not applied, quoted from the pinned Aether source. */
-    val reasonRes: Int
-)
-
-/**
- * Single source of truth for the Aether capability inventory.
- *
- * Every value below is traceable to the vendored Aether v2.3.0 source or to
- * `AetherService`/`AetherBridge`; nothing is inferred from a feature name.
+ * The app has exactly one way to start the engine - `aether_core_start`, the
+ * core's own command line (`third_party/Aether/aether/src/cli.rs`) - so every key
+ * listed here is applied, not merely recorded. [SETTING_KEYS] exists so a route
+ * cannot name a setting that no composable draws: a typo would otherwise make a
+ * control disappear without a word.
  */
 object AetherCapabilities {
 
-    private val INFO = listOf(
-        // ---- Applied: these are fields of the payloads AetherService sends ----
-        AetherSettingInfo("transport", AetherReach.Applied, R.string.aether_reach_applied_transport),
-        AetherSettingInfo("scanMode", AetherReach.Applied, R.string.aether_reach_applied_scan),
-        AetherSettingInfo("ipVersion", AetherReach.Applied, R.string.aether_reach_applied_ip),
-        AetherSettingInfo("socksBind", AetherReach.Applied, R.string.aether_reach_applied_socks),
-        AetherSettingInfo("httpProxyBind", AetherReach.Applied, R.string.aether_reach_applied_http),
-        AetherSettingInfo("peer", AetherReach.Applied, R.string.aether_reach_applied_peer),
-        AetherSettingInfo("identityPath", AetherReach.Applied, R.string.aether_reach_applied_identity),
-
-        // ---- Partial: forwarded, but only honoured on part of the path ----
-        AetherSettingInfo("echEnabled", AetherReach.Partial, R.string.aether_reach_partial_ech),
-        AetherSettingInfo("noizeProfile", AetherReach.Partial, R.string.aether_reach_partial_noize),
-        AetherSettingInfo("teamName", AetherReach.Partial, R.string.aether_reach_partial_team),
-        // Fragmenting reaches Aether through the bridge's environment write
-        // (`AetherService.applyFragmenting` → `AetherBridge.fragmentingApply`), which
-        // is where Aether reads it (`fragment.rs:32-61`) - not through a payload field.
-        // Partial rather than Applied because `fragment.rs` has exactly one consumer,
-        // `masque_h2.rs`: it applies on the MASQUE-over-HTTP/2 carrier only, and the
-        // SNI split has no CLI flag upstream at all.
-        AetherSettingInfo("fragmentEnabled", AetherReach.Partial, R.string.aether_reach_partial_fragment),
-        AetherSettingInfo("fragmentSize", AetherReach.Partial, R.string.aether_reach_partial_fragment),
-        AetherSettingInfo("fragmentDelay", AetherReach.Partial, R.string.aether_reach_partial_fragment),
-        AetherSettingInfo("fragmentSniSplit", AetherReach.Partial, R.string.aether_reach_partial_fragment_sni),
-
-        // ---- Not forwarded: no field on identity_open / scan_start / tunnel_start ----
-        AetherSettingInfo("dns", AetherReach.NotForwarded, R.string.aether_reach_missing_env_only),
-        AetherSettingInfo("upstream", AetherReach.NotForwarded, R.string.aether_reach_missing_env_only),
-        AetherSettingInfo("quickReconnect", AetherReach.NotForwarded, R.string.aether_reach_missing_cli_flow),
-        AetherSettingInfo("psiphonEnabled", AetherReach.NotForwarded, R.string.aether_reach_missing_external),
-        AetherSettingInfo("psiphonEndpoint", AetherReach.NotForwarded, R.string.aether_reach_missing_external),
-        AetherSettingInfo("psiphonRegion", AetherReach.NotForwarded, R.string.aether_reach_missing_external),
-        AetherSettingInfo("torSocks", AetherReach.NotForwarded, R.string.aether_reach_missing_external),
-        AetherSettingInfo("torBridges", AetherReach.NotForwarded, R.string.aether_reach_missing_external),
-        AetherSettingInfo("torUseBridges", AetherReach.NotForwarded, R.string.aether_reach_missing_external)
+    /** Every setting key [com.manjaniq.ui.screens.AetherPanel] can render. */
+    val SETTING_KEYS: Set<String> = linkedSetOf(
+        "transport", "scanMode", "ipVersion", "peer",
+        "socksBind", "httpProxyBind", "dns", "upstream",
+        "noizeProfile", "echEnabled", "quickReconnect", "teamName", "identityPath",
+        "psiphonEnabled", "psiphonEndpoint", "psiphonRegion",
+        "torSocks", "torBridges", "torUseBridges"
     )
 
-    private val BY_KEY: Map<String, AetherSettingInfo> = INFO.associateBy { it.key }
-
-    val ALL: List<AetherSettingInfo> = INFO
-
-    fun of(key: String): AetherSettingInfo? = BY_KEY[key]
-
-    /** What the **granular** path does with [key]; kept for callers that predate modes. */
-    fun reachOf(key: String): AetherReach = BY_KEY[key]?.reach ?: AetherReach.NotForwarded
-
-    fun reasonResFor(key: String): Int =
-        BY_KEY[key]?.reasonRes ?: R.string.aether_reach_missing_env_only
-
-    /** True when [key] is applied (fully or partly) by the granular path. */
-    fun isForwarded(key: String): Boolean = reachOf(key) != AetherReach.NotForwarded
-
-    /**
-     * What the start mode [mode] does with [key].
-     *
-     * The table in [INFO] describes the granular FFI path, because that is the
-     * payload surface it was written against. `aether_core_start` runs the whole
-     * CLI, so every setting it accepts is applied - the only exceptions are the
-     * ones that need a child process this build may not ship (Psiphon, a Tor
-     * pluggable transport) and the ClientHello SNI split, which upstream has no
-     * flag for and which the app writes through
-     * `AetherBridge.fragmentingApply` either way.
-     */
-    fun reachOf(key: String, mode: AetherStartMode): AetherReach {
-        if (!mode.fullEngine) return reachOf(key)
-        return when (key) {
-            // Needs an external executable; present only when the build shipped it.
-            "psiphonEnabled", "psiphonEndpoint", "psiphonRegion",
-            "torSocks", "torBridges", "torUseBridges" -> AetherReach.Partial
-            // Written into the environment by the JNI bridge, not by a CLI flag.
-            "fragmentSniSplit" -> AetherReach.Partial
-            else -> AetherReach.Applied
-        }
-    }
-
-    /** The reason text for [key] under [mode]. */
-    fun reasonResFor(key: String, mode: AetherStartMode): Int {
-        if (!mode.fullEngine) return reasonResFor(key)
-        return when (key) {
-            "psiphonEnabled", "psiphonEndpoint", "psiphonRegion" ->
-                R.string.aether_reach_full_helper_psiphon
-            "torSocks", "torBridges", "torUseBridges" -> R.string.aether_reach_full_helper_tor
-            "fragmentSniSplit" -> R.string.aether_reach_partial_fragment_sni
-            else -> R.string.aether_reach_full_cli
-        }
-    }
-
-    /** True when [key] reaches Aether at all under [mode]. */
-    fun isForwarded(key: String, mode: AetherStartMode): Boolean =
-        reachOf(key, mode) != AetherReach.NotForwarded
+    /** True when [key] names a setting the Aether screen can draw. */
+    fun knows(key: String): Boolean = key in SETTING_KEYS
 }
 
 /**
  * The four protocol names `AetherConfig.transport` accepts.
  *
- * `api::Transport::parse` (third_party/Aether/aether/src/api.rs) maps only
- * `wg|wireguard|warp` to WireGuard and *everything else* to Masque, so `gool`
- * and `mim` are accepted by the app's validation yet silently run as plain
- * MASQUE on the `identity_open` / `scan_start` / `tunnel_start` path. They are
- * real Aether protocols — reachable through `aether_core_start` (`--gool`,
- * `--mim`) — so they stay listed, marked as not selectable here, instead of
- * being removed or being allowed to degrade without saying so.
+ * All four are real Aether protocols on the one start path this app uses:
+ * `cli.rs:551-563` maps `--masque`, `--wg`, `--gool` and `--mim` to
+ * `AETHER_PROTOCOL`, and `run_with` reads that variable before anything dials
+ * (`lib.rs:77-108`). None of them is conditional on a mode any more, so none of
+ * them is refused.
  */
 enum class AetherTransportChoice(
     val id: String,
     val labelRes: Int,
-    val detailRes: Int,
-    /** False when the embedded FFI path cannot request this protocol. */
-    val selectable: Boolean
+    val detailRes: Int
 ) {
-    MASQUE("masque", R.string.aether_transport_masque, R.string.aether_transport_masque_detail, true),
-    WIREGUARD("wg", R.string.aether_transport_wg, R.string.aether_transport_wg_detail, true),
-    GOOL("gool", R.string.aether_transport_gool, R.string.aether_transport_gool_detail, false),
-    MIM("mim", R.string.aether_transport_mim, R.string.aether_transport_mim_detail, false);
+    MASQUE("masque", R.string.aether_transport_masque, R.string.aether_transport_masque_detail),
+    WIREGUARD("wg", R.string.aether_transport_wg, R.string.aether_transport_wg_detail),
+    GOOL("gool", R.string.aether_transport_gool, R.string.aether_transport_gool_detail),
+    MIM("mim", R.string.aether_transport_mim, R.string.aether_transport_mim_detail);
 
     companion object {
         val ALL: List<AetherTransportChoice> = values().toList()
         val IDS: List<String> = ALL.map { it.id }
-        val SELECTABLE_IDS: List<String> = ALL.filter { it.selectable }.map { it.id }
 
         fun byId(id: String): AetherTransportChoice? = ALL.firstOrNull { it.id == id }
-
-        /**
-         * Whether the granular path can dispatch [id]: only `masque` and `wg`,
-         * because `api::Transport::parse` (api.rs:20-26) maps every other string
-         * to Masque.
-         */
-        fun isSelectable(id: String): Boolean = byId(id)?.selectable == true
-
-        /**
-         * Whether [mode] can start [id]. The full-engine path runs `cli.rs`, where
-         * `--gool` (`AETHER_PROTOCOL=gool`) and `--mim` are real protocols, so all
-         * four are selectable there; on the granular path the table's own
-         * [AetherTransportChoice.selectable] decides.
-         */
-        fun isSelectable(id: String, fullEngine: Boolean): Boolean {
-            val choice = byId(id) ?: return false
-            return choice.selectable || fullEngine
-        }
     }
 }
 
@@ -259,9 +124,10 @@ enum class AetherNoizeChoice(val id: String, val labelRes: Int, val detailRes: I
  * five variables and the carrier's `AETHER_MASQUE_HTTP2` (`cli.rs:579`) and nothing
  * else - an Android process cannot set the environment of a library it loaded from
  * Kotlin. Because `fragment.rs` is consumed only by `masque_h2.rs`, enabling
- * fragmenting necessarily selects that carrier, which is why
- * `AetherConfig.usesHttp2Carrier()` pairs the two and `validate()` refuses
- * fragmenting on any other transport.
+ * fragmenting necessarily selects that carrier for every protocol that has one,
+ * which is why `AetherConfig.usesHttp2Carrier()` pairs the two. Nothing refuses a
+ * WireGuard route for carrying the setting: it is stored, exported and put on the
+ * command line, and the screen states that only the MASQUE carrier uses it.
  *
  * Defaults recorded here are the documented CLI defaults (size `16-32`, delay
  * `2-10`, off unless asked for — `Docs/GUIDE.en.md` §"AETHER_MASQUE_H2_FRAGMENT …

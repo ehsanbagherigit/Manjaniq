@@ -22,7 +22,6 @@ data class AetherUiState(
     val lastError: String? = null,
     val version: String = "",
     val activeJobId: Long? = null,
-    val identityId: Long? = null,
     val endpoint: String = "",
     val socksEndpoint: String = "127.0.0.1:1819",
     val isNativeLoaded: Boolean = false,
@@ -128,10 +127,6 @@ object AetherRepository {
 
     internal fun setActiveJob(id: Long?) {
         _uiState.update { it.copy(activeJobId = id) }
-    }
-
-    internal fun setIdentity(id: Long?) {
-        _uiState.update { it.copy(identityId = id) }
     }
 
     internal fun setEndpoint(peer: String, socks: String) {

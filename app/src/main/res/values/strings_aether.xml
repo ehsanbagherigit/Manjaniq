@@ -44,13 +44,9 @@
     <!-- Connection Status for Aether -->
     <string name="aether_status_title">Aether Tunnel</string>
     <string name="aether_proxy_copy">Copy SOCKS address</string>
-    <string name="aether_proxy_copied">SOCKS address copied</string>
     <string name="aether_proxy_hint">Configure apps to use this SOCKS5</string>
-    <string name="aether_proxy_format">socks5h://%1$s</string>
-    <string name="aether_http_format">http://%1$s</string>
     <string name="aether_state_running">Tunnel up</string>
     <string name="aether_state_stopped">Tunnel down</string>
-    <string name="aether_state_scanning">Scanning gateways…</string>
     <string name="aether_state_connecting">Connecting…</string>
     <string name="aether_error_title">Aether error</string>
 
@@ -60,7 +56,6 @@
     <string name="notification_title_aether">Manjaniq — Aether engine</string>
 
     <!-- Dialogs -->
-    <string name="aether_port_conflict">Port conflict with RSTA: %1$s</string>
     <string name="aether_not_native">Aether native library not loaded. Rebuild APK with libaether.so.</string>
     <string name="aether_export_title">Aether config JSON</string>
     <string name="aether_import_title">Import Aether config</string>
@@ -90,10 +85,6 @@
     <string name="badge_needs_config">Needs config</string>
     <string name="badge_unsupported">Unsupported</string>
     <string name="badge_requires_external">Needs external</string>
-    <string name="cap_available">Available</string>
-    <string name="cap_needs_config">Needs configuration</string>
-    <string name="cap_requires_external">Requires external component</string>
-    <string name="cap_unsupported">Unsupported by pinned upstream</string>
     <string name="cap_not_verified">Not verified</string>
 
     <!-- Sections -->
@@ -118,7 +109,6 @@
     <!-- Profile UI -->
     <string name="aether_profiles_title">Connection profiles</string>
     <string name="aether_profiles_intro">Choose a routing profile. Only settings relevant to the selected profile are shown. Advanced options are collapsed by default.</string>
-    <string name="profile_selected">Selected — %1$s</string>
     <string name="profile_expand_settings">Show settings</string>
     <string name="profile_collapse_settings">Hide settings</string>
     <string name="profile_requires_external">This profile needs an external component (Tor or Psiphon) that is not bundled. Install and verify it separately; app will show setup instructions.</string>
@@ -126,31 +116,15 @@
     <!-- Progressive Aether flow (route -> protocol -> scan -> carrier)  -->
     <!-- ============================================================== -->
 
-    <string name="aether_flow_title">Aether</string>
-    <string name="aether_flow_subtitle">Pick a route, then tune only what that route uses.</string>
     <string name="aether_route_step">1 · Route</string>
     <string name="aether_settings_step">2 · Settings for this route</string>
-    <string name="aether_route_none_selected">No route selected</string>
-    <string name="aether_show_settings">Show settings</string>
-    <string name="aether_hide_settings">Hide settings</string>
     <string name="aether_section_summary_default">Not set</string>
-    <string name="aether_choice_selected">Selected</string>
-    <string name="aether_choice_unavailable">Not selectable here</string>
-    <string name="aether_choice_on">On</string>
-    <string name="aether_choice_off">Off</string>
-    <string name="aether_choice_applied">Applied</string>
-    <string name="aether_choice_partial">Partly applied</string>
-    <string name="aether_choice_not_forwarded">Recorded only</string>
-    <string name="aether_setting_note_prefix">Aether: %1$s</string>
-    <string name="aether_start">Start Aether</string>
-    <string name="aether_stop">Stop Aether</string>
     <string name="aether_cancel_start">Cancel start</string>
     <string name="aether_settings_saved">Route settings saved.</string>
     <string name="aether_settings_saved_restart">Saved; restarting Aether.</string>
     <string name="aether_settings_saved_next_start">Saved; applies on the next start.</string>
     <string name="aether_defaults_restored">Defaults restored.</string>
     <string name="aether_imported">Imported — review, then save.</string>
-    <string name="aether_import_invalid">That is not usable Aether JSON.</string>
     <string name="aether_restart_question">Aether is running. Save and restart to apply these settings?</string>
     <string name="aether_reset_question">Replace the settings of this route with defaults?</string>
     <string name="aether_unsaved_hint">Unsaved changes</string>
@@ -160,7 +134,6 @@
     <string name="aether_transport_wg_detail">Classic WireGuard to a WARP endpoint on UDP 2408.</string>
     <string name="aether_transport_gool_detail">WireGuard carried inside MASQUE, for a foreign exit address.</string>
     <string name="aether_transport_mim_detail">MASQUE inside MASQUE: two hops, a different exit address.</string>
-    <string name="aether_transport_unreachable">Aether supports this protocol, but aether_tunnel_start parses only masque and wg (api::Transport), so it would silently run as plain MASQUE. It needs the aether_core_start path.</string>
 
     <!-- Scan mode detail lines -->
     <string name="aether_scan_turbo_detail">Stop at the first candidate that answers.</string>
@@ -200,52 +173,22 @@
     <string name="aether_fragment_status_on">Applied — this route runs MASQUE over HTTP/2</string>
     <string name="aether_fragment_status_off">Off — this route runs MASQUE over HTTP/3 (QUIC)</string>
     <string name="aether_fragment_carrier_switch">Turning fragmenting on switches this route\u2019s MASQUE carrier from HTTP/3 (QUIC) to HTTP/2 (TCP), because the fragments are written into that carrier\u2019s TLS ClientHello (aether/src/masque_h2.rs). The scan and the tunnel both follow the carrier, so nothing is left half applied.</string>
-    <string name="aether_fragment_needs_masque">Fragmenting needs the MASQUE transport: Aether applies it only on the MASQUE-over-HTTP/2 carrier. It is unavailable while this route uses %1$s.</string>
+    <string name="aether_fragment_needs_masque">These values are stored with the route and sent to Aether, which writes the fragments into the MASQUE-over-HTTP/2 carrier's ClientHello only. This route uses %1$s, so the tunnel carries the setting without using it.</string>
     <string name="aether_fragment_saved">Fragmenting saved with the route; Aether applies it on the next start.</string>
     <string name="aether_fragment_saved_restart">Fragmenting saved; Aether is restarting with it.</string>
-    <string name="aether_fragment_scope">One carrier only: MASQUE over HTTP/2. It never applies to the HTTP/3 (QUIC) MASQUE path, and never to WireGuard, gool or mim. This app selects that carrier for you when fragmenting is on, and selects QUIC again when it is off.</string>
+    <string name="aether_fragment_scope">One carrier only: MASQUE over HTTP/2. Turning fragmenting on selects that carrier for you - on masque, gool and mim alike - and turning it off selects QUIC again. WireGuard has no such carrier, so a WireGuard route carries the setting without using it.</string>
     <string name="aether_fragment_recorded_for">Stored with the selected route (%1$s) and applied when that route starts:</string>
     <string name="aether_fragment_recorded_none">No route is selected, so these are the values stored with the Aether configuration:</string>
     <string name="aether_psiphon_enable">Chain through Psiphon</string>
         <string name="aether_fragment_how_to_change">These values are stored with the route, appear in its exported JSON, and are written into the engine\u2019s environment before each start — Aether reads them per connection (aether/src/fragment.rs).</string>
     <string name="aether_fragment_env_label">Aether reads: %1$s</string>
 
-    <!-- Reachability reasons (AetherCapabilities) -->
-    <string name="aether_reach_applied_transport">Sent to aether_identity_open, aether_scan_start and aether_tunnel_start.</string>
-    <string name="aether_reach_applied_scan">Sent as ScanRequest.mode; prober::ScanMode parses it.</string>
-    <string name="aether_reach_applied_ip">Sent as ScanRequest.ip; prober::IpScan parses v4, v6 and both.</string>
-    <string name="aether_reach_applied_socks">Sent as TunnelSpec.socks; Aether binds the SOCKS5 listener there.</string>
-    <string name="aether_reach_applied_http">Sent as TunnelSpec.http; Aether also serves an HTTP CONNECT proxy there.</string>
-    <string name="aether_reach_applied_peer">Used instead of scanning; sent as the tunnel peer.</string>
-    <string name="aether_reach_applied_identity">Resolved inside the app private directory and sent to aether_identity_open.</string>
-    <string name="aether_reach_partial_ech">Applied for MASQUE only: ffi::job_ech returns no key for WireGuard, which has no TLS handshake to hide a name in.</string>
-    <string name="aether_reach_partial_noize">Applied to the scan (noize::from_profile) and to a WireGuard tunnel (aethernoize::from_profile), but not to a MASQUE tunnel, which reads its profile from AETHER_NOIZE — a variable this path cannot set. The two parsers also differ: the scan has no balanced case, so balanced scans as firewall.</string>
-    <string name="aether_reach_partial_team">The team name is sent, but enrolment also needs a service token or a one-time code. The aether_team_* calls are wired in AetherBridge and are not used by this screen yet.</string>
-    <string name="aether_reach_missing_env_only">Aether reads this from its own environment (set by the CLI). No field for it exists on aether_tunnel_start, and Android has no public API for setting the process environment, so the value is saved and shown but not applied.</string>
-    <string name="aether_reach_missing_cli_flow">Only the aether_core_start CLI flow acts on this; the identity/scan/tunnel path this build uses has no field for it.</string>
-    <string name="aether_reach_partial_fragment">Written into the engine\u2019s environment before each start (AETHER_MASQUE_HTTP2 and AETHER_MASQUE_H2_FRAGMENT*), which is where Aether reads it — aether_tunnel_start has no field for it. One carrier only: MASQUE over HTTP/2, so enabling it switches this route away from QUIC. A blank size or delay leaves Aether\u2019s own default in place.</string>
-    <string name="aether_reach_partial_fragment_sni">Applied through the same call, as AETHER_MASQUE_H2_FRAGMENT_SNI. Upstream has no --fragment-sni flag, so this is the only way it reaches Aether, and it only matters on the HTTP/2 carrier.</string>
-    <string name="aether_reach_missing_external">Needs a Tor or Psiphon component that is not bundled with this build, and this path forwards no Tor or Psiphon setting.</string>
 
-    <!-- Start mode (AetherStartMode) -->
-    <string name="aether_start_mode">Start path</string>
-    <string name="aether_start_mode_granular">Scan then tunnel</string>
-    <string name="aether_start_mode_granular_detail">Aether is driven step by step through aether_identity_open, aether_scan_start and aether_tunnel_start, so the scan\u2019s chosen endpoint and every failure are reported as they happen. Only what those payloads carry is applied.</string>
-    <string name="aether_start_mode_full">Full engine</string>
-    <string name="aether_start_mode_full_detail">Aether is started with its own command line (aether_core_start). This is the only path that applies gool, masquerade-in-masquerade, Tor and Psiphon layering, Zero Trust, routing rules, the upstream proxy, the in-tunnel DNS list, quick reconnect, traffic statistics and the socket mark.</string>
-    <string name="aether_start_mode_note">Chosen per route. The full-engine path is the only one that applies every setting below; the scan-then-tunnel path reports each step instead.</string>
-    <string name="aether_command_line_only">Stored with this route, applied only on the full-engine start path: %1$s</string>
-    <string name="aether_helpers_title">Child processes this build ships</string>
 
-    <!-- Reachability reasons for the full-engine path -->
-    <string name="aether_reach_full_cli">Applied: the full-engine path runs Aether\u2019s own command line (aether_core_start), which sets this variable before the engine starts.</string>
-    <string name="aether_reach_full_helper_psiphon">Applied on the full-engine path. Psiphon itself needs the psiphon-tunnel-core child process, which this build ships when the build produced it; without it the start is refused with that reason instead of failing inside the engine.</string>
-    <string name="aether_reach_full_helper_tor">Applied on the full-engine path. Tor needs a pluggable transport only for bridges that name one (obfs4, snowflake, webtunnel); this build ships lyrebird for those, and plain Tor needs no child process at all.</string>
 
     <!-- Engine options (the core's own command line, AetherEngineOptions) -->
     <string name="aether_engine_section">Engine options</string>
-    <string name="aether_engine_section_desc">Every remaining flag the Aether core accepts, modelled one-to-one against aether/src/cli.rs. They apply on the full-engine start path.</string>
-    <string name="aether_engine_helper_note">These are the fields aether_core_start reads. On the scan-then-tunnel path they are stored but not applied, and the route says so above.</string>
+    <string name="aether_engine_section_desc">Every remaining flag the Aether core accepts, modelled one-to-one against aether/src/cli.rs. All of them are handed to aether_core_start on every start.</string>
 
     <string name="aether_engine_tor_mode">Tor layering</string>
     <string name="aether_engine_tor_bridges">Bridge source</string>
@@ -313,20 +256,14 @@
 
     <!-- Operational log panel -->
     <string name="aether_log_title">Aether activity</string>
-    <string name="aether_log_subtitle">Every step Aether reported, newest last.</string>
     <string name="aether_log_empty">No Aether events yet. Start the tunnel to see what it does.</string>
     <string name="aether_log_count">%1$d events</string>
     <string name="aether_log_count_one">1 event</string>
-    <string name="aether_log_show">Show log</string>
-    <string name="aether_log_hide">Hide log</string>
     <string name="aether_log_follow">Jump to latest</string>
-    <string name="aether_log_following">Following</string>
-    <string name="aether_log_paused">Paused</string>
     <string name="aether_log_no_problems">No warnings or errors recorded.</string>
     <string name="aether_log_follow_toggle_on">Following — tap to pause</string>
     <string name="aether_log_follow_toggle_off">Paused — tap to follow</string>
     <string name="aether_log_copy">Copy</string>
-    <string name="aether_log_copied">Aether log copied</string>
     <string name="aether_log_clear">Clear</string>
     <string name="aether_log_filter_all">All</string>
     <string name="aether_log_filter_problems">Problems</string>
@@ -410,14 +347,12 @@
     <string name="aether_engine_no_profile_retry_desc">Stay on the profile that was chosen instead of falling back after a failure.</string>
     <string name="aether_engine_exit_loc_secs">Exit check interval (s)</string>
     <string name="aether_engine_exit_loc_secs_hint">How often the exit country is re-checked; empty uses the core default</string>
-    <string name="aether_engine_api">WARP API</string>
     <string name="aether_engine_api_fragment">Reach the API over the fragmented route</string>
     <string name="aether_engine_api_fragment_desc">Registration and identity calls go through the same fragmented ClientHello as the tunnel.</string>
     <string name="aether_engine_enroll_address">Enrolment endpoint</string>
     <string name="aether_engine_enroll_address_hint">A custom WARP API base address, for a self-hosted enrolment</string>
     <string name="aether_engine_logging">Logging</string>
     <string name="aether_engine_log_level">Log level</string>
-    <string name="aether_engine_log_level_hint">Engine default keeps the level the core chose</string>
     <string name="aether_engine_verbose">Verbose</string>
     <string name="aether_engine_verbose_desc">Shorthand for debug level, kept because the core parses it.</string>
     <string name="aether_engine_perf">Performance profile</string>

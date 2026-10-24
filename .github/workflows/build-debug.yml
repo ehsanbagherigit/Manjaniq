@@ -318,6 +318,9 @@ jobs:
             done
           done
 
+      - name: Verify JNI bindings (Kotlin externals vs native exports)
+        run: python3 scripts/ci/check_jni_bindings.py
+
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 

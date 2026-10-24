@@ -7,22 +7,25 @@ Scope: the Aether module of this app only (`app/src/main/java/com/manjaniq/{Aeth
 Nothing here is inferred from a feature name. Every row cites the file and line
 that establishes it, or says explicitly that it could not be established.
 
-> **Updated: start modes.** The inventory below describes the *granular* FFI path
-> (`aether_identity_open` -> `aether_scan_start` -> `aether_tunnel_start`), which
-> is what this app used exclusively when the table was written. That path is
-> still the default and still reports each step, but it is no longer the only
-> one: a route can be started through `aether_core_start`, i.e. the core's own
-> command line, where every flag in `cli.rs` applies. §9 covers that path, the
-> packaged helper processes it needs, and what Android 10+ (W^X) allows. Where a
-> row below says "recorded only" or "not implemented", read it as *on the granular
-> path* - `AetherCapabilities.reachOf(key, mode)` answers the same question for
-> either mode, and the settings screen uses it.
+> **Updated: one start path.** The app now starts Aether only through
+> `aether_core_start` - the core's own command line - so every setting the screen
+> offers is handed to the engine and applied. The granular FFI calls
+> (`aether_identity_open` -> `aether_scan_start` -> `aether_tunnel_start`) were
+> removed from the bridge, the JNI wrapper and the service: their payload structs
+> carry a fixed handful of fields, so most of the configuration could never be
+> applied through them. Sections 1-8 below are the audit of that former path,
+> kept because their citations are still true of the vendored core; read any
+> "recorded only"/"not forwarded" row there as history. §9 documents the path the
+> app actually uses, the packaged helper processes it needs, and what Android 10+
+> (W^X) allows.
 
 ---
 
-## 1. What "reachable" means in this build
+## 1. What "reachable" means in this build (history: the removed granular path)
 
-`AetherService` drives Aether through three granular FFI calls plus polling:
+`AetherService` used to drive Aether through three granular FFI calls plus
+polling. Nothing in the app calls them any more; §9 describes the start path in
+use. The table is kept because it explains why they were not enough:
 
 | FFI call | Payload struct | Fields Aether actually reads |
 |---|---|---|
@@ -329,9 +332,9 @@ Listed so nothing is mistaken for missing when it is only unwired:
 
 ---
 
-## 9. The full-engine start path
+## 9. The start path in use: `aether_core_start`
 
-### 9.1 Why a second path exists
+### 9.1 Why the command line, and nothing else
 
 The three granular calls carry fixed payload structs (`ffi.rs:215-260`):
 
@@ -348,17 +351,16 @@ Everything else the core implements - `--gool`, `--mim`, `--tor*`, `--psiphon*`,
 `cli.rs` into `AETHER_*` variables before `run_with` starts (`lib.rs:77`).
 
 `aether_core_start` (`ffi.rs:492`) runs `cli::parse_args` over a JSON array of
-arguments and then `run_with`, returning a pollable, cancellable job exactly like
-the granular calls. `AetherConfig.toAetherArgs` builds that list from the same
-model the settings screen edits, and `AetherService.startFullEngine` drives it:
-start the job, poll it, probe the loopback SOCKS listener until it answers, then
-hold the job until it ends. Stop, restart, readiness reporting and state
-publication are shared with the granular path.
+arguments and then `run_with`, returning a pollable, cancellable job. That is the
+app's only start path. `AetherConfig.toAetherArgs` builds the list from the same
+model the settings screen edits, and `AetherService.startEngine` drives it: start
+the job, poll it, probe the loopback SOCKS listener until it answers, then hold
+the job until it ends.
 
-The mode is stored per route (`AetherConfig.startMode`, `AetherStartMode`), shown
-in the settings, and validated (`AetherConfig.validate`): an unknown mode is
-refused, and the protocols only the CLI has are refused on the granular path
-instead of silently degrading to MASQUE (`api::Transport::parse`, `api.rs:20-26`).
+There is no stored mode and no mode check: `AetherConfig.validate()` accepts all
+four protocols (`--masque`, `--wg`, `--gool`, `--mim` all write `AETHER_PROTOCOL`
+in `cli.rs:551-563`), and a configuration written by an earlier build that still
+carries a `startMode` member loads with that member ignored.
 
 ### 9.2 What a child process needs, and why it lives in lib/
 
@@ -397,42 +399,39 @@ that chooses not to ship one), both paths fail closed:
 
 * `AetherConfig.validate()` refuses a Psiphon route with no binary and no packaged
   helper, and a bridged Tor route with no transport, naming the missing file;
-* `AetherHelpers.summary()` states what the installation can start, and the
-  settings screen shows that line;
 * the CI step that packages them reports a `::warning::`, never a failure, and
   the APK verification prints what was actually packaged.
 
-### 9.3 Reach, per mode
+### 9.3 Reach
 
-`AetherCapabilities.reachOf(key, mode)` answers this in code; the table is the
-short version.
+Every setting the screen offers is in the argument list, and
+`AetherEngineOptionsTest` proves each flag exists in `cli.rs`
+(`everyFlagThisModelEmitsExistsInTheCoreCli`) and that every flag the core
+accepts is reachable from the app (`everyFlagTheCoreAcceptsIsReachableFromTheApp`).
 
-| setting | granular | full engine |
-|---|---|---|
-| transport, scanMode, ipVersion, socksBind, httpProxyBind, peer, identityPath | Applied | Applied |
-| echEnabled, noizeProfile, teamName, fragmentEnabled/Size/Delay | Partial | Applied |
-| fragmentSniSplit | Partial (bridge sets the variable; no CLI flag upstream) | Partial (same reason) |
-| dns, upstream, quickReconnect | NotForwarded | Applied |
-| gool, mim | NotForwarded (runs as MASQUE) | Applied (`--gool`, `--mim`) |
-| Tor layering, bridges, relays, PT paths | NotForwarded | Applied / Partial when a PT is needed |
-| Psiphon layering, region, CDN fronting | NotForwarded | Applied / Partial when the child process is absent |
-| Zero Trust (`--team`, `--access-*`, `--gateway`) | NotForwarded | Applied |
-| routing (`--routes`, `--route-block`, `--route-direct`) | NotForwarded | Applied |
-| `--stats`, `--exit-loc`, `--mark`, `--register`, `--tls-*`, `--ech*`, `--dns` | NotForwarded | Applied |
-| fragmenting carrier | `AETHER_MASQUE_HTTP2` via `fragmentingApply` | `--h2`/`--h3` on the command line |
+| setting | applied through |
+|---|---|
+| transport, scanMode, ipVersion, socksBind, httpProxyBind, peer, identityPath | `--bind`, `--scan`, `-4/-6/--dual`, `--masque`/`--wg`/`--gool`/`--mim`, `--config` |
+| echEnabled, noizeProfile, teamName | `--ech auto`, `--noize`, `--team` |
+| fragmentEnabled/Size/Delay | `--h2`/`--h3`, `--fragment`/`--no-fragment`, `--fragment-size`, `--fragment-delay` |
+| fragmentSniSplit | `AETHER_MASQUE_H2_FRAGMENT_SNI` through `AetherBridge.fragmentingApply` (upstream has no flag) |
+| dns, upstream, quickReconnect | `--dns`, `--upstream`, `--quick-reconnect` |
+| gool, mim | `--gool`/`--gool-*`, `--mim`/`--mim-*` |
+| Tor layering, bridges, relays, PT paths | `--tor*`; a PT path is auto-filled from the packaged lyrebird |
+| Psiphon layering, region, CDN fronting | `--psiphon*`; the packaged psiphon-tunnel-core is auto-filled |
+| Zero Trust (`--team`, `--access-*`, `--gateway`) | the matching flags |
+| routing (`--routes`, `--route-block`, `--route-direct`) | the matching flags |
+| `--stats`, `--exit-loc`, `--mark`, `--register`, `--tls-*`, `--ech*` | the matching flags |
 
 ### 9.4 UI
 
-* The selected route shows a **Start path** choice (`granular` / `full`), stored
-  with the route.
-* Transport chips follow the mode: `gool` and `mim` become selectable exactly
-  when the route runs the full engine, and stay unclickable with the reason
-  beside them otherwise. `AetherTransportChoice.isSelectable(id, fullEngine)` is
-  the single rule the chips and `validate()` share.
-* Every reach note is mode-aware (`AetherCapabilities.reachOf(key, mode)`), so a
-  setting shown as applied is applied.
-* `AetherConfig.commandLineOnlyFeatures()` names anything the chosen mode cannot
-  apply, both above the groups and in the service log.
+* There is no start-path choice to make: the route's settings *are* the command
+  line.
+* Transport chips offer all four protocols. Nothing is greyed out for a mode,
+  because there is no second mode to switch to.
+* No reach note is printed: a setting shown on screen is a setting the engine is
+  handed. `AetherPanelUiTest.everyProtocolIsOfferedAndClickable` pins that no
+  "not selectable"/"recorded only" label survives.
 * An **Engine options** group edits every remaining flag (`AetherEngineOptionsPanel`):
   Tor mode/bridges/lines/bridge file/relays/relay ports/PT and PT directories/
   SOCKS and HTTP addresses/state directory, Psiphon mode/region/CDN mode, edge
@@ -451,11 +450,27 @@ short version.
   and fails if any option property has no `copy(... = ...)` in the UI.
   `AetherPanelUiTest` opens the group and checks a control per family renders.
 
-### 9.5 Registration (headless identities)
+### 9.5 One start begins from its own argument list
+
+`run_with` reads its settings from the process environment, and `cli::parse_args`
+writes them there (`cli.rs:647-653`). The app runs in one Android process that
+outlives a tunnel, so a value written by the previous start would otherwise still
+be in force: turning Tor off would leave `AETHER_TOR=chain` behind and the engine
+would keep chaining through Tor while the screen said it was off. Kotlin has no
+`setenv`, so `AetherBridge.envReset()` (`nativeAetherEnvReset` in
+`aether-wrapper/src/lib.rs`) removes every `AETHER_*` name and the service calls it
+before it applies fragmenting and before it starts the job. Only `AETHER_*` names
+are touched, the call is synchronous and it returns before the job that parses the
+argument list exists, so each start is decided by the configuration and nothing
+else. A reset that cannot be reported stops the start with that reason, rather than
+running a configuration that might be half the previous one.
+
+### 9.6 Registration (headless identities)
 
 `--register <masque|wg|gool|mim|all>` registers identities and exits without
 scanning or tunnelling (`cli.rs`). It is edited in the engine options group and
-run by the full-engine path as a one-shot job bounded by the engine's own
-registration budget (`AetherJobPolling.identityTimeoutMs`), with failures
-reported through `AetherRegistrationOutcome`. `--enroll-address` (custom WARP API
+run by the same `aether_core_start` job as a one-shot run bounded by the engine's
+own registration budget (`AetherJobPolling.identityTimeoutMs`), with failures
+reported through `AetherRegistrationOutcome` and the device's own connectivity
+logged through `AetherNetworkCheck`. `--enroll-address` (custom WARP API
 endpoint) and `--dns` (custom tunnel DNS) are part of the same argument list.

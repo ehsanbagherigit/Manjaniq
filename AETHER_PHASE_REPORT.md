@@ -1,5 +1,14 @@
 # Aether UI redesign + logic audit — final report
 
+> **Historical.** This report describes the build that had two start paths
+> (granular FFI calls and `aether_core_start`). That architecture is gone: the app
+> now starts Aether only through `aether_core_start`, the reach notes, the
+> "Not selectable here" badge, the start-path choice and the helper summary row
+> were removed with it, and `AetherScanOutcome` / `AetherStartMode` /
+> `AetherCapabilities.reachOf` no longer exist. File names and line counts below
+> are as they were when this report was written; see
+> [`AETHER_CAPABILITIES.md`](AETHER_CAPABILITIES.md) §9 for the path in use.
+
 Branch: `arena/780f8f24-manjaniq`. Base: `47edd94302f285588844ac9969788778ba84fafb`.
 Companion document: [`AETHER_CAPABILITIES.md`](AETHER_CAPABILITIES.md) (the
 capability inventory with per-row source evidence).
