@@ -2,6 +2,7 @@ package com.manjaniq
 
 import android.util.Log
 import com.manjaniq.core.models.Result
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -137,14 +138,16 @@ object AetherBridge {
         sniSplit: Boolean,
         http2Carrier: Boolean = enabled
     ): Result<JSONObject> {
-        val payload = JSONObject().apply {
-            put("enabled", enabled)
-            put("http2", http2Carrier)
-            put("sniSplit", sniSplit)
-            put("size", size.trim())
-            put("delay", delay.trim())
+        return safeJsonCall {
+            val payload = JSONObject().apply {
+                put("enabled", enabled)
+                put("http2", http2Carrier)
+                put("sniSplit", sniSplit)
+                put("size", size.trim())
+                put("delay", delay.trim())
+            }
+            nativeAetherFragmentingApply(payload.toString())
         }
-        return safeJsonCall { nativeAetherFragmentingApply(payload.toString()) }
     }
 
     /**
@@ -168,23 +171,30 @@ object AetherBridge {
      */
     fun envReset(): Result<JSONObject> = safeJsonCall { nativeAetherEnvReset() }
 
-    fun coreStart(args: List<String> = emptyList()): Result<JSONObject> {
-        val json = if (args.isEmpty()) "[]" else org.json.JSONArray(args).toString()
-        return safeJsonCall { nativeAetherCoreStart(json) }
+    fun coreStart(args: List<String> = emptyList()): Result<JSONObject> = safeJsonCall {
+        nativeAetherCoreStart(JSONArray(args).toString())
     }
 
     fun teamSignIn(team: String, clientId: String? = null, clientSecret: String? = null, token: String? = null, email: String? = null): Result<JSONObject> {
-        val payload = JSONObject().apply {
-            put("team", team)
-            if (clientId != null) put("client_id", clientId)
-            if (clientSecret != null) put("client_secret", clientSecret)
-            if (token != null) put("token", token)
-            if (email != null) put("email", email)
+        return safeJsonCall {
+            val payload = JSONObject().apply {
+                put("team", team)
+                if (clientId != null) put("client_id", clientId)
+                if (clientSecret != null) put("client_secret", clientSecret)
+                if (token != null) put("token", token)
+                if (email != null) put("email", email)
+            }
+            nativeAetherTeamSignIn(payload.toString())
         }
-        return safeJsonCall { nativeAetherTeamSignIn(payload.toString()) }
     }
 
-    // Internal JSON helper - distinguishes "ok":false as failure
+    /**
+     * Runs one JNI call and turns its answer into a [Result].
+     *
+     * Every serialisation happens inside [block], after the missing-native check,
+     * so no call through this object can throw: without the library it is a
+     * failure result, and a payload that cannot be encoded is one too.
+     */
     private fun safeJsonCall(block: () -> String): Result<JSONObject> {
         if (loadError != null) return Result.failure("Native lib not loaded: $loadError")
         return try {

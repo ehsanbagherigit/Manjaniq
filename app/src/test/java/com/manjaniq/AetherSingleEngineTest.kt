@@ -1,5 +1,6 @@
 package com.manjaniq
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.manjaniq.core.AetherHelpers
 import com.manjaniq.core.models.AetherCapabilities
 import com.manjaniq.core.models.AetherConfig
@@ -23,6 +24,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
 import java.io.File
 
 /**
@@ -35,7 +38,12 @@ import java.io.File
  * gone from this app - bindings, service path and UI - and these tests pin the
  * consequences: no mode is stored or selectable, every protocol validates, and
  * every configured feature reaches the argument list the engine is handed.
+ *
+ * Robolectric, because the configuration is stored as JSON (`org.json` is a stub on
+ * the bare host JVM) and because the helper lookups read real files.
  */
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [34])
 class AetherSingleEngineTest {
 
     private val filesDir = "/data/user/0/com.manjaniq/files"
@@ -103,8 +111,14 @@ class AetherSingleEngineTest {
             quickReconnect = false,
             teamName = "example-team",
             engine = AetherEngineOptions(
-                tor = AetherTorOptions(mode = AetherTorMode.CHAIN),
-                psiphon = AetherPsiphonOptions(mode = AetherPsiphonMode.ONLY),
+                tor = AetherTorOptions(
+                    mode = AetherTorMode.CHAIN,
+                    pt = listOf("obfs4=/data/app/lib/arm64/liblyrebird.so")
+                ),
+                psiphon = AetherPsiphonOptions(
+                    mode = AetherPsiphonMode.ONLY,
+                    bin = "/data/app/lib/arm64/libpsiphon_tunnel_core.so"
+                ),
                 timing = com.manjaniq.core.models.AetherTimingOptions(mark = "255"),
                 stats = com.manjaniq.core.models.AetherStatsOptions(enabled = true),
                 routing = com.manjaniq.core.models.AetherRoutingOptions(block = "keyword:doubleclick"),

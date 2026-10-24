@@ -30,23 +30,31 @@ class AetherConfigLogicTest {
         assertNull(AetherConfig.DEFAULT.copy(httpProxyBind = "127.0.0.1:1820").validate())
     }
 
+    /**
+     * Every protocol id the screen offers is one the engine is started with.
+     *
+     * This used to be the opposite way round: three of the four protocols were
+     * refused because the granular `aether_tunnel_start` could only dispatch
+     * MASQUE and WireGuard, so `gool` and `mim` would have run plain MASQUE while
+     * the stored configuration claimed something else. The app now starts the core
+     * through its own command line, where `--gool` and `--mim` are real flags.
+     */
     @Test
-    fun aTransportThisBuildCannotDispatchIsRejectedInsteadOfSilentlyRunningMasque() {
-        // api::Transport::parse maps every id that is not "wg" to Masque, so
-        // forwarding gool or mim would run plain MASQUE while the stored
-        // configuration claims something else. Both entry points refuse instead:
-        // AetherService calls validate() before touching the FFI, and the panel
-        // shows the same message before a start is even requested.
-        listOf("gool", "mim").forEach { id ->
-            val message = AetherConfig.DEFAULT.copy(transport = id).validate()
-            assertNotNull("transport '$id' must not validate", message)
-            assertTrue("names the rejected transport: $message", message!!.contains(id))
-            assertTrue("names what would otherwise have run: $message", message.contains("MASQUE"))
-            assertTrue("offers the ids that do work: $message", message.contains("masque or wg"))
+    fun everyProtocolTheScreenOffersIsStartedAsItself() {
+        listOf("masque", "wg", "gool", "mim").forEach { id ->
+            val cfg = AetherConfig.DEFAULT.copy(transport = id)
+            assertNull("transport '$id' must validate", cfg.validate())
+            assertEquals(
+                "'$id' must be handed to the engine as its own flag",
+                1,
+                cfg.toAetherArgs("/data/user/0/com.manjaniq/files")
+                    .count { it == "--$id" }
+            )
         }
-        // The two ids aether_tunnel_start can dispatch stay valid.
-        assertNull(AetherConfig.DEFAULT.copy(transport = "masque").validate())
-        assertNull(AetherConfig.DEFAULT.copy(transport = "wg").validate())
+        // An id nothing knows is still refused rather than run as something else.
+        val message = AetherConfig.DEFAULT.copy(transport = "quic").validate()
+        assertNotNull("an unknown transport must not validate", message)
+        assertTrue("says which field is wrong: $message", message!!.contains("transport"))
     }
 
     @Test

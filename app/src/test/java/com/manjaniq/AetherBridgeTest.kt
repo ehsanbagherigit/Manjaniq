@@ -1,15 +1,24 @@
 package com.manjaniq
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
 
 /**
  * Host-side regression for AetherBridge error contract.
  * Host JVM has no libaether.so, so these tests pin failure behaviour:
  * bridge must not report success, must not throw, and must surface load failure.
+ *
+ * Robolectric, because the bridge serialises its arguments through `org.json`,
+ * which is a stub on the bare host JVM - a call would fail there for a reason that
+ * has nothing to do with the bridge.
  */
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [34])
 class AetherBridgeTest {
     @Test
     fun aetherBridgeDoesNotReportSuccessWithoutNativeLibrary() {
@@ -37,6 +46,7 @@ class AetherBridgeTest {
         AetherBridge.version()
         AetherBridge.jobPoll(1)
         AetherBridge.jobFree(1)
+        AetherBridge.envReset()
         AetherBridge.coreStart(listOf("--bind", "127.0.0.1:1819"))
     }
 }

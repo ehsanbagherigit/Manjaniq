@@ -52,9 +52,11 @@ class AetherConfigJsonTest {
         )
         assertNull(cfg.validate())
         assertEquals(cfg, AetherConfig.fromJson(cfg.toJson()))
-        // The pairing rule, pinned where this fixture touches it: fragmenting on this
-        // WireGuard route is refused, on MASQUE it is accepted.
-        assertNotNull(cfg.copy(fragmentEnabled = true).validate())
+        // Fragmenting is a setting, not a lock: this WireGuard route stores it and
+        // starts with it either way. What the engine does with the value is stated on
+        // the screen (the fragments belong to the MASQUE carrier), not enforced by
+        // refusing the route.
+        assertNull(cfg.copy(fragmentEnabled = true).validate())
         assertNull(cfg.copy(transport = "masque", fragmentEnabled = true).validate())
     }
 
