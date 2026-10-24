@@ -121,7 +121,10 @@ class AetherSingleEngineTest {
                 ),
                 timing = com.manjaniq.core.models.AetherTimingOptions(mark = "255"),
                 stats = com.manjaniq.core.models.AetherStatsOptions(enabled = true),
-                routing = com.manjaniq.core.models.AetherRoutingOptions(block = "keyword:doubleclick"),
+                routing = com.manjaniq.core.models.AetherRoutingOptions(
+                    routesFile = "/data/user/0/com.manjaniq/files/aether/routes.txt",
+                    block = "keyword:doubleclick"
+                ),
                 gateway = com.manjaniq.core.models.AetherGatewayOptions(enabled = true)
             )
         )
