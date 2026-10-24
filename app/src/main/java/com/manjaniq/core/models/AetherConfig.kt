@@ -272,6 +272,13 @@ data class AetherConfig(
         args += "--config"; args += fullPath
         // quick reconnect
         if (quickReconnect) args += "--quick-reconnect" else args += "--no-quick-reconnect"
+        // Zero Trust team. The route's own field is the compact form of `--team`, and
+        // the detailed editor's `AetherApiOptions.team` owns the same variable
+        // (`cli.rs:612-613`), so the detailed one wins instead of the two being
+        // written one after the other with the last one silently deciding.
+        if (teamName.isNotBlank() && engine.api.team.isBlank()) {
+            args += "--team"; args += teamName.trim()
+        }
         // Every remaining family the core accepts (cli.rs:469-647), each emitting
         // nothing when it is left at the engine's own default.
         args += engine.toArgs()

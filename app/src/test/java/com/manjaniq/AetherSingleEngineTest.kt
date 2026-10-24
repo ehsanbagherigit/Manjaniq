@@ -214,6 +214,30 @@ class AetherSingleEngineTest {
         assertEquals(1, args.count { it == "--tor-bridges" })
     }
 
+    /**
+     * The route's own team field is the compact form of `--team`, and the detailed
+     * editor's is the same variable. Whichever is set reaches the engine, and the
+     * detailed one decides when both are - never both flags, which would make the
+     * last one win by accident.
+     */
+    @Test
+    fun theTeamFieldReachesTheTeamFlagExactlyOnce() {
+        val fromRoute = AetherConfig.DEFAULT.copy(teamName = "route-team").toAetherArgs(filesDir)
+        assertEquals("route-team", fromRoute[fromRoute.indexOf("--team") + 1])
+        assertEquals(1, fromRoute.count { it == "--team" })
+
+        val both = AetherConfig.DEFAULT.copy(
+            teamName = "route-team",
+            engine = AetherEngineOptions(api = com.manjaniq.core.models.AetherApiOptions(team = "editor-team"))
+        ).toAetherArgs(filesDir)
+        assertEquals(
+            "the detailed editor owns the flag when both name a team",
+            "editor-team",
+            both[both.indexOf("--team") + 1]
+        )
+        assertEquals(1, both.count { it == "--team" })
+    }
+
     @Test
     fun theScanAndCarrierChoicesAreCarriedToo() {
         val args = AetherConfig.DEFAULT
