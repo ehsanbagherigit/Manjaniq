@@ -20,6 +20,7 @@ object AetherFmt {
         INVALID_EXIT_LOC,
         INVALID_ECH_DNS,
         INVALID_ECH_DOMAIN,
+        INVALID_UPSTREAM,
         LISTEN_PORT_TAKEN,
         LISTEN_PORT_SHARED,
         LISTEN_PORT_INVALID,
@@ -75,6 +76,7 @@ object AetherFmt {
         config.aetherTorBridges = queryParam["tor_bridges"]?.let { AetherTorBridges.fromString(it).type }
         config.aetherTorBridgeLines = queryParam["bridges"]?.split(';')?.joinToString("\n")
         config.aetherTorRelays = queryParam["tor_relays"]?.let { AetherTorRelays.fromString(it).type }
+        config.aetherUpstream = queryParam["upstream"]?.let(::normalizeUpstreamUrl)?.ifEmpty { null }
         config.aetherFinalMask = queryParam["fm"]
         config.aetherDialMode = queryParam["dialMode"]
 
@@ -153,6 +155,7 @@ object AetherFmt {
             query["tor_relays"] = AetherTorRelays.fromString(config.aetherTorRelays).type
             bridgeLines(config.aetherTorBridgeLines).takeIf { it.isNotEmpty() }?.let { query["bridges"] = it.joinToString(";") }
         }
+        config.aetherUpstream?.let(::normalizeUpstreamUrl)?.takeIf { it.isNotEmpty() }?.let { query["upstream"] = it }
         config.aetherFinalMask?.takeIf { it.isNotBlank() }?.let { query["fm"] = it }
         config.aetherDialMode?.takeIf { it.isNotBlank() }?.let { query["dialMode"] = it }
         val endpoint = AetherEndpoint.of(config.server, config.serverPort).takeUnless { protocol.twoHops }
@@ -195,6 +198,7 @@ object AetherFmt {
             ?: normalizeEndpoints(config)
             ?: normalizeDns(config)
             ?: normalizeExitLoc(config)
+            ?: normalizeUpstream(config)
             ?: normalizeEch(config)
             ?: normalizePsiphon(config)
             ?: normalizeTor(config)
@@ -240,6 +244,66 @@ object AetherFmt {
         if (!exitRule.matches(rule)) return Problem.INVALID_EXIT_LOC
         config.aetherExitLoc = rule
         return null
+    }
+
+    private fun normalizeUpstream(config: ProfileItem): Problem? {
+        val raw = config.aetherUpstream?.trim().orEmpty()
+        if (raw.isEmpty()) {
+            config.aetherUpstream = null
+            return null
+        }
+        val normalized = normalizeUpstreamUrl(raw) ?: return Problem.INVALID_UPSTREAM
+        config.aetherUpstream = normalized.ifEmpty { null }
+        return null
+    }
+
+    /**
+     * Normalizes a user-supplied upstream proxy string for `--upstream`:
+     * - blank -> `""`
+     * - bare port (`"10808"`) -> `"socks5://127.0.0.1:10808"`
+     * - bare `host:port` / `[ipv6]:port` -> `"socks5://host:port"`
+     * - `socks5://...`, `socks5h://...`, `http://...` -> validated and normalized
+     * - anything else -> `null`
+     */
+    fun normalizeUpstreamUrl(raw: String?): String? {
+        val trimmed = raw?.trim().orEmpty()
+        if (trimmed.isEmpty()) return ""
+        if (trimmed.any { it.isWhitespace() || it == '"' || it == '\'' || it.code < 0x20 }) return null
+
+        if ("://" !in trimmed) {
+            if (trimmed.length in 1..5 && trimmed.all { it in '0'..'9' }) {
+                val port = trimmed.toIntOrNull()?.takeIf { it in 1..65535 } ?: return null
+                return "socks5://${AetherCoreManager.LOOPBACK}:$port"
+            }
+            if (!isUpstreamHostPort(trimmed)) return null
+            return "socks5://$trimmed"
+        }
+
+        val scheme = trimmed.substringBefore("://").lowercase(Locale.ROOT)
+        if (scheme !in setOf("socks5", "socks5h", "http")) return null
+        val rest = trimmed.substringAfter("://").removeSuffix("/")
+        if (rest.isEmpty() || '/' in rest || '?' in rest || '#' in rest) return null
+
+        val at = rest.lastIndexOf('@')
+        val userInfo = if (at >= 0) rest.substring(0, at) else null
+        val hostPort = if (at >= 0) rest.substring(at + 1) else rest
+        if (userInfo != null) {
+            val user = userInfo.substringBefore(':')
+            if (user.isEmpty()) return null
+        }
+        if (!isUpstreamHostPort(hostPort)) return null
+        return if (userInfo != null) "$scheme://$userInfo@$hostPort" else "$scheme://$hostPort"
+    }
+
+    private fun isUpstreamHostPort(value: String): Boolean {
+        val separator = value.lastIndexOf(':')
+        if (separator <= 0) return false
+        val host = value.substring(0, separator)
+        if (':' in host && !(host.startsWith('[') && host.endsWith(']'))) return false
+        val portText = value.substring(separator + 1)
+        if (portText.length !in 1..5 || !portText.all { it in '0'..'9' }) return false
+        val port = portText.toIntOrNull()?.takeIf { it in 1..65535 } ?: return false
+        return AetherEndpoint.of(host, port.toString()) != null || isEchDomain(host)
     }
 
     private val exitRule = Regex("!?[A-Z]{2}(,[A-Z]{2})*")

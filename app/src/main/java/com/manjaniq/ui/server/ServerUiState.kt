@@ -68,6 +68,7 @@ data class AetherUiState(
     val echDns: String = AetherCoreManager.AETHER_ECH_DNS,
     val echDomain: String = AetherCoreManager.AETHER_ECH_DOMAIN,
     val dns: String = "",
+    val upstream: String = "",
     val exitLoc: String = "",
     val exitNode: String = "",
     val finalMask: String = "",
@@ -120,6 +121,7 @@ data class AetherUiState(
             echDns = config.aetherEchDns?.ifEmpty { null } ?: AetherCoreManager.AETHER_ECH_DNS,
             echDomain = config.aetherEchDomain?.ifEmpty { null } ?: AetherCoreManager.AETHER_ECH_DOMAIN,
             dns = config.aetherDns.orEmpty(),
+            upstream = config.aetherUpstream.orEmpty(),
             exitLoc = config.aetherExitLoc.orEmpty(),
             exitNode = config.aetherExitNode.orEmpty(),
             finalMask = config.aetherFinalMask.orEmpty(),
@@ -194,6 +196,8 @@ data class AetherUiState(
             config.aetherEchDomain = null
         }
         config.aetherDns = dns.trim().ifEmpty { null }
+        config.aetherUpstream = AetherFmt.normalizeUpstreamUrl(upstream)?.ifEmpty { null }
+            ?: upstream.trim().ifEmpty { null }
         config.aetherExitLoc = if (psiphon != AetherPsiphon.OFF && warpRuns) {
             exitLoc.trim().uppercase().ifEmpty { null }
         } else {

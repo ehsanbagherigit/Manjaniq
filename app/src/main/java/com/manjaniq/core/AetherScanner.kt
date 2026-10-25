@@ -2,7 +2,9 @@ package com.manjaniq.core
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 
 data class AetherScanResult(
     val endpoint: AetherEndpoint,
@@ -35,12 +37,30 @@ object AetherScanner {
         profile: ProfileItem,
         onOutput: (String) -> Unit = {},
     ): AetherScanResult? {
+        coroutineContext.ensureActive()
         val protocol = AetherProtocol.fromString(profile.aetherProtocol)
-        val port = withContext(Dispatchers.IO) { AetherCoreManager.scanPort(profile) }
+        val port = withContext(Dispatchers.IO) {
+            AetherIdentityManager.settle(context)
+            AetherCoreManager.scanPort(profile)
+        }
+        val arguments = AetherCoreManager.buildArguments(profile, port, scan = true)
+        val exit = AetherExit.of(profile)
+        val excludePorts = if (port > 0) setOf(port, port + 1) else emptySet()
+        withContext(Dispatchers.IO) {
+            AetherCoreManager.ensureIdentitiesProvisioned(
+                context = context,
+                workDir = AetherIdentityManager.workDir(context),
+                arguments = arguments,
+                exit = exit,
+                excludePorts = excludePorts,
+                onOutput = onOutput,
+            )
+        }
+        coroutineContext.ensureActive()
         return AetherCoreManager.runUntil(
             context = context,
-            arguments = AetherCoreManager.buildArguments(profile, port, scan = true),
-            exit = AetherExit.of(profile),
+            arguments = arguments,
+            exit = exit,
             timeoutMs = SCAN_TIMEOUT_MS,
             source = "aether-scan",
             onOutput = onOutput,

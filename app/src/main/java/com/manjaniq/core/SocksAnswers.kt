@@ -109,6 +109,17 @@ internal class SocksAnswers(
         return false
     }
 
+    fun close(port: Int) {
+        synchronized(lock) { waiting.remove(port) }?.let(::closeQuietly)
+    }
+
+    fun closeAll() {
+        val sockets = synchronized(lock) {
+            waiting.values.toList().also { waiting.clear() }
+        }
+        sockets.forEach(::closeQuietly)
+    }
+
     private fun closeQuietly(socket: Socket) {
         try {
             socket.close()

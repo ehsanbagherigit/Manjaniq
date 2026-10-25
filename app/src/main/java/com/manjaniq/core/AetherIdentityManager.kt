@@ -5,6 +5,8 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -13,6 +15,7 @@ import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.coroutineContext
 
 /**
  * The identity folder Aether registers its keys into, and the key files it holds.
@@ -100,6 +103,45 @@ object AetherIdentityManager {
         exit: AetherExit,
         renewalDir: File,
         onOutput: (String) -> Unit,
+    ): Boolean {
+        coroutineContext.ensureActive()
+        if (runRegisterAttempt(context, arguments, exit, renewalDir, onOutput)) {
+            return true
+        }
+        coroutineContext.ensureActive()
+
+        val hasExplicitUpstream = AetherCoreManager.UPSTREAM in arguments || exit.node.isNotBlank()
+        val hasCarrier = AetherCoreManager.usesPsiphon(arguments) || AetherCoreManager.usesTor(arguments)
+        if (!hasExplicitUpstream && !hasCarrier && "--fragment" !in arguments && coroutineContext.isActive) {
+            resetRenewalDir(renewalDir)
+            onOutput("[*] direct WARP API unreachable; retrying registration with TLS ClientHello fragmentation...")
+            if (runRegisterAttempt(context, arguments + "--fragment", exit, renewalDir, onOutput)) {
+                return true
+            }
+        }
+        coroutineContext.ensureActive()
+
+        if (!hasExplicitUpstream && !hasCarrier && AetherCoreManager.hasPsiphon(context) && coroutineContext.isActive) {
+            resetRenewalDir(renewalDir)
+            onOutput("[*] retrying WARP registration through local Psiphon SOCKS5 relay (127.0.0.1)...")
+            val relayArgs = arguments + listOf(
+                "--psiphon-reverse",
+                AetherCoreManager.PSIPHON_SERVER_ENTRIES,
+                AetherCoreManager.SHIPPED_LIST,
+            )
+            if (runRegisterAttempt(context, relayArgs, exit, renewalDir, onOutput)) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private suspend fun runRegisterAttempt(
+        context: Context,
+        arguments: List<String>,
+        exit: AetherExit,
+        renewalDir: File,
+        onOutput: (String) -> Unit,
     ): Boolean = AetherCoreManager.runUntil(
         context = context,
         arguments = AetherCoreManager.withInfoLines(arguments),
@@ -109,6 +151,13 @@ object AetherIdentityManager {
         onOutput = onOutput,
         keysDir = renewalDir,
     ) { line -> line.takeIf(::isRegistered) } != null
+
+    private suspend fun resetRenewalDir(renewalDir: File) {
+        withContext(Dispatchers.IO) {
+            renewalDir.deleteRecursively()
+            renewalDir.mkdirs()
+        }
+    }
 
     internal fun status(workDir: File, protocol: AetherProtocol): AetherIdentityStatus = when (protocol) {
         AetherProtocol.MASQUE -> AetherIdentityStatus(protocol, read(File(workDir, MASQUE_FILE)))
@@ -137,6 +186,14 @@ object AetherIdentityManager {
         AetherKeyKind.GOOL -> listOf(WIREGUARD_FILE, WIREGUARD_INNER_FILE)
         AetherKeyKind.MIM -> listOf(MASQUE_FILE, MASQUE_INNER_FILE)
         AetherKeyKind.WG_OVER_MASQUE -> listOf(MASQUE_FILE, MASQUE_GOOL_FILE)
+    }
+
+    fun kindFor(protocol: AetherProtocol): AetherKeyKind = when (protocol) {
+        AetherProtocol.MASQUE -> AetherKeyKind.MASQUE
+        AetherProtocol.WIREGUARD -> AetherKeyKind.WIREGUARD
+        AetherProtocol.GOOL -> AetherKeyKind.GOOL
+        AetherProtocol.MIM -> AetherKeyKind.MIM
+        AetherProtocol.WG_OVER_MASQUE -> AetherKeyKind.WG_OVER_MASQUE
     }
 
     fun filesOf(protocol: AetherProtocol): List<String> = when (protocol) {

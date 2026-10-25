@@ -2,8 +2,10 @@ package com.manjaniq
 
 import com.manjaniq.core.AetherCore
 import com.manjaniq.core.AetherCoreManager
+import com.manjaniq.core.AetherExit
 import com.manjaniq.core.AetherFingerprint
 import com.manjaniq.core.AetherFmt
+import com.manjaniq.core.AetherIdentityManager
 import com.manjaniq.core.AetherIpVersion
 import com.manjaniq.core.AetherKeyKind
 import com.manjaniq.core.AetherKeys
@@ -13,12 +15,19 @@ import com.manjaniq.core.AetherProtocol
 import com.manjaniq.core.AetherScanMode
 import com.manjaniq.core.AetherTransport
 import com.manjaniq.core.ProfileItem
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.file.Files
 
 class AetherCoreTest {
 
@@ -154,5 +163,111 @@ class AetherCoreTest {
         assertNotNull(core)
         assertEquals(1819, core?.port)
         assertEquals(listOf(1819), core?.ports)
+    }
+
+    @Test
+    fun v24ReadinessAndNoEchKeyWordsMatchCoreOutput() {
+        assertFalse(AetherCoreManager.readyNeedsWord(listOf("--protocol", "masque", "--bind", "127.0.0.1:1819")))
+        assertFalse(AetherCoreManager.readyNeedsWord(listOf("--protocol", "wg", "--bind", "127.0.0.1:1819")))
+        assertFalse(AetherCoreManager.readyNeedsWord(listOf("--tor-only", "--bind", "127.0.0.1:1819")))
+        assertFalse(AetherCoreManager.readyNeedsWord(listOf("--protocol", "masque", "--psiphon-reverse")))
+        assertTrue(AetherCoreManager.readyNeedsWord(listOf("--psiphon-only", "--bind", "127.0.0.1:1819")))
+        assertTrue(AetherCoreManager.readyNeedsWord(listOf("--protocol", "masque", "--psiphon")))
+
+        assertTrue(AetherCoreManager.isReadyWord("[+] psiphon is ready; 127.0.0.1:1819 leaves through psiphon"))
+        assertFalse(AetherCoreManager.isReadyWord("[+] identity ready: device=abc ipv4=172.16.0.2"))
+
+        assertTrue(AetherCoreManager.isNoEchKeyWord("[-] ech: ECH is on but there is no ECH key to offer"))
+        assertFalse(AetherCoreManager.isNoEchKeyWord("[*] looking up ECH key"))
+    }
+
+    @Test
+    fun upstreamNormalizationAndProvisioningProxyRoutingWorksForLoopback() {
+        assertEquals("", AetherFmt.normalizeUpstreamUrl("   "))
+        assertEquals("socks5://127.0.0.1:10808", AetherFmt.normalizeUpstreamUrl("10808"))
+        assertEquals("socks5://127.0.0.1:1080", AetherFmt.normalizeUpstreamUrl("127.0.0.1:1080"))
+        assertEquals("socks5://[::1]:10808", AetherFmt.normalizeUpstreamUrl("[::1]:10808"))
+        assertEquals("socks5h://127.0.0.1:9050", AetherFmt.normalizeUpstreamUrl("SOCKS5H://127.0.0.1:9050/"))
+        assertEquals("http://user:pass@127.0.0.1:8080", AetherFmt.normalizeUpstreamUrl("http://user:pass@127.0.0.1:8080"))
+        assertNull(AetherFmt.normalizeUpstreamUrl("ftp://127.0.0.1:1080"))
+        assertNull(AetherFmt.normalizeUpstreamUrl("127.0.0.1:99999"))
+
+        val keySettings = AetherKeysSettings(
+            kind = AetherKeyKind.ALL,
+            upstreamProxy = "127.0.0.1:10808",
+        )
+        assertNull(AetherKeys.validate(keySettings))
+        val keyArgs = AetherKeys.arguments(keySettings)
+        assertNotNull(keyArgs)
+        assertEquals("all", valueAfter(keyArgs!!, "--register"))
+        assertEquals("socks5://127.0.0.1:10808", valueAfter(keyArgs, "--upstream"))
+
+        // Auto-detects active local 127.0.0.1 SOCKS5 proxy during registration
+        val routed = AetherCoreManager.standaloneArguments(
+            arguments = listOf("--register", "all"),
+            exit = AetherExit.PLAIN,
+            excludePorts = setOf(1819),
+            autoDetectLocalSocks = true,
+            probe = { port -> port == 10808 },
+        )
+        assertEquals("socks5://127.0.0.1:10808", valueAfter(routed, "--upstream"))
+
+        // Falls back to local RSTA relay when RSTA is active and no SOCKS5 proxy answers
+        val rstaRouted = AetherCoreManager.standaloneArguments(
+            arguments = listOf("--register", "masque"),
+            exit = AetherExit.PLAIN,
+            autoDetectLocalSocks = true,
+            rstaListenPort = 40443,
+            probe = { false },
+        )
+        assertEquals("127.0.0.1:40443", valueAfter(rstaRouted, "--api-address"))
+    }
+
+    @Test
+    fun cancellingMultiIdentityRenewalCleansStagingAndPreservesExistingKeys() = runBlocking {
+        val root = Files.createTempDirectory("aether-cancel-test").toFile()
+        try {
+            val workDir = java.io.File(root, "aether").apply { mkdirs() }
+            val renewalDir = java.io.File(root, "aether-renewal")
+            val existingMasque = java.io.File(workDir, AetherIdentityManager.MASQUE_FILE)
+            existingMasque.writeText(
+                """
+                device_id = "existing-device"
+                ipv4 = "172.16.0.2"
+                ipv6 = "2606:4700::2"
+                """.trimIndent()
+            )
+
+            val started = CompletableDeferred<Unit>()
+            val job = launch(Dispatchers.Default) {
+                AetherIdentityManager.renew(
+                    workDir = workDir,
+                    renewalDir = renewalDir,
+                    files = AetherIdentityManager.KEY_FILES,
+                    io = Dispatchers.IO,
+                ) {
+                    java.io.File(renewalDir, AetherIdentityManager.MASQUE_FILE).writeText(
+                        """
+                        device_id = "partial-device"
+                        ipv4 = "172.16.0.99"
+                        ipv6 = "2606:4700::99"
+                        """.trimIndent()
+                    )
+                    started.complete(Unit)
+                    delay(60_000L)
+                    true
+                }
+            }
+
+            started.await()
+            job.cancelAndJoin()
+
+            assertFalse("renewal staging directory must be removed on cancel", renewalDir.exists())
+            val preserved = AetherIdentityManager.read(existingMasque)
+            assertNotNull(preserved)
+            assertEquals("existing-device", preserved?.deviceId)
+        } finally {
+            root.deleteRecursively()
+        }
     }
 }

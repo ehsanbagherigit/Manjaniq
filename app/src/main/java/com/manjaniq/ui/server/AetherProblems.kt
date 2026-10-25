@@ -23,6 +23,7 @@ internal fun messageOfAetherProblem(
         AetherFmt.Problem.INVALID_EXIT_LOC -> EditorMessage(R.string.aether_invalid_exit_loc)
         AetherFmt.Problem.INVALID_ECH_DNS -> EditorMessage(R.string.aether_invalid_ech_dns)
         AetherFmt.Problem.INVALID_ECH_DOMAIN -> EditorMessage(R.string.aether_invalid_ech_domain)
+        AetherFmt.Problem.INVALID_UPSTREAM -> EditorMessage(R.string.aether_invalid_upstream)
         AetherFmt.Problem.LISTEN_PORT_TAKEN ->
             EditorMessage(R.string.aether_listen_port_taken, AetherFmt.takenListenPort(config, takenPorts, listenPort) ?: listenPort)
         AetherFmt.Problem.LISTEN_PORT_SHARED ->

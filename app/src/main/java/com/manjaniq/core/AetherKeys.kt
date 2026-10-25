@@ -7,6 +7,7 @@ data class AetherKeysSettings(
     val enrollAddress: String = "",
     val apiSni: String = "",
     val apiHost: String = "",
+    val upstreamProxy: String = "",
     val fragment: Boolean = false,
     val fragmentSize: String = "",
     val fragmentDelay: String = "",
@@ -29,6 +30,7 @@ data class AetherKeysSettings(
         obj.put("enrollAddress", enrollAddress)
         obj.put("apiSni", apiSni)
         obj.put("apiHost", apiHost)
+        obj.put("upstreamProxy", upstreamProxy)
         obj.put("fragment", fragment)
         obj.put("fragmentSize", fragmentSize)
         obj.put("fragmentDelay", fragmentDelay)
@@ -57,6 +59,7 @@ data class AetherKeysSettings(
                     enrollAddress = str("enrollAddress"),
                     apiSni = str("apiSni"),
                     apiHost = str("apiHost"),
+                    upstreamProxy = str("upstreamProxy"),
                     fragment = bool("fragment"),
                     fragmentSize = str("fragmentSize"),
                     fragmentDelay = str("fragmentDelay"),
@@ -92,6 +95,7 @@ object AetherKeys {
         INVALID_ENROLL_ADDRESS,
         INVALID_API_SNI,
         INVALID_API_HOST,
+        INVALID_UPSTREAM,
         INVALID_FRAGMENT,
         INVALID_ECH_DNS,
         INVALID_ECH_DOMAIN,
@@ -109,6 +113,9 @@ object AetherKeys {
         settings.enrollAddress.trim().takeIf { it.isNotEmpty() }?.let { addAll(listOf(API_ADDRESS, it)) }
         settings.apiSni.trim().takeIf { it.isNotEmpty() }?.let { addAll(listOf(API_SNI, it)) }
         settings.apiHost.trim().takeIf { it.isNotEmpty() }?.let { addAll(listOf(API_HOST, it)) }
+        AetherFmt.normalizeUpstreamUrl(settings.upstreamProxy)?.takeIf { it.isNotEmpty() }?.let {
+            addAll(listOf(AetherCoreManager.UPSTREAM, it))
+        }
         if (settings.fragment) {
             add("--fragment")
             AetherRange.parse(settings.fragmentSize, AetherRange.FRAGMENT_SIZE)?.let { addAll(listOf("--fragment-size", it.toString())) }
@@ -150,6 +157,7 @@ object AetherKeys {
         if (sni.isNotEmpty() && !AetherFmt.isMasqueSni(sni)) return Problem.INVALID_API_SNI
         val host = settings.apiHost.trim()
         if (host.isNotEmpty() && !AetherFmt.isMasqueSni(host)) return Problem.INVALID_API_HOST
+        if (AetherFmt.normalizeUpstreamUrl(settings.upstreamProxy) == null) return Problem.INVALID_UPSTREAM
         if (settings.fragment && !(takesRange(settings.fragmentSize, AetherRange.FRAGMENT_SIZE) && takesRange(settings.fragmentDelay, AetherRange.FRAGMENT_DELAY))) {
             return Problem.INVALID_FRAGMENT
         }

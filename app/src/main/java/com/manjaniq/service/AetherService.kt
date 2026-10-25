@@ -18,27 +18,38 @@ import com.manjaniq.R
 import com.manjaniq.core.AetherCore
 import com.manjaniq.core.AetherCoreManager
 import com.manjaniq.core.AetherSettingsStorage
+import com.manjaniq.core.ConfigStore
 import com.manjaniq.core.EngineRepository
 import com.manjaniq.core.models.EngineState
 import com.manjaniq.ui.server.AetherLogEntry
 import com.manjaniq.ui.server.AetherLogText
 import com.manjaniq.ui.server.ServerAetherViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicLong
 
 class AetherService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var startJob: Job? = null
+    private var stopJob: Job? = null
+    private val runGeneration = AtomicLong(0L)
+
+    @Volatile
+    private var cancelledByUser = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -64,106 +75,137 @@ class AetherService : Service() {
     }
 
     private fun startTunnel() {
+        val myGen = runGeneration.incrementAndGet()
+        cancelledByUser = false
+        stopJob?.cancel()
+        stopJob = null
         startJob?.cancel()
         _lastError.value = null
         _state.value = EngineState.STARTING
 
         startJob = scope.launch {
-            if (EngineRepository.uiState.value.state != EngineState.STOPPED) {
-                EngineRepository.requestStop(applicationContext)
+            try {
+                val profile = AetherSettingsStorage.getActiveProfile(applicationContext)
+                val core = AetherCore.of(profile)
+                if (EngineRepository.uiState.value.state != EngineState.STOPPED && !usesRstaRelay(applicationContext, core)) {
+                    EngineRepository.requestStop(applicationContext)
+                }
+
+                ensureActive()
+                val refusal = AetherCoreManager.refusalOf(
+                    arguments = core.arguments,
+                    hasTorTransports = AetherCoreManager.hasTorTransports(applicationContext),
+                    hasPsiphon = AetherCoreManager.hasPsiphon(applicationContext),
+                )
+                if (refusal != null) {
+                    failStart(myGen, getString(refusal))
+                    return@launch
+                }
+
+                val invalidPort = AetherCoreManager.invalidPort(core.ports)
+                if (invalidPort != null) {
+                    failStart(myGen, getString(R.string.aether_listen_port_invalid, invalidPort.toString()))
+                    return@launch
+                }
+
+                val busyPort = AetherCoreManager.firstPortInUse(applicationContext, core.ports)
+                if (busyPort != null) {
+                    failStart(myGen, getString(R.string.aether_listen_port_in_use, busyPort))
+                    return@launch
+                }
+
+                ensureActive()
+                val listenAddr = "${AetherCoreManager.LOOPBACK}:${core.port}"
+                _listenAddress.value = listenAddr
+
+                val started = AetherCoreManager.start(
+                    context = applicationContext,
+                    core = core,
+                    onOutput = { raw ->
+                        if (!cancelledByUser && runGeneration.get() == myGen) {
+                            val parsed = ServerAetherViewModel.parseCoreLine(raw)
+                            if (parsed != null) {
+                                appendLine(parsed.first, parsed.second)
+                            }
+                        }
+                    },
+                    onUnexpectedExit = {
+                        if (!cancelledByUser &&
+                            runGeneration.get() == myGen &&
+                            (_state.value == EngineState.RUNNING || _state.value == EngineState.STARTING)
+                        ) {
+                            val stoppedMsg = AetherCoreManager.stoppedMessage(applicationContext)
+                            appendLine(Log.ERROR, stoppedMsg)
+                            _lastError.value = stoppedMsg
+                            _state.value = EngineState.ERROR
+                            stopForeground(STOP_FOREGROUND_REMOVE)
+                            stopSelf()
+                        }
+                    },
+                )
+
+                ensureActive()
+                if (cancelledByUser || runGeneration.get() != myGen || !isActive) return@launch
+
+                if (started) {
+                    _state.value = EngineState.RUNNING
+                    val pathLabel = AetherCoreManager.pathOf(core.arguments).joinToString(" -> ")
+                    updateNotification(getString(R.string.aether_notification_running, listenAddr, pathLabel))
+                } else {
+                    failStart(myGen, AetherCoreManager.stoppedMessage(applicationContext))
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             }
+        }
+    }
 
-            val profile = AetherSettingsStorage.getActiveProfile(applicationContext)
-            val core = AetherCore.of(profile)
-            val refusal = AetherCoreManager.refusalOf(
-                arguments = core.arguments,
-                hasTorTransports = AetherCoreManager.hasTorTransports(applicationContext),
-                hasPsiphon = AetherCoreManager.hasPsiphon(applicationContext),
-            )
-            if (refusal != null) {
-                val msg = getString(refusal)
-                appendLine(Log.ERROR, msg)
-                _lastError.value = msg
-                _state.value = EngineState.ERROR
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-                return@launch
+    private fun failStart(gen: Long, message: String) {
+        if (cancelledByUser || runGeneration.get() != gen) return
+        appendLine(Log.ERROR, message)
+        _lastError.value = message
+        _state.value = EngineState.ERROR
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    private fun usesRstaRelay(context: Context, core: AetherCore): Boolean {
+        if (core.exit.node.equals(AetherCoreManager.RSTA_EXIT_NODE, ignoreCase = true)) return true
+        val rstaPort = runCatching { ConfigStore(context).load().listenPort }.getOrNull() ?: return false
+        val localRsta = "${AetherCoreManager.LOOPBACK}:$rstaPort"
+        return core.arguments.any { localRsta in it }
+    }
+
+    private fun stopTunnel() {
+        val gen = runGeneration.incrementAndGet()
+        cancelledByUser = true
+        val wasStarting = _state.value == EngineState.STARTING
+        startJob?.cancel()
+        startJob = null
+        _lastError.value = null
+        _state.value = EngineState.STOPPING
+        if (wasStarting) {
+            appendLine(Log.WARN, getString(R.string.aether_log_start_cancelled))
+        }
+        stopJob?.cancel()
+        stopJob = scope.launch {
+            withContext(NonCancellable) {
+                AetherCoreManager.stop(applicationContext)
             }
-
-            val invalidPort = AetherCoreManager.invalidPort(core.ports)
-            if (invalidPort != null) {
-                val msg = getString(R.string.aether_listen_port_invalid, invalidPort.toString())
-                appendLine(Log.ERROR, msg)
-                _lastError.value = msg
-                _state.value = EngineState.ERROR
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-                return@launch
-            }
-
-            val busyPort = AetherCoreManager.firstPortInUse(applicationContext, core.ports)
-            if (busyPort != null) {
-                val msg = getString(R.string.aether_listen_port_in_use, busyPort)
-                appendLine(Log.ERROR, msg)
-                _lastError.value = msg
-                _state.value = EngineState.ERROR
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-                return@launch
-            }
-
-            val listenAddr = "${AetherCoreManager.LOOPBACK}:${core.port}"
-            _listenAddress.value = listenAddr
-
-            val started = AetherCoreManager.start(
-                context = applicationContext,
-                core = core,
-                onOutput = { raw ->
-                    val parsed = ServerAetherViewModel.parseCoreLine(raw)
-                    if (parsed != null) {
-                        appendLine(parsed.first, parsed.second)
-                    }
-                },
-                onUnexpectedExit = {
-                    if (_state.value == EngineState.RUNNING || _state.value == EngineState.STARTING) {
-                        val stoppedMsg = AetherCoreManager.stoppedMessage(applicationContext)
-                        appendLine(Log.ERROR, stoppedMsg)
-                        _lastError.value = stoppedMsg
-                        _state.value = EngineState.ERROR
-                        stopForeground(STOP_FOREGROUND_REMOVE)
-                        stopSelf()
-                    }
-                },
-            )
-
-            if (started) {
-                _state.value = EngineState.RUNNING
-                val pathLabel = AetherCoreManager.pathOf(core.arguments).joinToString(" -> ")
-                updateNotification(getString(R.string.aether_notification_running, listenAddr, pathLabel))
-            } else {
-                val stoppedMsg = AetherCoreManager.stoppedMessage(applicationContext)
-                appendLine(Log.ERROR, stoppedMsg)
-                _lastError.value = stoppedMsg
-                _state.value = EngineState.ERROR
+            if (runGeneration.get() == gen) {
+                _state.value = EngineState.STOPPED
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
         }
     }
 
-    private fun stopTunnel() {
-        startJob?.cancel()
-        startJob = null
-        _state.value = EngineState.STOPPING
-        AetherCoreManager.stop(applicationContext)
-        _state.value = EngineState.STOPPED
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
-    }
-
     override fun onDestroy() {
+        runGeneration.incrementAndGet()
+        cancelledByUser = true
         startJob?.cancel()
-        AetherCoreManager.stop(applicationContext)
+        stopJob?.cancel()
+        AetherCoreManager.stop(null)
         if (_state.value != EngineState.ERROR) {
             _state.value = EngineState.STOPPED
         }

@@ -8,7 +8,7 @@ import org.json.JSONObject
 import java.io.File
 
 /**
- * Kotlin/JNI bridge for Aether v2.3.0 (commit 6175b67df370ab856bcee07fe85b524031903956).
+ * Kotlin/JNI bridge for Aether v2.4.0 (commit d58f9d568083129ce2c767c85054021eb3ee6a38).
  *
  * Uses `libaether.so` produced by aether-wrapper (cdylib) which bundles the
  * full Aether core + JNI shim (`Java_com_manjaniq_AetherBridge_*`).

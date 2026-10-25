@@ -312,8 +312,13 @@
     <string name="aether_same_hop">سرور بیرونی و درونی باید نشانی IP متفاوتی داشته باشند</string>
     <string name="aether_invalid_masque_sni">یک دامنهٔ معتبر برای SNI در MASQUE وارد کنید (مثلاً www.cloudflare.com)</string>
     <string name="aether_invalid_fragment">اندازهٔ معتبر قطعه (۱ تا ۵۱۷ بایت) و تأخیر (۰ تا ۵۰۰ میلی‌ثانیه) را وارد کنید، یا آن‌ها را خالی بگذارید</string>
-    <string name="aether_invalid_ech_dns">یک سرور DNS معتبر برای ECH وارد کنید (udp://IP،‏ tls://host،‏ https://host/dns-query یا system)</string>
+    <string name="aether_invalid_ech_dns">یک سرور DNS معتبر برای ECH وارد کنید (udp://IP،‏ tcp://IP یا https://host/dns-query)</string>
     <string name="aether_invalid_ech_domain">یک دامنهٔ معتبر برای نام عمومی ECH وارد کنید (مثلاً cloudflare-ech.com)</string>
+    <string name="aether_lab_upstream">پروکسی بالادستی (اختیاری)</string>
+    <string name="aether_hint_upstream">پروکسی محلی SOCKS5/HTTP برای دور زدن سانسور (مثلاً socks5://127.0.0.1:10808 یا 127.0.0.1:1080)</string>
+    <string name="aether_invalid_upstream">یک پروکسی معتبر وارد کنید (مثلاً socks5://127.0.0.1:10808،‏ http://127.0.0.1:10809 یا 127.0.0.1:1080)، یا خالی بگذارید</string>
+    <string name="aether_action_cancel_start">لغو اتصال</string>
+    <string name="aether_log_start_cancelled">تلاش برای اتصال لغو شد</string>
     <string name="aether_invalid_dns">نشانی‌های IPv4 یا IPv6 جداشده با ویرگول برای DNS تونل وارد کنید، یا خالی بگذارید</string>
     <string name="aether_invalid_exit_loc">کدهای ۲ حرفی کشور را با ویرگول جدا کنید (اختیاری با ! در ابتدا)، یا خالی بگذارید</string>
     <string name="aether_exit_node_unusable">پروفایل «%1$s» نمی‌تواند به‌عنوان سرور خروجی استفاده شود</string>
@@ -386,11 +391,8 @@
         <item>پل‌های سفارشی</item>
     </string-array>
     <string-array name="aether_tor_relays_entries">
-        <item>خودکار (Snowflake ← WebTunnel ← obfs4 ← Conjure ← Vanilla)</item>
-        <item>همهٔ حمل‌ونقل‌ها هم‌زمان</item>
-        <item>فقط Vanilla</item>
-        <item>فقط obfs4</item>
-        <item>فقط WebTunnel</item>
-        <item>فقط Conjure</item>
+        <item>BridgeDB و رله‌های عمومی</item>
+        <item>فقط رله‌های عمومی</item>
+        <item>فقط BridgeDB</item>
     </string-array>
 </resources>

@@ -312,8 +312,13 @@
     <string name="aether_same_hop">Outer and inner endpoints must use different IP addresses</string>
     <string name="aether_invalid_masque_sni">Enter a valid domain for MASQUE SNI (e.g., www.cloudflare.com)</string>
     <string name="aether_invalid_fragment">Enter a valid fragment size (1–517 bytes) and delay (0–500 ms), or leave them empty</string>
-    <string name="aether_invalid_ech_dns">Enter a valid ECH DNS resolver (udp://IP, tls://host, https://host/dns-query, or system)</string>
+    <string name="aether_invalid_ech_dns">Enter a valid ECH DNS resolver (udp://IP, tcp://IP, or https://host/dns-query)</string>
     <string name="aether_invalid_ech_domain">Enter a valid domain for ECH Public Name (e.g., cloudflare-ech.com)</string>
+    <string name="aether_lab_upstream">Upstream Proxy (Optional)</string>
+    <string name="aether_hint_upstream">Local SOCKS5/HTTP proxy for censorship bypass (e.g., socks5://127.0.0.1:10808 or 127.0.0.1:1080)</string>
+    <string name="aether_invalid_upstream">Enter a valid local/upstream proxy (e.g., socks5://127.0.0.1:10808, http://127.0.0.1:10809, or 127.0.0.1:1080), or leave empty</string>
+    <string name="aether_action_cancel_start">CANCEL</string>
+    <string name="aether_log_start_cancelled">Connection attempt cancelled</string>
     <string name="aether_invalid_dns">Enter comma-separated IPv4 or IPv6 addresses for Tunnel DNS, or leave empty</string>
     <string name="aether_invalid_exit_loc">Enter 2-letter country codes separated by commas (optionally prefixed with !), or leave empty</string>
     <string name="aether_exit_node_unusable">Exit node \"%1$s\" cannot be used as an exit node</string>
@@ -386,11 +391,8 @@
         <item>Custom Bridges</item>
     </string-array>
     <string-array name="aether_tor_relays_entries">
-        <item>Auto (Snowflake → WebTunnel → obfs4 → Conjure → Vanilla)</item>
-        <item>All Transports at Once</item>
-        <item>Vanilla Only</item>
-        <item>obfs4 Only</item>
-        <item>WebTunnel Only</item>
-        <item>Conjure Only</item>
+        <item>BridgeDB and Public Relays</item>
+        <item>Public Relays Only</item>
+        <item>BridgeDB Only</item>
     </string-array>
 </resources>

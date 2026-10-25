@@ -32,6 +32,7 @@ class AetherProblemsTest {
             AetherFmt.Problem.INVALID_EXIT_LOC to R.string.aether_invalid_exit_loc,
             AetherFmt.Problem.INVALID_ECH_DNS to R.string.aether_invalid_ech_dns,
             AetherFmt.Problem.INVALID_ECH_DOMAIN to R.string.aether_invalid_ech_domain,
+            AetherFmt.Problem.INVALID_UPSTREAM to R.string.aether_invalid_upstream,
             AetherFmt.Problem.PSIPHON_NEEDS_MASQUE to R.string.aether_psiphon_needs_masque,
             AetherFmt.Problem.NEXT_PORT_TAKEN to R.string.aether_next_port_taken,
             AetherFmt.Problem.TOR_NEEDS_MASQUE to R.string.aether_tor_needs_masque,

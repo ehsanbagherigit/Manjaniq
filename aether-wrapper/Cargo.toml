@@ -2,7 +2,7 @@
 name = "aether-jni"
 version = "0.1.0"
 edition = "2021"
-description = "Manjaniq JNI wrapper for Aether v2.3.0"
+description = "Manjaniq JNI wrapper for Aether v2.4.0"
 license = "AGPL-3.0-only"
 
 [lib]
@@ -11,8 +11,8 @@ crate-type = ["cdylib"]
 path = "src/lib.rs"
 
 [dependencies]
-# Path-pinned to vendored third_party/Aether (v2.3.0 peeled 6175b67). Avoids git fetch
-# and allows rust-version patch (1.98 -> 1.56) for CI stable.
+# Path-pinned to vendored third_party/Aether (v2.4.0 peeled d58f9d5). Avoids git fetch
+# and allows rust-version patch on quiche for CI stable.
 #
 # NO `tor` FEATURE.
 #

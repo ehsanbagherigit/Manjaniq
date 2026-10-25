@@ -109,11 +109,16 @@ class AetherEditorRepository(context: Context) : AetherEditorSource {
     }
 
     override suspend fun exitNodes(): List<AetherExitNode> = withContext(Dispatchers.IO) {
-        emptyList()
+        listOf(AetherExitNode(AetherCoreManager.RSTA_EXIT_NODE))
     }
 
     override suspend fun findExitNode(name: String): ExitNodeOutbound = withContext(Dispatchers.IO) {
-        ExitNodeOutbound.NotFound
+        val trimmed = name.trim()
+        when {
+            trimmed.equals(AetherCoreManager.RSTA_EXIT_NODE, ignoreCase = true) -> ExitNodeOutbound.Built(AetherCoreManager.RSTA_EXIT_NODE)
+            !com.manjaniq.core.AetherFmt.normalizeUpstreamUrl(trimmed).isNullOrEmpty() -> ExitNodeOutbound.Built("upstream")
+            else -> ExitNodeOutbound.NotFound
+        }
     }
 
     companion object {
@@ -133,6 +138,7 @@ class AetherEditorRepository(context: Context) : AetherEditorSource {
             }
             if (AetherCoreManager.canListProcesses()) return null
             val profile = AetherSettingsStorage.getSelectedServer()?.let(AetherSettingsStorage::decodeServerConfig)
+                ?: AetherSettingsStorage.getActiveProfile(context)
             if (profile != null) {
                 val core = AetherCore.of(profile)
                 if (!AetherCoreManager.answersSocks(core.port)) return null

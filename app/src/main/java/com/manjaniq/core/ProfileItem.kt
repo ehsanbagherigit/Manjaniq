@@ -127,6 +127,7 @@ data class ProfileItem(
     var aetherTorBridges: String? = null,
     var aetherTorBridgeLines: String? = null,
     var aetherTorRelays: String? = null,
+    var aetherUpstream: String? = null,
     var aetherCommand: String? = null,
     var aetherFinalMask: String? = null,
     var aetherDialMode: String? = null,
@@ -225,6 +226,7 @@ data class ProfileItem(
         putStr("aetherTorBridges", aetherTorBridges)
         putStr("aetherTorBridgeLines", aetherTorBridgeLines)
         putStr("aetherTorRelays", aetherTorRelays)
+        putStr("aetherUpstream", aetherUpstream)
         putStr("aetherCommand", aetherCommand)
         putStr("aetherFinalMask", aetherFinalMask)
         putStr("aetherDialMode", aetherDialMode)
@@ -335,6 +337,7 @@ data class ProfileItem(
                     aetherTorBridges = str("aetherTorBridges"),
                     aetherTorBridgeLines = str("aetherTorBridgeLines"),
                     aetherTorRelays = str("aetherTorRelays"),
+                    aetherUpstream = str("aetherUpstream"),
                     aetherCommand = str("aetherCommand"),
                     aetherFinalMask = str("aetherFinalMask"),
                     aetherDialMode = str("aetherDialMode"),

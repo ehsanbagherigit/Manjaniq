@@ -45,9 +45,10 @@ class AetherNativeTest {
 
         val version = AetherBridge.version()
         assertTrue("version call failed: ${version.errorMessage}", version.isSuccess)
-        assertTrue(
-            "version must name a version: ${version.getOrNull()}",
-            version.getOrNull()!!.optString("version").isNotEmpty()
+        assertEquals(
+            "libaether.so must report Aether v2.4.0: ${version.getOrNull()}",
+            "2.4.0",
+            version.getOrNull()!!.optString("version")
         )
     }
 
@@ -57,11 +58,22 @@ class AetherNativeTest {
         val cache = context.cacheDir.absolutePath
         val files = context.filesDir.absolutePath
 
-        val applied = AetherBridge.envSet(mapOf("TMPDIR" to cache, "HOME" to files))
+        val applied = AetherBridge.envSet(
+            mapOf(
+                "TMPDIR" to cache,
+                "HOME" to files,
+                "SSL_CERT_DIR" to "/system/etc/security/cacerts",
+            )
+        )
         assertTrue("envSet failed: ${applied.errorMessage}", applied.isSuccess)
         val set = applied.getOrNull()!!.optJSONObject("set")
         assertEquals("TMPDIR must be read back as applied", cache, set?.optString("TMPDIR"))
         assertEquals("HOME must be read back as applied", files, set?.optString("HOME"))
+        assertEquals(
+            "SSL_CERT_DIR must be read back as applied",
+            "/system/etc/security/cacerts",
+            set?.optString("SSL_CERT_DIR")
+        )
 
         val probe = File(cache, "aether-tmp-probe-${System.nanoTime()}")
         try {

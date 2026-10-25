@@ -5,6 +5,7 @@ import android.os.Process as AndroidProcess
 import android.util.Log
 import com.manjaniq.AetherBridge
 import com.manjaniq.R
+import com.manjaniq.core.models.EngineState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,15 +16,19 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.IOException
-import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.coroutineContext
 
 object AetherCoreManager {
 
@@ -60,6 +65,17 @@ object AetherCoreManager {
     internal const val OWNER_PID_ENV = "AETHER_OWNER_PID"
     internal const val SESSION_ENV = "AETHER_SESSION"
     internal const val EXIT_ENV = "AETHER_EXIT"
+    internal const val CERT_DIR_ENV = "SSL_CERT_DIR"
+    internal const val PSIPHON_CONFIG_ENV = "AETHER_PSIPHON_CONFIG"
+    internal const val RSTA_EXIT_NODE = "RSTA"
+
+    private const val PSIPHON_OVERLAY_FILE = "psiphon-overlay.json"
+    internal const val PSIPHON_OVERLAY = """{"DNSResolverAlternateServers": ["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"]}"""
+    private val androidCertificateDirectories = listOf(
+        "/apex/com.android.conscrypt/cacerts",
+        "/system/etc/security/cacerts",
+    )
+    internal val DEFAULT_LOCAL_SOCKS_PORTS = listOf(10808, 1080, 2080, 9050, 7890)
 
     const val TOR_BIND = "--tor-bind"
     const val PSIPHON_BIND = "--psiphon-bind"
@@ -172,6 +188,10 @@ object AetherCoreManager {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val socksAnswers = SocksAnswers(SOCKS_GREETING_TIMEOUT_MS, SOCKS_CONNECT_TIMEOUT_MS)
+    private val jniEnvMutex = Mutex()
+    private val activeProbeJobHandles: MutableSet<Long> = ConcurrentHashMap.newKeySet()
+    private val psiphonReady = Regex("""psiphon is ready""")
+    private val noEchKeyWord = Regex("""ECH is on but there is no ECH key to offer""")
 
     @Volatile
     private var process: Process? = null
@@ -260,9 +280,32 @@ object AetherCoreManager {
             return@withContext false
         }
         AetherIdentityManager.settle(context)
+        coroutineContext.ensureActive()
 
-        val arguments = withInfoLines(core.arguments)
+        val baseArguments = withInfoLines(core.arguments)
         val port = core.port
+        val sessionPorts = core.ports.toSet()
+
+        // If the required v2.4 multi-identity TOMLs do not exist yet and a local 127.0.0.1
+        // SOCKS5 proxy or RSTA relay is available (or configured on core.exit), pre-provision
+        // the identities through the local proxy before launching the tunnel.
+        ensureIdentitiesProvisioned(
+            context = context,
+            workDir = workDir,
+            arguments = baseArguments,
+            exit = core.exit,
+            excludePorts = sessionPorts,
+            onOutput = onOutput,
+        )
+        coroutineContext.ensureActive()
+
+        val arguments = standaloneArguments(
+            arguments = baseArguments,
+            exit = core.exit,
+            excludePorts = sessionPorts,
+            autoDetectLocalSocks = false,
+            rstaListenPort = activeRstaRelayPort(context),
+        )
         prepareCarrierFiles(context, arguments, workDir)
         val fullArguments = fullArguments(context, workDir, arguments, isSession = true)
 
@@ -278,13 +321,20 @@ object AetherCoreManager {
         val needsWord = readyNeedsWord(arguments)
 
         if (AetherBridge.isNativeAvailable) {
-            AetherBridge.initialize(context)
-            AetherBridge.envReset()
-            val cursorStart = currentLogCursor()
-            val startResult = AetherBridge.coreStart(fullArguments)
-            val handle = startResult.getOrNull()?.optLong("job", -1L)?.takeIf { it >= 0L }
+            val (cursorStart, handle) = jniEnvMutex.withLock {
+                coroutineContext.ensureActive()
+                AetherBridge.initialize(context)
+                AetherBridge.envReset()
+                applyRuntimeEnv(context, workDir, arguments)
+                val cursor = currentLogCursor()
+                val startResult = AetherBridge.coreStart(fullArguments)
+                val jobId = startResult.getOrNull()?.optLong("job", -1L)?.takeIf { it >= 0L }
+                if (jobId == null) {
+                    Log.e(TAG, "Failed to start Aether core via JNI: ${startResult.getErrorOrNull()}")
+                }
+                cursor to jobId
+            }
             if (handle == null) {
-                Log.e(TAG, "Failed to start Aether core via JNI: ${startResult.getErrorOrNull()}")
                 return@withContext false
             }
             activeJobHandle = handle
@@ -335,7 +385,14 @@ object AetherCoreManager {
                 }
             }
 
-            val ready = waitForSocks(port, startupTimeout, needsWord) { activeJobHandle == handle }
+            val ready = try {
+                waitForSocks(port, startupTimeout, needsWord) { activeJobHandle == handle }
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable) {
+                    stop(context)
+                }
+                throw cancelled
+            }
             if (!ready) {
                 Log.e(TAG, "Aether did not become ready on $LOOPBACK:$port within ${startupTimeout}ms")
                 stop(context)
@@ -349,9 +406,11 @@ object AetherCoreManager {
                 .directory(workDir)
                 .redirectErrorStream(true)
                 .apply {
-                    environment()[OWNER_PID_ENV] = AndroidProcess.myPid().toString()
-                    environment()[SESSION_ENV] = "1"
-                    environment()[EXIT_ENV] = core.exit.key
+                    val env = environment()
+                    env[OWNER_PID_ENV] = AndroidProcess.myPid().toString()
+                    env[SESSION_ENV] = "1"
+                    env[EXIT_ENV] = core.exit.key
+                    env.putAll(runtimeEnvironmentMap(context, workDir, arguments))
                 }
                 .start()
         } catch (e: IOException) {
@@ -374,7 +433,14 @@ object AetherCoreManager {
             }
         }
 
-        val ready = waitForSocks(port, startupTimeout, needsWord) { process === started && started.isAlive }
+        val ready = try {
+            waitForSocks(port, startupTimeout, needsWord) { process === started && started.isAlive }
+        } catch (cancelled: CancellationException) {
+            withContext(NonCancellable) {
+                stop(context)
+            }
+            throw cancelled
+        }
         if (!ready) {
             Log.e(TAG, "Aether did not open SOCKS on $LOOPBACK:$port within ${startupTimeout}ms")
             stop(context)
@@ -408,6 +474,7 @@ object AetherCoreManager {
         activeJobHandle = null
         activeCoreArgs = null
         activeExitKey = null
+        socksAnswers.closeAll()
         if (handle != null) {
             AetherBridge.jobCancel(handle)
             AetherBridge.jobFree(handle)
@@ -448,6 +515,7 @@ object AetherCoreManager {
     ): T? = withProcess(context, arguments, exit, source, onOutput, keysDir) { output ->
         withTimeoutOrNull(timeoutMs) {
             for (line in output) {
+                coroutineContext.ensureActive()
                 matcher(line)?.let { return@withTimeoutOrNull it }
             }
             null
@@ -464,6 +532,7 @@ object AetherCoreManager {
         configuration: String? = null,
         block: suspend (ReceiveChannel<String>) -> T,
     ): T? = withContext(Dispatchers.IO) {
+        coroutineContext.ensureActive()
         if (!hasBinary(context)) {
             Log.e(TAG, "$source: Aether library is not available")
             return@withContext null
@@ -476,19 +545,52 @@ object AetherCoreManager {
             return@withContext null
         }
 
-        prepareCarrierFiles(context, arguments, workDir, isSession = false)
-        val fullArguments = fullArguments(context, keysFolder, arguments, isSession = false)
+        val isRegistration = AetherKeys.REGISTER in arguments
+        val ownPorts = listOfNotNull(
+            portAfter(arguments, "--bind"),
+            portAfter(arguments, TOR_BIND),
+            portAfter(arguments, PSIPHON_BIND),
+        ).filter { it > 0 }.toSet()
+        val effectiveArguments = standaloneArguments(
+            arguments = arguments,
+            exit = exit,
+            excludePorts = ownPorts,
+            autoDetectLocalSocks = isRegistration,
+            rstaListenPort = activeRstaRelayPort(context),
+        )
+        if (isRegistration && UPSTREAM !in arguments && UPSTREAM in effectiveArguments) {
+            val proxy = valueAfter(effectiveArguments, UPSTREAM)
+            if (!proxy.isNullOrBlank()) {
+                onOutput("[*] routing WARP provisioning through local proxy $proxy")
+            }
+        } else if (isRegistration && AetherKeys.API_ADDRESS !in arguments && AetherKeys.API_ADDRESS in effectiveArguments) {
+            val relay = valueAfter(effectiveArguments, AetherKeys.API_ADDRESS)
+            if (!relay.isNullOrBlank()) {
+                onOutput("[*] routing WARP provisioning through local RSTA relay $relay")
+            }
+        }
+
+        prepareCarrierFiles(context, effectiveArguments, workDir, isSession = false)
+        val fullArguments = fullArguments(context, keysFolder, effectiveArguments, isSession = false)
 
         if (AetherBridge.isNativeAvailable) {
-            AetherBridge.initialize(context)
-            AetherBridge.envReset()
-            val startCursor = currentLogCursor()
-            val startResult = AetherBridge.coreStart(fullArguments)
-            val handle = startResult.getOrNull()?.optLong("job", -1L)?.takeIf { it >= 0L }
+            val (startCursor, handle) = jniEnvMutex.withLock {
+                coroutineContext.ensureActive()
+                AetherBridge.initialize(context)
+                AetherBridge.envReset()
+                applyRuntimeEnv(context, workDir, effectiveArguments)
+                val cursor = currentLogCursor()
+                val startResult = AetherBridge.coreStart(fullArguments)
+                val jobId = startResult.getOrNull()?.optLong("job", -1L)?.takeIf { it >= 0L }
+                if (jobId == null) {
+                    Log.e(TAG, "$source: failed to start Aether job: ${startResult.getErrorOrNull()}")
+                }
+                cursor to jobId
+            }
             if (handle == null) {
-                Log.e(TAG, "$source: failed to start Aether job: ${startResult.getErrorOrNull()}")
                 return@withContext null
             }
+            activeProbeJobHandles.add(handle)
             val lines = Channel<String>(Channel.UNLIMITED)
             return@withContext coroutineScope {
                 val reader = launch {
@@ -530,8 +632,10 @@ object AetherCoreManager {
                     block(lines)
                 } finally {
                     withContext(NonCancellable) {
+                        activeProbeJobHandles.remove(handle)
                         lines.close()
                         reader.cancel()
+                        ownPorts.forEach(socksAnswers::close)
                         AetherBridge.jobCancel(handle)
                         AetherBridge.jobFree(handle)
                     }
@@ -544,7 +648,11 @@ object AetherCoreManager {
             ProcessBuilder(listOf(binary.absolutePath) + fullArguments)
                 .directory(workDir)
                 .redirectErrorStream(true)
-                .apply { environment()[OWNER_PID_ENV] = AndroidProcess.myPid().toString() }
+                .apply {
+                    val env = environment()
+                    env[OWNER_PID_ENV] = AndroidProcess.myPid().toString()
+                    env.putAll(runtimeEnvironmentMap(context, workDir, effectiveArguments))
+                }
                 .start()
         } catch (e: IOException) {
             Log.e(TAG, "$source: failed to start Aether process", e)
@@ -568,11 +676,157 @@ object AetherCoreManager {
             } finally {
                 withContext(NonCancellable) {
                     lines.close()
+                    ownPorts.forEach(socksAnswers::close)
                     terminateProcess(started)
                     reader.cancel()
                 }
             }
         }
+    }
+
+    private fun applyRuntimeEnv(context: Context, workDir: File, arguments: List<String>) {
+        val envMap = runtimeEnvironmentMap(context, workDir, arguments)
+        val result = AetherBridge.envSet(envMap)
+        if (result.isFailure) {
+            Log.w(TAG, "Failed to apply runtime environment: ${result.errorMessage}")
+        }
+    }
+
+    internal fun runtimeEnvironmentMap(
+        context: Context,
+        workDir: File,
+        arguments: List<String>,
+    ): Map<String, String> = buildMap {
+        put("TMPDIR", context.cacheDir.absolutePath)
+        put("HOME", context.filesDir.absolutePath)
+        put(CERT_DIR_ENV, androidCertificateDirectories.joinToString(":"))
+        if (usesPsiphon(arguments) && "--psiphon-config" !in arguments) {
+            psiphonOverlayFile(workDir)?.let { put(PSIPHON_CONFIG_ENV, it.absolutePath) }
+        }
+    }
+
+    private fun psiphonOverlayFile(workDir: File): File? = try {
+        File(workDir, PSIPHON_OVERLAY_FILE).also { file ->
+            if (!file.isFile || file.readText() != PSIPHON_OVERLAY) {
+                file.writeText(PSIPHON_OVERLAY)
+            }
+        }
+    } catch (e: IOException) {
+        Log.w(TAG, "Failed to write Psiphon DNS overlay file", e)
+        null
+    }
+
+    internal fun activeSessionPort(): Int? {
+        val args = activeCoreArgs ?: return null
+        if (activeJobHandle == null && process?.isAlive != true) return null
+        return listenerPortOf(args) ?: socksPort
+    }
+
+    internal fun activeRstaRelayPort(context: Context): Int? {
+        if (EngineRepository.uiState.value.state != EngineState.RUNNING) return null
+        return runCatching { ConfigStore(context).load().listenPort }
+            .getOrNull()
+            ?.takeIf { it in 1..65535 }
+    }
+
+    internal fun localSocksUpstreamPort(
+        excludePorts: Set<Int> = emptySet(),
+        probe: (Int) -> Boolean = ::answersSocks,
+    ): Int? {
+        val candidates = buildList {
+            activeSessionPort()?.let(::add)
+            addAll(DEFAULT_LOCAL_SOCKS_PORTS)
+        }.distinct().filter { it in 1..65535 && it !in excludePorts }
+        return candidates.firstOrNull(probe)
+    }
+
+    /**
+     * Resolves `--upstream` (or local RSTA `--api-address`) for a run of the core.
+     *
+     * Explicit `--upstream` or reverse carriers (`--tor-reverse` / `--psiphon-reverse`) always take
+     * precedence. Otherwise [exit] can name a local proxy/relay, and during WARP registration
+     * ([autoDetectLocalSocks] = `true`) any active local SOCKS5 listener on `127.0.0.1` (or active
+     * RSTA TLS-fragment relay) is used automatically so initial key & IP provisioning bypasses
+     * Cloudflare API censorship.
+     */
+    internal fun standaloneArguments(
+        arguments: List<String>,
+        exit: AetherExit = AetherExit.PLAIN,
+        excludePorts: Set<Int> = emptySet(),
+        autoDetectLocalSocks: Boolean = false,
+        rstaListenPort: Int? = null,
+        probe: (Int) -> Boolean = ::answersSocks,
+    ): List<String> {
+        if (UPSTREAM in arguments || reachesWarpThroughCarrier(arguments)) return arguments
+        val node = exit.node.trim()
+        if (node.isNotEmpty()) {
+            val normalized = AetherFmt.normalizeUpstreamUrl(node)
+            if (!normalized.isNullOrEmpty()) {
+                return arguments + listOf(UPSTREAM, normalized)
+            }
+            if (node.equals(RSTA_EXIT_NODE, ignoreCase = true) &&
+                rstaListenPort != null &&
+                AetherKeys.REGISTER in arguments &&
+                AetherKeys.API_ADDRESS !in arguments &&
+                AetherKeys.LEGACY_ENROLL_ADDRESS !in arguments
+            ) {
+                return arguments + listOf(AetherKeys.API_ADDRESS, "$LOOPBACK:$rstaListenPort")
+            }
+        }
+        if (autoDetectLocalSocks) {
+            val localPort = localSocksUpstreamPort(excludePorts, probe)
+            if (localPort != null) {
+                return arguments + listOf(UPSTREAM, "socks5://$LOOPBACK:$localPort")
+            }
+            if (rstaListenPort != null &&
+                AetherKeys.REGISTER in arguments &&
+                AetherKeys.API_ADDRESS !in arguments &&
+                AetherKeys.LEGACY_ENROLL_ADDRESS !in arguments
+            ) {
+                return arguments + listOf(AetherKeys.API_ADDRESS, "$LOOPBACK:$rstaListenPort")
+            }
+        }
+        return arguments
+    }
+
+    internal suspend fun ensureIdentitiesProvisioned(
+        context: Context,
+        workDir: File,
+        arguments: List<String>,
+        exit: AetherExit,
+        excludePorts: Set<Int>,
+        onOutput: (String) -> Unit,
+    ) {
+        if (UPSTREAM in arguments || reachesWarpThroughCarrier(arguments)) return
+        val needed = AetherIdentityManager.filesNeededBy(arguments)
+        if (needed.isEmpty()) return
+        val missing = AetherIdentityManager.missing(workDir, needed)
+        if (missing.isEmpty()) return
+
+        val explicitProxy = AetherFmt.normalizeUpstreamUrl(exit.node)?.takeIf { it.isNotEmpty() }
+        val localPort = if (explicitProxy == null) localSocksUpstreamPort(excludePorts) else null
+        val rstaPort = if (explicitProxy == null && localPort == null) activeRstaRelayPort(context) else null
+        if (explicitProxy == null && localPort == null && rstaPort == null) return
+
+        val protocol = protocolOf(arguments)
+        val kind = AetherIdentityManager.kindFor(protocol)
+        val registerArgs = buildList {
+            addAll(listOf(AetherKeys.REGISTER, kind.register))
+            when {
+                explicitProxy != null -> addAll(listOf(UPSTREAM, explicitProxy))
+                localPort != null -> addAll(listOf(UPSTREAM, "socks5://$LOOPBACK:$localPort"))
+                rstaPort != null -> addAll(listOf(AetherKeys.API_ADDRESS, "$LOOPBACK:$rstaPort"))
+            }
+            add("--fragment")
+        }
+        onOutput("[*] provisioning missing ${protocol.type} WARP identity via local censorship-bypass relay...")
+        AetherIdentityManager.renew(
+            context = context,
+            kind = kind,
+            arguments = registerArgs,
+            exit = exit,
+            onOutput = onOutput,
+        )
     }
 
     private fun prepareCarrierFiles(context: Context, arguments: List<String>, workDir: File, isSession: Boolean = true) {
@@ -839,6 +1093,9 @@ object AetherCoreManager {
                 settingValue(profile.aetherPsiphonRegion)?.let { addAll(listOf("--psiphon-region", it)) }
                 if (profile.aetherPsiphonBundledList != false) addAll(listOf(PSIPHON_SERVER_ENTRIES, SHIPPED_LIST))
             }
+            AetherFmt.normalizeUpstreamUrl(profile.aetherUpstream)?.takeIf { it.isNotEmpty() }?.let {
+                addAll(listOf(UPSTREAM, it))
+            }
             addAll(listOf("--log-level", logLevel))
         }
     }
@@ -853,8 +1110,9 @@ object AetherCoreManager {
     fun parseBridgeLines(raw: String?): List<String> = AetherFmt.bridgeLines(raw)
 
     internal fun listenerFlagOf(arguments: List<String>): String = when {
-        torModeOf(arguments) == AetherTor.CHAIN -> TOR_BIND
+        aloneOf(arguments) != null -> "--bind"
         psiphonModeOf(arguments) == AetherPsiphon.CHAIN -> PSIPHON_BIND
+        torModeOf(arguments) == AetherTor.CHAIN -> TOR_BIND
         else -> "--bind"
     }
 
@@ -965,7 +1223,7 @@ object AetherCoreManager {
     }
 
     internal fun tunnelArguments(arguments: List<String>): List<String> =
-        withoutFlag("--verbose", withoutOptions(arguments, setOf("--bind", TOR_BIND, PSIPHON_BIND, "--log-level")))
+        withoutFlag("--verbose", withoutOptions(arguments, setOf("--bind", TOR_BIND, PSIPHON_BIND, "--log-level", UPSTREAM)))
 
     internal fun withoutOption(arguments: List<String>, flag: String): List<String> =
         withoutOptions(arguments, setOf(flag))
@@ -1141,18 +1399,17 @@ object AetherCoreManager {
         return null
     }
 
-    internal fun readyNeedsWord(arguments: List<String>): Boolean {
-        val tor = torModeOf(arguments)
-        val psiphon = psiphonModeOf(arguments)
-        if (tor == AetherTor.ONLY || psiphon == AetherPsiphon.ONLY) return false
-        return tor != AetherTor.CHAIN && psiphon != AetherPsiphon.CHAIN
+    internal fun readyNeedsWord(arguments: List<String>): Boolean = when (aloneOf(arguments)) {
+        "Psiphon" -> true
+        "Tor" -> false
+        else -> psiphonModeOf(arguments) == AetherPsiphon.CHAIN
     }
 
     internal fun isReadyWord(line: String): Boolean =
-        "tunnel up (" in line || "tunnel up: " in line
+        psiphonReady.containsMatchIn(line)
 
     internal fun isNoEchKeyWord(line: String): Boolean =
-        "is on, and no ECHConfigList could be got (" in line
+        noEchKeyWord.containsMatchIn(line)
 
     internal fun chainEndReasonOf(line: String): String? =
         chainEndWords.firstOrNull { line.startsWith(it) }?.let { prefix ->
@@ -1211,6 +1468,7 @@ object AetherCoreManager {
     ): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
+            coroutineContext.ensureActive()
             if (!isAlive()) return false
             if ((!needsWord || readyWordSeen) && answersSocks(port)) return true
             delay(SOCKS_POLL_INTERVAL_MS)
@@ -1219,6 +1477,8 @@ object AetherCoreManager {
     }
 
     internal fun answersSocks(port: Int): Boolean = socksAnswers.answers(port)
+
+    internal fun closeSocksProbe(port: Int) = socksAnswers.close(port)
 
     private fun streamProcessOutput(
         target: Process,
@@ -1266,6 +1526,22 @@ object AetherCoreManager {
                 AetherBridge.jobCancel(handle)
                 AetherBridge.jobFree(handle)
             }
+        } else {
+            val handle = activeJobHandle
+            if (handle != null) {
+                activeJobHandle = null
+                activeCoreArgs = null
+                activeExitKey = null
+                AetherBridge.jobCancel(handle)
+                AetherBridge.jobFree(handle)
+            }
+            val probes = activeProbeJobHandles.toList()
+            activeProbeJobHandles.removeAll(probes.toSet())
+            for (probeHandle in probes) {
+                AetherBridge.jobCancel(probeHandle)
+                AetherBridge.jobFree(probeHandle)
+            }
+            socksAnswers.closeAll()
         }
         val targetPath = runCatching { binaryFile(context).canonicalPath }.getOrNull() ?: return
         val processes = runningCoreProcesses(File("/proc"), targetPath, AndroidProcess.myUid())

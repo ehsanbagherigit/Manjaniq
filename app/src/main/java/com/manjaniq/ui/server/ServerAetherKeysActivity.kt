@@ -138,6 +138,7 @@ fun AetherKeysScreen(
                 onEnrollAddressChange = viewModel::setEnrollAddress,
                 onApiSniChange = viewModel::setApiSni,
                 onApiHostChange = viewModel::setApiHost,
+                onUpstreamProxyChange = viewModel::setUpstreamProxy,
                 onFragmentChange = viewModel::setFragment,
                 onFragmentSizeChange = viewModel::setFragmentSize,
                 onFragmentDelayChange = viewModel::setFragmentDelay,
@@ -169,6 +170,7 @@ private fun AetherKeysContent(
     onEnrollAddressChange: (String) -> Unit,
     onApiSniChange: (String) -> Unit,
     onApiHostChange: (String) -> Unit,
+    onUpstreamProxyChange: (String) -> Unit,
     onFragmentChange: (Boolean) -> Unit,
     onFragmentSizeChange: (String) -> Unit,
     onFragmentDelayChange: (String) -> Unit,
@@ -184,23 +186,19 @@ private fun AetherKeysContent(
 ) {
     val protocolValues = stringArrayResource(R.array.aether_protocol_values).toList()
     val protocolEntries = stringArrayResource(R.array.aether_protocol_entries).toList()
-    val kindValues = remember { AetherKeyKind.entries.map { it.register } }
+    val kindValues = remember { AetherKeyKind.entries.map { it.type } }
     val allLabel = stringResource(R.string.aether_keys_kind_all)
     val kindEntries = remember(protocolValues, protocolEntries, allLabel) {
         val byValue = protocolValues.zip(protocolEntries).toMap()
-        listOf(
-            allLabel,
-            byValue["wg"] ?: "WireGuard",
-            byValue["gool"] ?: "Warp in Warp (Gool)",
-            byValue["masque"] ?: "MASQUE",
-            byValue["mim"] ?: "MASQUE in MASQUE",
-            byValue["wg-over-masque"] ?: "WireGuard over MASQUE",
-        )
+        AetherKeyKind.entries.map { kind ->
+            if (kind == AetherKeyKind.ALL) allLabel else byValue[kind.type] ?: kind.type
+        }
     }
 
     val fingerprintEntries = stringArrayResource(R.array.aether_fingerprint_entries).toList()
     val fingerprintValues = stringArrayResource(R.array.aether_fingerprint_values).toList()
     val apiNameOptions = stringArrayResource(R.array.aether_api_name_options).toList()
+    val upstreamOptions = stringArrayResource(R.array.aether_upstream_options).toList()
     val echDnsOptions = stringArrayResource(R.array.aether_ech_dns_options).toList()
     val echDomainOptions = stringArrayResource(R.array.aether_ech_domain_options).toList()
 
@@ -231,7 +229,7 @@ private fun AetherKeysContent(
 
         FormDropdownField(
             label = stringResource(R.string.aether_keys_lab_kind),
-            selectedValue = settings.kind.register,
+            selectedValue = settings.kind.type,
             options = kindValues,
             optionLabels = kindEntries,
             enabled = fieldsEnabled,
@@ -263,6 +261,15 @@ private fun AetherKeysContent(
             options = apiNameOptions,
             onValueChange = onApiHostChange,
             supportingText = stringResource(R.string.aether_keys_hint_api_host),
+            enabled = fieldsEnabled,
+        )
+
+        FormComboField(
+            label = stringResource(R.string.aether_lab_upstream),
+            value = settings.upstreamProxy,
+            options = upstreamOptions,
+            onValueChange = onUpstreamProxyChange,
+            supportingText = stringResource(R.string.aether_hint_upstream),
             enabled = fieldsEnabled,
         )
 

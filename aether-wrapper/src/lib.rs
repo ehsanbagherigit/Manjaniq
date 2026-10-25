@@ -563,7 +563,7 @@ fn install_logger() {
 // be written through this JNI surface, so it cannot be used to change how the
 // process or another library behaves.
 
-const ENV_ALLOWED_FIXED: [&str; 4] = ["TMPDIR", "TEMP", "TMP", "HOME"];
+const ENV_ALLOWED_FIXED: [&str; 5] = ["TMPDIR", "TEMP", "TMP", "HOME", "SSL_CERT_DIR"];
 
 fn env_name_allowed(name: &str) -> bool {
     ENV_ALLOWED_FIXED.iter().any(|fixed| *fixed == name) || name.starts_with("AETHER_")

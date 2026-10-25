@@ -172,13 +172,13 @@ jobs:
           export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-${ANDROID_HOME:-}/ndk/25.2.9519653}"
           echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
           test -n "${ANDROID_NDK_HOME}" || { echo "::error::ANDROID_NDK_HOME not set"; echo "ANDROID_HOME=${ANDROID_HOME}"; ls -ld ${ANDROID_HOME}/ndk 2>&1 || true; exit 1; }
-          # Verify source is pinned to v2.3.0 (vendored path or git tag)
+          # Verify source is pinned to v2.4.0 (vendored path or git tag)
           test -f third_party/Aether-LICENSE || { echo "::error::Missing third_party/Aether-LICENSE (AGPL)"; exit 1; }
           test -f aether-wrapper/Cargo.toml || { echo "::error::aether-wrapper/Cargo.toml missing"; exit 1; }
-          (grep -q 'tag = "v2.3.0"' aether-wrapper/Cargo.toml || grep -q 'path = "../third_party/Aether/aether"' aether-wrapper/Cargo.toml) || { echo "::error::aether-wrapper not pinned to v2.3.0"; cat aether-wrapper/Cargo.toml; exit 1; }
+          (grep -q 'tag = "v2.4.0"' aether-wrapper/Cargo.toml || grep -q 'path = "../third_party/Aether/aether"' aether-wrapper/Cargo.toml) || { echo "::error::aether-wrapper not pinned to v2.4.0"; cat aether-wrapper/Cargo.toml; exit 1; }
           test -f third_party/Aether/aether/Cargo.toml || { echo "::error::vendored Aether missing"; ls third_party/Aether/ 2>&1 | head -n 20; exit 1; }
-          grep -q 'version = "2.3.0"' third_party/Aether/aether/Cargo.toml || { echo "::error::vendored Aether not v2.3.0"; cat third_party/Aether/aether/Cargo.toml | head -n 10; exit 1; }
-          # Vendor path in third_party/Aether (v2.3.0 peeled 6175b67) already patched: rust-version 1.98→1.56, 1.88→1.56
+          grep -q 'version = "2.4.0"' third_party/Aether/aether/Cargo.toml || { echo "::error::vendored Aether not v2.4.0"; cat third_party/Aether/aether/Cargo.toml | head -n 10; exit 1; }
+          # Vendor path in third_party/Aether (v2.4.0 peeled d58f9d5) patched to omit rust-version 1.88 on quiche
           sudo apt-get update && sudo apt-get install -y cmake perl pkg-config || true
           rustc --version || echo "rustc missing"; cargo --version || echo "cargo missing"; cargo ndk --version 2>&1 || cargo-ndk --version 2>&1 || echo "cargo-ndk missing, will try cargo ndk"
           cmake --version 2>&1 | head -n1 || echo "cmake missing"; perl --version 2>&1 | head -n1 || echo "perl missing"

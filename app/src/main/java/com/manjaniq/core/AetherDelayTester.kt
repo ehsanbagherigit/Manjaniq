@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
@@ -14,6 +15,7 @@ import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.Socket
 import java.net.URL
+import kotlin.coroutines.coroutineContext
 
 object AetherDelayTester {
 
@@ -164,6 +166,7 @@ object AetherDelayTester {
             AetherCoreManager.withProcess(
                 context = context,
                 arguments = arguments,
+                exit = core.exit,
                 source = SOURCE,
                 onOutput = {},
                 keysDir = probeDir,
@@ -172,6 +175,7 @@ object AetherDelayTester {
                     if (needsWord) {
                         var sawReady = false
                         for (line in output) {
+                            coroutineContext.ensureActive()
                             if (AetherCoreManager.isReadyWord(line)) {
                                 sawReady = true
                                 break
@@ -180,12 +184,15 @@ object AetherDelayTester {
                         if (!sawReady) return@withTimeoutOrNull -1L
                     }
                     while (!AetherCoreManager.answersSocks(port)) {
+                        coroutineContext.ensureActive()
                         delay(SOCKS_READY_POLL_MS)
                     }
+                    coroutineContext.ensureActive()
                     measureSocksDelay(port, testUrl)
                 } ?: -1L
             } ?: -1L
         } finally {
+            AetherCoreManager.closeSocksProbe(port)
             probeDir.deleteRecursively()
         }
     }
@@ -215,16 +222,18 @@ object AetherDelayTester {
     internal fun testArguments(core: AetherCore, port: Int): List<String> {
         val base = AetherCoreManager.withInfoLines(core.arguments)
         return when {
-            AetherCoreManager.torModeOf(base) == AetherTor.CHAIN ->
-                AetherCoreManager.withListener(
-                    AetherCoreManager.withListener(base, "--bind", port + 1),
-                    AetherCoreManager.TOR_BIND,
-                    port,
-                )
+            AetherCoreManager.aloneOf(base) != null ->
+                AetherCoreManager.withListener(base, "--bind", port)
             AetherCoreManager.psiphonModeOf(base) == AetherPsiphon.CHAIN ->
                 AetherCoreManager.withListener(
                     AetherCoreManager.withListener(base, "--bind", port + 1),
                     AetherCoreManager.PSIPHON_BIND,
+                    port,
+                )
+            AetherCoreManager.torModeOf(base) == AetherTor.CHAIN ->
+                AetherCoreManager.withListener(
+                    AetherCoreManager.withListener(base, "--bind", port + 1),
+                    AetherCoreManager.TOR_BIND,
                     port,
                 )
             else -> AetherCoreManager.withListener(base, "--bind", port)

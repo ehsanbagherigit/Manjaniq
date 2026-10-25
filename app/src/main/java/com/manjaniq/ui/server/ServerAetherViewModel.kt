@@ -20,6 +20,7 @@ import com.manjaniq.core.ExitNodeOutbound
 import com.manjaniq.core.ProfileItem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -203,11 +204,13 @@ class ServerAetherViewModel @JvmOverloads constructor(
             appendResource(Log.INFO, R.string.aether_log_scan_started)
             try {
                 val result = source.scan(profile, ::appendCoreLine)
+                ensureActive()
                 _psiphonRegions.value = source.psiphonRegions()
+                ensureActive()
                 if (result != null) {
                     appendEntry(Log.INFO, scanOutcome(result))
                     _scanState.value = AetherScanState.Found(result)
-                } else {
+                } else if (!cancelling) {
                     appendResource(Log.WARN, R.string.aether_scan_failed)
                     _scanState.value = AetherScanState.NotFound
                 }
@@ -255,8 +258,19 @@ class ServerAetherViewModel @JvmOverloads constructor(
         val job = activeJob ?: return
         if (!job.isActive || cancelling) return
         cancelling = true
+        _scanState.value = AetherScanState.Idle
         job.cancel()
+        activeJob = null
+        cancelling = false
         appendResource(Log.WARN, R.string.aether_log_scan_cancelled)
+    }
+
+    override fun onCleared() {
+        activeJob?.cancel()
+        activeJob = null
+        keysCheckJob?.cancel()
+        keysCheckJob = null
+        super.onCleared()
     }
 
     fun onScanHandled() {

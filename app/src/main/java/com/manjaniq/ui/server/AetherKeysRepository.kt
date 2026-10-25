@@ -62,10 +62,15 @@ class AetherKeysRepository(context: Context) : AetherKeysSource {
         AetherIdentityManager.renew(appContext, kind, arguments, exit, onOutput = onOutput)
 
     override suspend fun exitNodes(): List<AetherExitNode> = withContext(Dispatchers.IO) {
-        emptyList()
+        listOf(AetherExitNode(AetherCoreManager.RSTA_EXIT_NODE))
     }
 
     override suspend fun findExitNode(name: String): ExitNodeOutbound = withContext(Dispatchers.IO) {
-        ExitNodeOutbound.NotFound
+        val trimmed = name.trim()
+        when {
+            trimmed.equals(AetherCoreManager.RSTA_EXIT_NODE, ignoreCase = true) -> ExitNodeOutbound.Built(AetherCoreManager.RSTA_EXIT_NODE)
+            !com.manjaniq.core.AetherFmt.normalizeUpstreamUrl(trimmed).isNullOrEmpty() -> ExitNodeOutbound.Built("upstream")
+            else -> ExitNodeOutbound.NotFound
+        }
     }
 }

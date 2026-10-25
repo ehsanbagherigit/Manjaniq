@@ -22,6 +22,7 @@ import com.manjaniq.core.ExitNodeOutbound
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -90,6 +91,8 @@ class AetherKeysViewModel @JvmOverloads constructor(
     fun setApiSni(apiSni: String) = updateSettings { copy(apiSni = apiSni) }
 
     fun setApiHost(apiHost: String) = updateSettings { copy(apiHost = apiHost) }
+
+    fun setUpstreamProxy(upstreamProxy: String) = updateSettings { copy(upstreamProxy = upstreamProxy) }
 
     fun setExitNode(exitNode: String) = updateSettings { copy(exitNode = exitNode) }
 
@@ -169,11 +172,12 @@ class AetherKeysViewModel @JvmOverloads constructor(
                     val parsed = ServerAetherViewModel.parseCoreLine(raw) ?: return@renew
                     appendEntry(parsed.first, AetherLogText.Raw(parsed.second))
                 }
+                ensureActive()
                 if (renewed != null) {
                     appendResource(Log.INFO, R.string.aether_log_key_renewed)
                     reportKeys(renewed)
                     _notice.value = AetherKeysNotice.Renewed
-                } else {
+                } else if (!cancelling) {
                     appendResource(Log.ERROR, R.string.aether_log_key_renew_failed)
                 }
             } catch (cancelled: CancellationException) {
@@ -192,8 +196,17 @@ class AetherKeysViewModel @JvmOverloads constructor(
         val job = activeJob ?: return
         if (!job.isActive || cancelling) return
         cancelling = true
+        _isRenewing.value = false
         job.cancel()
+        activeJob = null
+        cancelling = false
         appendResource(Log.WARN, R.string.aether_log_key_renew_cancelled)
+    }
+
+    override fun onCleared() {
+        activeJob?.cancel()
+        activeJob = null
+        super.onCleared()
     }
 
     fun onNoticeShown() {
@@ -233,6 +246,7 @@ class AetherKeysViewModel @JvmOverloads constructor(
             AetherKeys.Problem.INVALID_ENROLL_ADDRESS -> R.string.aether_keys_invalid_enroll_address
             AetherKeys.Problem.INVALID_API_SNI -> R.string.aether_keys_invalid_api_sni
             AetherKeys.Problem.INVALID_API_HOST -> R.string.aether_keys_invalid_api_host
+            AetherKeys.Problem.INVALID_UPSTREAM -> R.string.aether_invalid_upstream
             AetherKeys.Problem.INVALID_FRAGMENT -> R.string.aether_invalid_fragment
             AetherKeys.Problem.INVALID_ECH_DNS -> R.string.aether_invalid_ech_dns
             AetherKeys.Problem.INVALID_ECH_DOMAIN -> R.string.aether_invalid_ech_domain

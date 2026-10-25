@@ -441,7 +441,10 @@ fun AetherHomePanel(
 
     val isScanning = scanState is AetherScanState.Scanning
     val running = serviceState == EngineState.RUNNING
-    val transition = serviceState == EngineState.STARTING || serviceState == EngineState.STOPPING
+    val starting = serviceState == EngineState.STARTING
+    val stopping = serviceState == EngineState.STOPPING
+    val activeOrStarting = running || starting
+    val transition = starting || stopping
 
     LaunchedEffect(state.protocol) {
         viewModel.showIdentity(state.protocol)
@@ -654,35 +657,42 @@ fun AetherHomePanel(
 
         Button(
             onClick = {
-                if (running) {
+                if (activeOrStarting) {
                     AetherService.requestStop(context)
                 } else {
                     saveAndStart()
                 }
             },
-            enabled = !transition && !isScanning,
+            enabled = !stopping && (activeOrStarting || (isCoreAvailable && !isScanning)),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp)
                 .testTag(TestTags.AETHER_TOGGLE),
             shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (running) Color(0xFFB3261E) else AetherNeonBlue,
-                contentColor = if (running) Color.White else Color(0xFF001824),
+                containerColor = if (activeOrStarting) Color(0xFFB3261E) else AetherNeonBlue,
+                contentColor = if (activeOrStarting) Color.White else Color(0xFF001824),
             ),
         ) {
             if (transition) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(18.dp),
                     strokeWidth = 2.dp,
-                    color = if (running) Color.White else Color(0xFF001824),
+                    color = if (activeOrStarting) Color.White else Color(0xFF001824),
                 )
                 Spacer(modifier = Modifier.width(10.dp))
+            } else if (starting) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
             }
             Text(
                 text = when {
-                    serviceState == EngineState.STARTING -> stringResource(R.string.starting)
-                    serviceState == EngineState.STOPPING -> stringResource(R.string.stopping)
+                    starting -> stringResource(R.string.aether_action_cancel_start)
+                    stopping -> stringResource(R.string.stopping)
                     running -> stringResource(R.string.stop_engine)
                     else -> stringResource(R.string.start_engine)
                 },
@@ -699,6 +709,7 @@ fun AetherHomePanel(
             isPsiphonAvailable = isPsiphonAvailable,
             isTorTransportsAvailable = isTorTransportsAvailable,
             isScanning = isScanning,
+            isStarting = starting,
             session = session,
             psiphonRegions = psiphonRegions,
             listenPort = listenPort,
@@ -742,6 +753,7 @@ internal fun ServerAetherContent(
             isPsiphonAvailable = isPsiphonAvailable,
             isTorTransportsAvailable = isTorTransportsAvailable,
             isScanning = isScanning,
+            isStarting = false,
             session = session,
             psiphonRegions = psiphonRegions,
             listenPort = listenPort,
@@ -763,6 +775,7 @@ private fun ServerAetherForm(
     isPsiphonAvailable: Boolean,
     isTorTransportsAvailable: Boolean,
     isScanning: Boolean,
+    isStarting: Boolean = false,
     session: AetherSession?,
     psiphonRegions: List<String>,
     listenPort: Int,
@@ -848,6 +861,7 @@ private fun ServerAetherForm(
     val fingerprintValues = stringArrayResource(R.array.aether_fingerprint_values).toList()
     val echDnsOptions = stringArrayResource(R.array.aether_ech_dns_options).toList()
     val echDomainOptions = stringArrayResource(R.array.aether_ech_domain_options).toList()
+    val upstreamOptions = stringArrayResource(R.array.aether_upstream_options).toList()
 
     val builtCommand = remember(state, listenPort) {
         val draft = ProfileItem.create().also { state.copy(command = "").applyTo(it, listenPort) }
@@ -856,7 +870,7 @@ private fun ServerAetherForm(
     val writtenCommand = state.command.trim()
     val isCustomCommand = writtenCommand.isNotEmpty() && writtenCommand != builtCommand
     val displayedCommand = if (isCustomCommand) state.command else builtCommand
-    val fieldsEnabled = !isScanning && !isCustomCommand
+    val fieldsEnabled = !isScanning && !isStarting && !isCustomCommand
 
     if (!isCoreAvailable) {
         Text(
@@ -1017,6 +1031,15 @@ private fun ServerAetherForm(
         placeholder = "1.1.1.1,8.8.8.8",
         supportingText = stringResource(R.string.aether_hint_dns),
         keyboardType = KeyboardType.Ascii,
+        enabled = fieldsEnabled,
+    )
+
+    FormComboField(
+        label = stringResource(R.string.aether_lab_upstream),
+        value = state.upstream,
+        options = upstreamOptions,
+        onValueChange = { onStateChange(state.copy(upstream = it)) },
+        supportingText = stringResource(R.string.aether_hint_upstream),
         enabled = fieldsEnabled,
     )
 
@@ -1306,7 +1329,7 @@ private fun ServerAetherForm(
         ) {
             FilledTonalButton(
                 onClick = onScan,
-                enabled = isCoreAvailable && !isScanning && !sessionSharesKey,
+                enabled = isCoreAvailable && !isScanning && !isStarting && !sessionSharesKey,
                 modifier = Modifier.weight(1f),
             ) {
                 if (isScanning) {
