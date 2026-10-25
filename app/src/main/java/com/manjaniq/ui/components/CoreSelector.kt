@@ -65,6 +65,7 @@ fun CoreSelector(
                 selected = selected == SelectedCore.AETHER,
                 accent = ManjaniqPurple,
                 selectedBorderColor = AetherBlue,
+                indicatorColor = AetherBlue,
                 titleColor = Color.White,
                 logoRes = R.drawable.ic_aether_logo,
                 logoDesc = stringResource(R.string.cd_aether_logo),
@@ -91,6 +92,7 @@ fun CoreCard(
     description: String,
     badgeText: String,
     selectedBorderColor: Color = accent,
+    indicatorColor: Color = accent,
     titleColor: Color? = null,
     isComingSoon: Boolean = false,
     onClick: () -> Unit,
@@ -177,7 +179,7 @@ fun CoreCard(
                         .fillMaxWidth()
                         .height(3.dp)
                         .background(
-                            color = accent,
+                            color = indicatorColor,
                             shape = RoundedCornerShape(2.dp)
                         )
                 )
