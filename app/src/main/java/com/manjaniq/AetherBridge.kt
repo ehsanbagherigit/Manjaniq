@@ -261,15 +261,6 @@ object AetherBridge {
     }
 
     /**
-     * Starts the core with its own command line: `aether_core_start`
-     * (`third_party/Aether/aether/src/ffi.rs`), which runs `cli::parse_args` and
-     * then `run_with` as a pollable, cancellable job.
-     *
-     * [args] is the argument list built by
-     * [com.manjaniq.core.models.AetherConfig.toAetherArgs]; an empty list means
-     * "the engine's own defaults" and is accepted by the FFI too.
-     */
-    /**
      * Clears the engine's own `AETHER_*` environment before a start.
      *
      * `run_with` reads its settings from the process environment and `cli` writes

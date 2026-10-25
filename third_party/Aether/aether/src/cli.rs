@@ -578,6 +578,7 @@ pub fn parse_args(args: Vec<String>) -> crate::error::Result<Parsed> {
 
             "--h2" | "--http2" => set("AETHER_MASQUE_HTTP2", "1"),
             "--h3" | "--quic" => set("AETHER_MASQUE_HTTP2", "0"),
+            "--masque-sni" => set("AETHER_MASQUE_SNI", next_value!()),
             "--no-quic-v2" => set("AETHER_QUIC_V2", "0"),
             "--h2-peer" => set("AETHER_MASQUE_H2_PEER", next_value!()),
             "--ech" => set("AETHER_ECH", next_value!()),
@@ -611,7 +612,13 @@ pub fn parse_args(args: Vec<String>) -> crate::error::Result<Parsed> {
             "--wg-config" => set("AETHER_WG_CONFIG", next_value!()),
             "--masque-config" => set("AETHER_MASQUE_CONFIG", next_value!()),
             "--register" => set("AETHER_REGISTER", next_value!()),
-            "--enroll-address" => set("AETHER_ENROLL_ADDRESS", next_value!()),
+            "--enroll-address" | "--api-address" => {
+                let value = next_value!().clone();
+                set("AETHER_ENROLL_ADDRESS", &value);
+                set("AETHER_API_ADDRESS", &value);
+            }
+            "--api-sni" => set("AETHER_API_SNI", next_value!()),
+            "--api-host" => set("AETHER_API_HOST", next_value!()),
 
             "--team" | "--organization" => set("AETHER_TEAM", next_value!()),
             "--access-id" => set("AETHER_ACCESS_CLIENT_ID", next_value!()),
@@ -625,7 +632,20 @@ pub fn parse_args(args: Vec<String>) -> crate::error::Result<Parsed> {
             "--routes" => set("AETHER_ROUTES_FILE", next_value!()),
 
             "--tls-groups" => set("AETHER_TLS_GROUPS", next_value!()),
+            "--tls-key-shares" => set("AETHER_TLS_KEY_SHARES", next_value!()),
+            "--tls13-ciphers" => set("AETHER_TLS13_CIPHERS", next_value!()),
             "--tls-ciphers" => set("AETHER_TLS_CIPHERS", next_value!()),
+            "--enable-grease-sigalgs" => set("AETHER_ENABLE_GREASE_SIGALGS", "1"),
+            "--tls-sigalgs" => set("AETHER_TLS_SIGALGS", next_value!()),
+            "--tls-cert-compression" => set("AETHER_TLS_CERT_COMPRESSION", next_value!()),
+            "--tls-alps" => set("AETHER_TLS_ALPS", next_value!()),
+            "--tls-trust-anchors" => set("AETHER_TLS_TRUST_ANCHORS", next_value!()),
+            "--tls-server-padding" => set("AETHER_TLS_SERVER_PADDING", next_value!()),
+            "--enable-ech-grease" => set("AETHER_ENABLE_ECH_GREASE", "1"),
+            "--disable-ocsp-stapling" => set("AETHER_DISABLE_OCSP_STAPLING", "1"),
+            "--disable-sct" => set("AETHER_DISABLE_SCT", "1"),
+            "--disable-session-ticket" => set("AETHER_DISABLE_SESSION_TICKET", "1"),
+            "--disable-extension-permutation" => set("AETHER_DISABLE_EXTENSION_PERMUTATION", "1"),
             "--disable-grease" => set("AETHER_DISABLE_GREASE", "1"),
             "--tls-verify" => set("AETHER_TLS_VERIFY", "1"),
             "--perf" => set("AETHER_PERF_PROFILE", next_value!()),

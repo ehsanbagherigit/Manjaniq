@@ -1,102 +1,226 @@
 package com.manjaniq.core
 
 import android.content.Context
+import android.util.Log
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.regex.Matcher
-import java.util.regex.Pattern
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * PattNG port: the identity folder Aether registers its keys into, and the key files it holds.
+ * The identity folder Aether registers its keys into, and the key files it holds.
  *
  * Keys are written under the app's private `filesDir/aether` directory and moved into place only
  * once every key of a renewal is ready, so the keys in use are never lost to an interrupted
- * renewal, a cancellation, or the process being killed. Nothing here ever writes outside
- * [workDir]: an identity path that climbs out of the app's data directory is refused before the
- * core ever sees it.
- *
- * Adapted to Manjaniq: [workDir] resolves from `context.filesDir` exactly as
- * [com.manjaniq.core.AetherPreflight] resolves the identity file, and the core's own argument list
- * (built by `AetherConfig.toAetherArgs` and started through `AetherBridge.coreStart`) names the
- * config file it writes into this folder.
+ * renewal, a cancellation, or the process being killed.
  */
 object AetherIdentityManager {
 
-    /** The identity file the core writes and registers its keys into. */
+    private const val TAG = "AetherIdentity"
+
     const val BASE_FILE = "aether.toml"
-
-    /** The MASQUE key file, written beside [BASE_FILE] as the core names it. */
     const val MASQUE_FILE = "aether-masque.toml"
-
-    /** The secondary MASQUE key file used by a two-hop tunnel. */
     const val MASQUE_INNER_FILE = "aether-masque-secondary.toml"
-
-    /** The WireGuard key file. */
     const val WIREGUARD_FILE = "aether-wg.toml"
-
-    /** The secondary WireGuard key file used by a two-hop tunnel. */
     const val WIREGUARD_INNER_FILE = "aether-wg-secondary.toml"
-
-    /** The WireGuard-over-MASQUE key file, beside [MASQUE_FILE] as the core names it. */
     const val MASQUE_GOOL_FILE = "aether-masque-gool.toml"
 
     /** The key files of every kind, in the order the core registers them. */
-    val KEY_FILES = listOf(
-        WIREGUARD_FILE,
-        WIREGUARD_INNER_FILE,
-        MASQUE_FILE,
-        MASQUE_INNER_FILE,
-        MASQUE_GOOL_FILE
-    )
-
-    /** Where a renewal gathers its new keys; the keys in use stay in [WORK_DIR] until they are ready. */
-    private const val RENEWAL_DIR = "aether-renewal"
-
-    /** Written into [RENEWAL_DIR] once every new key of a renewal is there. */
-    private const val READY_MARK = "ready"
-
-    /** Where a renewal before [RENEWAL_DIR] moved the keys in use while it registered new ones. */
-    private const val PREVIOUS_DIR = "aether-previous"
-
-    /** One line of a key file: `device_id = "..."`, `ipv4 = "..."` or `ipv6 = "..."`. */
-    private val identityField = Pattern.compile("""^(device_id|ipv4|ipv6)\s*=\s*"([^"]*)""$""")
-
-    /** Triple-quote delimiters that open or close a multiline value. */
-    private val multilineDelimiter = Pattern.compile("\"\"\"|'''")
-
-    /** The core's last word in a registration, once every key it was asked for is saved. */
-    private val keysRegistered = Pattern.compile("""identities ready: \S""")
-
-    /** The maximum time a registration is allowed to run before it is treated as failed. */
-    private const val REGISTER_TIMEOUT_MS = 4L * 60_000L
-
-    /** One renewal at a time: renewals share [RENEWAL_DIR]. */
-    private val renewal = java.util.concurrent.locks.ReentrantLock()
-
-    /**
-     * The identity folder: `filesDir/aether`, created on demand. This is the directory the core's
-     * identity (`--config`) lives in.
-     */
-    fun workDir(context: Context): File = File(context.filesDir, WORK_DIR).apply { mkdirs() }
+    val KEY_FILES = listOf(WIREGUARD_FILE, WIREGUARD_INNER_FILE, MASQUE_FILE, MASQUE_INNER_FILE, MASQUE_GOOL_FILE)
 
     private const val WORK_DIR = "aether"
+    private const val RENEWAL_DIR = "aether-renewal"
+    internal const val READY_MARK = "ready"
+    private const val PREVIOUS_DIR = "aether-previous"
+
+    private const val RENEW_TIMEOUT_MS = 4 * 60_000L
+    private const val RENEW_THROUGH_CARRIER_TIMEOUT_MS = 10 * 60_000L
+    private const val SOURCE = "aether-key"
+
+    private val identityField = Regex("""^(device_id|ipv4|ipv6)\s*=\s*"([^"]*)"$""")
+    private val multilineDelimiter = Regex("\"\"\"|'''")
+    private val keysRegistered = Regex("""identities ready: \S""")
+
+    private val renewal = Mutex()
+
+    fun workDir(context: Context): File = File(context.filesDir, WORK_DIR)
 
     private fun renewalDir(context: Context): File = File(context.filesDir, RENEWAL_DIR)
 
-    /**
-     * Removes [PREVIOUS_DIR] from `filesDir` (keys an interrupted renewal of an older build left
-     * behind) and settles the identity and renewal folders; the keys in use stay as they are.
-     * Safe to call before every use of Aether.
-     */
-    fun settle(context: Context): Boolean {
-        File(context.filesDir, PREVIOUS_DIR).deleteRecursively()
-        return settle(workDir(context), File(context.filesDir, RENEWAL_DIR))
+    suspend fun status(context: Context, protocol: AetherProtocol): AetherIdentityStatus =
+        withContext(Dispatchers.IO) {
+            settle(context)
+            status(workDir(context), protocol)
+        }
+
+    suspend fun keys(context: Context): List<AetherKey> =
+        withContext(Dispatchers.IO) {
+            settle(context)
+            keys(workDir(context), KEY_FILES)
+        }
+
+    suspend fun renew(
+        context: Context,
+        kind: AetherKeyKind,
+        arguments: List<String>,
+        exit: AetherExit = AetherExit.PLAIN,
+        onOutput: (String) -> Unit,
+    ): List<AetherKey>? = renewal.withLock {
+        val workDir = workDir(context)
+        val renewalDir = renewalDir(context)
+        val files = filesOf(kind)
+        if (!renew(workDir, renewalDir, files) { register(context, arguments, exit, renewalDir, onOutput) }) return@withLock null
+        withContext(Dispatchers.IO) {
+            if (!settle(workDir, renewalDir)) {
+                Log.w(TAG, "the new keys are ready but not all in place yet; the next core start moves the rest")
+            }
+            keys(workDir, files)
+        }
     }
 
-    /**
-     * Moves the new keys of a ready renewal over the keys in use, one after another, then removes
-     * the renewal folder. Without the ready mark there is nothing to move and the keys in use stay.
-     * True when no renewal with ready keys waits any longer.
-     */
+    fun settle(context: Context): Boolean = settleIn(context.filesDir)
+
+    internal fun settleIn(filesDir: File): Boolean {
+        if (!File(filesDir, PREVIOUS_DIR).deleteRecursively()) {
+            Log.w(TAG, "the keys an interrupted renewal of an older version left could not all be removed")
+        }
+        return settle(File(filesDir, WORK_DIR), File(filesDir, RENEWAL_DIR))
+    }
+
+    private suspend fun register(
+        context: Context,
+        arguments: List<String>,
+        exit: AetherExit,
+        renewalDir: File,
+        onOutput: (String) -> Unit,
+    ): Boolean = AetherCoreManager.runUntil(
+        context = context,
+        arguments = AetherCoreManager.withInfoLines(arguments),
+        exit = exit,
+        timeoutMs = if (AetherCoreManager.reachesWarpThroughCarrier(arguments)) RENEW_THROUGH_CARRIER_TIMEOUT_MS else RENEW_TIMEOUT_MS,
+        source = SOURCE,
+        onOutput = onOutput,
+        keysDir = renewalDir,
+    ) { line -> line.takeIf(::isRegistered) } != null
+
+    internal fun status(workDir: File, protocol: AetherProtocol): AetherIdentityStatus = when (protocol) {
+        AetherProtocol.MASQUE -> AetherIdentityStatus(protocol, read(File(workDir, MASQUE_FILE)))
+        AetherProtocol.WIREGUARD -> AetherIdentityStatus(protocol, read(File(workDir, WIREGUARD_FILE)))
+        AetherProtocol.GOOL -> AetherIdentityStatus(
+            protocol,
+            read(File(workDir, WIREGUARD_FILE)),
+            read(File(workDir, WIREGUARD_INNER_FILE)),
+        )
+        AetherProtocol.MIM -> AetherIdentityStatus(
+            protocol,
+            read(File(workDir, MASQUE_FILE)),
+            read(File(workDir, MASQUE_INNER_FILE)),
+        )
+        AetherProtocol.WG_OVER_MASQUE -> AetherIdentityStatus(
+            protocol,
+            read(File(workDir, MASQUE_FILE)),
+            read(File(workDir, MASQUE_GOOL_FILE)),
+        )
+    }
+
+    fun filesOf(kind: AetherKeyKind): List<String> = when (kind) {
+        AetherKeyKind.ALL -> KEY_FILES
+        AetherKeyKind.WIREGUARD -> listOf(WIREGUARD_FILE)
+        AetherKeyKind.MASQUE -> listOf(MASQUE_FILE)
+        AetherKeyKind.GOOL -> listOf(WIREGUARD_FILE, WIREGUARD_INNER_FILE)
+        AetherKeyKind.MIM -> listOf(MASQUE_FILE, MASQUE_INNER_FILE)
+        AetherKeyKind.WG_OVER_MASQUE -> listOf(MASQUE_FILE, MASQUE_GOOL_FILE)
+    }
+
+    fun filesOf(protocol: AetherProtocol): List<String> = when (protocol) {
+        AetherProtocol.MASQUE -> listOf(MASQUE_FILE)
+        AetherProtocol.WIREGUARD -> listOf(WIREGUARD_FILE)
+        AetherProtocol.GOOL -> listOf(WIREGUARD_FILE, WIREGUARD_INNER_FILE)
+        AetherProtocol.MIM -> listOf(MASQUE_FILE, MASQUE_INNER_FILE)
+        AetherProtocol.WG_OVER_MASQUE -> listOf(MASQUE_FILE, MASQUE_GOOL_FILE)
+    }
+
+    fun filesOf(protocol: String): List<String> = when (protocol) {
+        "masque" -> listOf(MASQUE_FILE)
+        "wg" -> listOf(WIREGUARD_FILE)
+        "gool" -> listOf(WIREGUARD_FILE, WIREGUARD_INNER_FILE)
+        "mim" -> listOf(MASQUE_FILE, MASQUE_INNER_FILE)
+        "wg-over-masque" -> listOf(MASQUE_FILE, MASQUE_GOOL_FILE)
+        else -> emptyList()
+    }
+
+    fun filesNeededBy(arguments: List<String>): List<String> =
+        if (AetherCoreManager.psiphonModeOf(arguments) == AetherPsiphon.ONLY || AetherCoreManager.torModeOf(arguments) == AetherTor.ONLY) {
+            emptyList()
+        } else {
+            filesOf(AetherCoreManager.protocolOf(arguments))
+        }
+
+    suspend fun missing(context: Context, files: List<String>): List<String> =
+        withContext(Dispatchers.IO) {
+            settle(context)
+            missing(workDir(context), files)
+        }
+
+    internal fun missing(dir: File, files: List<String>): List<String> = files.filter { read(File(dir, it)) == null }
+
+    internal fun keys(dir: File, files: List<String>): List<AetherKey> = files.map { AetherKey(it, read(File(dir, it))) }
+
+    fun parse(text: String): AetherIdentity? {
+        val fields = mutableMapOf<String, String>()
+        var insideMultiline = false
+        for (raw in text.lineSequence()) {
+            val line = raw.trim()
+            if (!insideMultiline) {
+                identityField.matchEntire(line)?.destructured?.let { (key, value) -> fields.putIfAbsent(key, value) }
+            }
+            if (multilineDelimiter.findAll(line).count() % 2 == 1) {
+                insideMultiline = !insideMultiline
+            }
+        }
+        val deviceId = fields["device_id"]?.takeIf { it.isNotBlank() } ?: return null
+        return AetherIdentity(deviceId, fields["ipv4"].orEmpty(), fields["ipv6"].orEmpty())
+    }
+
+    fun sharesIdentity(first: AetherProtocol, second: AetherProtocol): Boolean =
+        first.overMasque == second.overMasque
+
+    internal fun isRegistered(line: String): Boolean = keysRegistered.containsMatchIn(line)
+
+    internal suspend fun renew(
+        workDir: File,
+        renewalDir: File,
+        files: List<String>,
+        io: CoroutineDispatcher = Dispatchers.IO,
+        register: suspend () -> Boolean,
+    ): Boolean {
+        val cleared = withContext(io) {
+            settle(workDir, renewalDir) && renewalDir.deleteRecursively() && renewalDir.mkdirs()
+        }
+        if (!cleared) return false
+        val ready = AtomicBoolean(false)
+        try {
+            if (register()) {
+                withContext(io) {
+                    (KEY_FILES - files.toSet()).forEach { File(renewalDir, it).delete() }
+                    ready.set(isComplete(renewalDir, files) && markReady(renewalDir))
+                }
+            }
+        } finally {
+            withContext(NonCancellable + io) {
+                if (ready.get()) settle(workDir, renewalDir) else renewalDir.deleteRecursively()
+            }
+        }
+        return ready.get()
+    }
+
     internal fun settle(workDir: File, renewalDir: File): Boolean {
         if (!File(renewalDir, READY_MARK).isFile) return true
         workDir.mkdirs()
@@ -107,62 +231,24 @@ object AetherIdentityManager {
         return renewalDir.deleteRecursively()
     }
 
-    /** Replaces [target] by [source] in one atomic step; true once [source] is gone. */
-    private fun moveOver(source: File, target: File): Boolean =
-        try {
-            java.nio.file.Files.move(
-                source.toPath(),
-                target.toPath(),
-                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-                java.nio.file.StandardCopyOption.ATOMIC_MOVE
-            )
-            true
-        } catch (_: Exception) {
-            !source.isFile
-        }
-
-    /** Every key of the identity folder, each of [KEY_FILES] with the identity it holds. */
-    fun keys(context: Context): List<AetherKey> =
-        KEY_FILES.map { AetherKey(it, read(File(workDir(context), it))) }
-
-    /** Which of [files] the identity folder lacks: not there, or not readable as a key. */
-    fun missing(context: Context, files: List<String>): List<String> =
-        files.filter { read(File(workDir(context), it)) == null }
-
-    /** The identity [file] holds, or null when it is missing or unreadable as a key. */
-    fun read(file: File): AetherIdentity? =
-        if (file.isFile) parse(file.readText()) else null
-
-    /**
-     * Parses the text of a key file into an [AetherIdentity]. `device_id` is mandatory; `ipv4` and
-     * `ipv6` default to empty when absent.
-     */
-    fun parse(text: String): AetherIdentity? {
-        val fields = mutableMapOf<String, String>()
-        var insideMultiline = false
-        for (raw in text.lineSequence()) {
-            val line = raw.trim()
-            if (!insideMultiline) {
-                val matcher: Matcher = identityField.matcher(line)
-                if (matcher.matches()) {
-                    fields.putIfAbsent(matcher.group(1), matcher.group(2))
-                }
-            }
-            val delimiters = multilineDelimiter.matcher(line)
-            var count = 0
-            while (delimiters.find()) count++
-            if (count % 2 == 1) insideMultiline = !insideMultiline
-        }
-        val deviceId = fields["device_id"] ?: return null
-        return AetherIdentity(deviceId, fields.getOrElse("ipv4") { "" }, fields.getOrElse("ipv6") { "" })
+    private fun moveOver(source: File, target: File): Boolean = try {
+        Files.move(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        true
+    } catch (_: IOException) {
+        !source.isFile
     }
 
-    /** The key files a tunnel of [protocol] uses: its own, and the inner hop's for a two-hop one. */
-    fun filesOf(protocol: String): List<String> = when (protocol) {
-        "masque" -> listOf(MASQUE_FILE)
-        "wg" -> listOf(WIREGUARD_FILE)
-        "gool" -> listOf(WIREGUARD_FILE, WIREGUARD_INNER_FILE)
-        "mim" -> listOf(MASQUE_FILE, MASQUE_INNER_FILE)
-        else -> emptyList()
+    internal fun isComplete(dir: File, files: List<String>): Boolean = files.all { read(File(dir, it)) != null }
+
+    private fun markReady(dir: File): Boolean = try {
+        File(dir, READY_MARK).createNewFile()
+    } catch (_: IOException) {
+        false
+    }
+
+    fun read(file: File): AetherIdentity? = try {
+        if (file.isFile) parse(file.readText()) else null
+    } catch (_: IOException) {
+        null
     }
 }

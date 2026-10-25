@@ -178,4 +178,219 @@
     <string name="notification_restarting">Restarting RSTA engine…</string>
     <string name="notification_proxy_fmt">Proxy %1$s → %2$s (%3$s)</string>
     <string name="notification_stop">Stop</string>
+
+    <!-- Aether foreground service notification -->
+    <string name="aether_notification_channel_name">Aether engine</string>
+    <string name="aether_notification_channel_desc">Shown while the local Aether SOCKS5 proxy is running</string>
+    <string name="aether_notification_title">Manjaniq — Aether</string>
+    <string name="aether_notification_starting">Starting Aether…</string>
+    <string name="aether_notification_running">SOCKS5 %1$s (%2$s)</string>
+
+    <!-- Shared editor & server strings -->
+    <string name="action_cancel">Cancel</string>
+    <string name="menu_item_save_config">Save config</string>
+    <string name="menu_item_del_config">Delete config</string>
+    <string name="server_lab_remarks">Remarks</string>
+    <string name="server_lab_address">Address</string>
+    <string name="server_lab_port">Port</string>
+    <string name="server_lab_content">Content</string>
+    <string name="toast_success">Success</string>
+    <string name="toast_failure">Failure</string>
+    <string name="toast_none_data">No data available</string>
+    <string name="logcat_copy">Copy</string>
+    <string name="routing_settings_delete">Clear</string>
+    <string name="toast_profile_name_not_found">No profile named \"%1$s\" was found</string>
+    <string name="toast_profile_name_duplicate">Two profiles named \"%1$s\" were found; please rename one</string>
+
+    <!-- Aether configuration & keys -->
+    <string name="aether_setting">Aether Settings</string>
+    <string name="aether_listen_port">Aether listen port</string>
+    <string name="aether_lab_protocol">Protocol</string>
+    <string name="aether_lab_transport">Transport</string>
+    <string name="aether_lab_scan_mode">Scan Mode</string>
+    <string name="aether_lab_obfuscation">UDP Obfuscation</string>
+    <string name="aether_lab_ip_version">IP Version</string>
+    <string name="aether_lab_psiphon">Psiphon</string>
+    <string name="aether_lab_psiphon_mode">Psiphon Mode</string>
+    <string name="aether_lab_psiphon_cdn_ips">Psiphon CDN IPs (Optional)</string>
+    <string name="aether_lab_psiphon_cdn_sni">Psiphon CDN SNI (Optional)</string>
+    <string name="aether_lab_psiphon_cdn_sets">Psiphon CDN Providers</string>
+    <string name="aether_hint_psiphon_cdn_sets">Choose which CDNs Psiphon may front through, or leave all selected</string>
+    <string name="aether_psiphon_cdn_sets_all">All CDNs</string>
+    <string name="aether_lab_psiphon_region">Psiphon Exit Country</string>
+    <string name="aether_psiphon_region_any">Any country</string>
+    <string name="aether_lab_psiphon_bundled_list">Use Built-in Psiphon Server List</string>
+    <string name="aether_hint_psiphon_bundled_list">Seeds Psiphon before its first connection; turn off to use only cached or live discovery</string>
+    <string name="aether_hint_psiphon_list">Comma-separated</string>
+    <string name="aether_action_clear_psiphon">Clear Psiphon Data</string>
+    <string name="aether_hint_clear_psiphon">Removes cached Psiphon servers and state so the next connection starts fresh</string>
+    <string name="aether_psiphon_clear_blocked">Stop the active Aether connection before clearing Psiphon data</string>
+    <string name="aether_log_psiphon_cleared">Psiphon data cleared</string>
+    <string name="aether_log_psiphon_clear_failed">Failed to clear Psiphon data</string>
+    <string name="aether_lab_tor">Tor</string>
+    <string name="aether_lab_tor_bridges">Tor Bridges</string>
+    <string name="aether_lab_tor_relays">Built-in Tor Bridges</string>
+    <string name="aether_lab_tor_bridge_lines">Bridge Lines</string>
+    <string name="aether_hint_tor_bridge_lines">One bridge line per line</string>
+    <string name="aether_lab_masque_sni">MASQUE SNI</string>
+    <string name="aether_lab_fingerprint">TLS Fingerprint</string>
+    <string name="aether_lab_fragment">TLS Fragment</string>
+    <string name="aether_lab_fragment_size">Fragment Size (bytes)</string>
+    <string name="aether_hint_fragment_size">Single number or min-max, 1–517 bytes (e.g., 40-100)</string>
+    <string name="aether_lab_fragment_delay">Fragment Delay (ms)</string>
+    <string name="aether_hint_fragment_delay">Single number or min-max, 0–500 ms (e.g., 10-50)</string>
+    <string name="aether_lab_ech">Encrypted ClientHello (ECH)</string>
+    <string name="aether_hint_ech">Encrypts the SNI using keys fetched from DNS</string>
+    <string name="aether_lab_ech_dns">ECH DNS Resolver</string>
+    <string name="aether_lab_ech_domain">ECH Public Name</string>
+    <string name="aether_lab_dns">Tunnel DNS (Optional)</string>
+    <string name="aether_hint_dns">Comma-separated DNS servers used inside the tunnel (e.g., 1.1.1.1,8.8.8.8)</string>
+    <string name="aether_lab_exit_loc">Exit Country Codes (Optional)</string>
+    <string name="aether_hint_exit_loc">Accept only these 2-letter countries, or prefix with ! to avoid them (e.g., DE,NL or !IR,RU)</string>
+    <string name="aether_lab_exit_node">Exit Node (Optional)</string>
+    <string name="aether_hint_exit_node">Name of the profile that carries Aether to the endpoint</string>
+    <string name="aether_exit_node_freedom">Direct (no exit node)</string>
+    <string name="aether_lab_exit_final_mask">Exit Node Final Mask (UDP)</string>
+    <string name="aether_lab_exit_dial_mode">Exit Node Dial Mode</string>
+    <string name="aether_lab_wiw_outer">Outer Endpoint (Optional)</string>
+    <string name="aether_lab_wiw_inner">Inner Endpoint (Optional)</string>
+    <string name="aether_hint_endpoint">host:port — leave empty to scan automatically</string>
+    <string name="aether_hint_gool_peer">host:port of the inner WireGuard peer (e.g., 162.159.192.1:2408) — leave empty to scan</string>
+    <string name="aether_action_scan">Scan for Clean IP</string>
+    <string name="aether_action_scanning">Scanning…</string>
+    <string name="aether_action_renew_key">Renew Key</string>
+    <string name="aether_action_renewing_key">Renewing Key…</string>
+    <string name="aether_action_get_keys">Get Keys</string>
+    <string name="aether_keys_title">Get Aether Keys</string>
+    <string name="aether_keys_lab_kind">Keys to Register</string>
+    <string name="aether_keys_kind_all">All</string>
+    <string name="aether_keys_lab_enroll_address">Registration Endpoint (Optional)</string>
+    <string name="aether_keys_hint_enroll_address">IP or IP:port that reaches the registration server — leave empty to use the built-in pool</string>
+    <string name="aether_keys_lab_api_sni">Registration TLS SNI</string>
+    <string name="aether_keys_hint_api_sni">Domain sent in the TLS ClientHello when registering</string>
+    <string name="aether_keys_lab_api_host">Registration HTTP Host</string>
+    <string name="aether_keys_hint_api_host">HTTP Host header sent inside the TLS tunnel when registering</string>
+    <string name="aether_keys_hint_fragment">Splits the registration TLS ClientHello into fragments</string>
+    <string name="aether_keys_hint_ech">Encrypts the registration SNI using keys fetched from DNS</string>
+    <string name="aether_keys_log_empty">Register a key to see output here</string>
+    <string name="aether_keys_invalid_enroll_address">Enter a valid IP or IP:port for the registration endpoint, or leave it empty</string>
+    <string name="aether_keys_invalid_api_sni">Enter a valid domain for the registration TLS SNI</string>
+    <string name="aether_keys_invalid_api_host">Enter a valid domain for the registration HTTP Host</string>
+    <string name="aether_keys_invalid_command">Enter a valid registration command containing --register</string>
+    <string name="aether_keys_missing">%1$s has not been registered yet; tap Get Keys if you are on a censored network, or continue to let the core register it directly</string>
+    <string name="aether_action_save_anyway">Save Anyway</string>
+    <string name="aether_action_scan_anyway">Scan Anyway</string>
+    <string name="aether_log_title">Output Log</string>
+    <string name="aether_log_empty">Scan or renew key to see output here</string>
+    <string name="aether_log_wireguard_key_ready">WireGuard key: %1$s (%2$s)</string>
+    <string name="aether_log_wireguard_key_missing">WireGuard key: not created yet (will be registered on first run)</string>
+    <string name="aether_log_wireguard_inner_key_ready">WireGuard inner key: %1$s (%2$s)</string>
+    <string name="aether_log_wireguard_inner_key_missing">WireGuard inner key: not created yet (will be registered on first run)</string>
+    <string name="aether_log_masque_key_ready">MASQUE key: %1$s (%2$s)</string>
+    <string name="aether_log_masque_key_missing">MASQUE key: not created yet (will be registered on first run)</string>
+    <string name="aether_log_masque_inner_key_ready">MASQUE inner key: %1$s (%2$s)</string>
+    <string name="aether_log_masque_inner_key_missing">MASQUE inner key: not created yet (will be registered on first run)</string>
+    <string name="aether_log_gool_key_ready">WireGuard over MASQUE key: %1$s (%2$s)</string>
+    <string name="aether_log_gool_key_missing">WireGuard over MASQUE key: not created yet (will be registered on first run)</string>
+    <string name="aether_log_outer_key_ready">Outer key: %1$s (%2$s)</string>
+    <string name="aether_log_outer_key_missing">Outer key: not created yet (will be registered on first Outer or Gool run)</string>
+    <string name="aether_log_inner_key_ready">Inner key: %1$s (%2$s)</string>
+    <string name="aether_log_inner_key_missing">Inner key: not created yet (will be registered on first Inner or Gool run)</string>
+    <string name="aether_log_scan_started">Scanning for clean endpoint…</string>
+    <string name="aether_log_scan_found">Selected endpoint: %1$s</string>
+    <string name="aether_log_scan_found_hops">Selected outer: %1$s | inner: %2$s</string>
+    <string name="aether_log_scan_cancelled">Scan cancelled</string>
+    <string name="aether_log_key_renewing">Renewing key…</string>
+    <string name="aether_log_key_renewed">New key registered</string>
+    <string name="aether_log_key_renew_failed">Key renewal failed; previous key kept</string>
+    <string name="aether_log_key_renew_cancelled">Key renewal cancelled; previous key kept</string>
+    <string name="aether_scan_success">Clean IP found: %1$s</string>
+    <string name="aether_scan_failed">No clean IP found</string>
+    <string name="aether_scan_blocked">Stop the active Aether connection before scanning</string>
+    <string name="aether_renew_blocked">Stop the active Aether connection before renewing the key</string>
+    <string name="aether_invalid_endpoint">Enter both address and a valid port (1–65535), or leave both empty to scan</string>
+    <string name="aether_invalid_hop">Enter hop as host:port (1–65535), or leave empty to scan</string>
+    <string name="aether_same_hop">Outer and inner endpoints must use different IP addresses</string>
+    <string name="aether_invalid_masque_sni">Enter a valid domain for MASQUE SNI (e.g., www.cloudflare.com)</string>
+    <string name="aether_invalid_fragment">Enter a valid fragment size (1–517 bytes) and delay (0–500 ms), or leave them empty</string>
+    <string name="aether_invalid_ech_dns">Enter a valid ECH DNS resolver (udp://IP, tls://host, https://host/dns-query, or system)</string>
+    <string name="aether_invalid_ech_domain">Enter a valid domain for ECH Public Name (e.g., cloudflare-ech.com)</string>
+    <string name="aether_invalid_dns">Enter comma-separated IPv4 or IPv6 addresses for Tunnel DNS, or leave empty</string>
+    <string name="aether_invalid_exit_loc">Enter 2-letter country codes separated by commas (optionally prefixed with !), or leave empty</string>
+    <string name="aether_exit_node_unusable">Exit node \"%1$s\" cannot be used as an exit node</string>
+    <string name="aether_exit_node_ech_unusable">ECH DNS resolver \"%1$s\" cannot be used through an exit node; choose a https:// or tls:// resolver, or system</string>
+    <string name="aether_tor_psiphon_conflict">Tor and Psiphon cannot both be in the same position; put one before the tunnel and the other inside, or turn one off</string>
+    <string name="aether_tor_needs_masque">Tor Before Tunnel requires a MASQUE protocol (MASQUE, MASQUE in MASQUE, or WireGuard over MASQUE)</string>
+    <string name="aether_psiphon_needs_masque">Psiphon Before Tunnel requires a MASQUE protocol (MASQUE, MASQUE in MASQUE, or WireGuard over MASQUE)</string>
+    <string name="aether_tor_bridges_missing">Enter at least one Tor bridge line, or change Tor Bridges</string>
+    <string name="aether_tor_transports_unavailable">Tor bridge transports are not available for this device architecture</string>
+    <string name="aether_psiphon_unavailable">Psiphon is not available for this device architecture</string>
+    <string name="aether_config_single_profile">Only one Aether profile can run in a configuration</string>
+    <string name="aether_config_two_exits">Cannot run two Aether profiles that use different exit nodes at the same time</string>
+    <string name="aether_chain_one_profile">Proxy chain \"%1$s\" can contain at most one Aether profile</string>
+    <string name="aether_unsupported_abi">Aether is only available on arm64-v8a and x86_64 devices</string>
+    <string name="aether_listen_port_in_use">Aether listen port %1$d is in use by another app; change it in the settings</string>
+    <string name="aether_secondary_port_in_use">SOCKS port %1$d is in use; Aether needs it for this profile</string>
+    <string name="aether_listen_port_invalid">Enter a valid port (1–65535) for %1$s</string>
+    <string name="aether_listen_address_invalid">Enter a valid host:port (1–65535) for %1$s</string>
+    <string name="aether_listen_address_unreachable">Use 127.0.0.1 or 0.0.0.0 for %1$s so the app can reach the listener</string>
+    <string name="aether_listen_port_taken">Avoid ports %1$d–%2$d for %3$s; those are used by the app</string>
+    <string name="aether_next_port_taken">Avoid ports %1$d–%2$d for %3$s; %3$s + 1 is used by the inner tunnel</string>
+    <string name="aether_listen_port_shared">Give %1$s and %2$s different ports</string>
+    <string name="aether_core_stopped">Aether failed to start or stopped unexpectedly</string>
+    <string name="aether_core_stopped_no_ech_key">Could not fetch the ECH key from DNS; change the ECH DNS resolver (for example to a https:// address) or turn off ECH</string>
+    <string name="aether_core_stopped_chain_ended">The carrier inside the tunnel (%1$s) stopped</string>
+    <string name="aether_lab_other_settings">Other Settings</string>
+    <string name="aether_lab_command">Command</string>
+    <string name="aether_command_custom">Edited by hand: this command runs as written, and the settings above are not applied</string>
+    <string name="aether_action_use_settings">Use Settings Above</string>
+    <string name="aether_invalid_command">Enter a valid Aether command</string>
+    <string name="aether_custom_invalid_command">Custom config \"aether\" must be an Aether command string (found: %1$s)</string>
+    <string name="aether_custom_no_outbound">Custom config has an \"aether\" command, but no socks outbound to %1$s:%2$d</string>
+    <string-array name="aether_scan_entries">
+        <item>Aggressive</item>
+        <item>Normal</item>
+        <item>Gentle</item>
+    </string-array>
+    <string-array name="aether_obfuscation_entries">
+        <item>Auto</item>
+        <item>Off</item>
+        <item>Light</item>
+        <item>Standard</item>
+        <item>Heavy</item>
+        <item>Stealth</item>
+        <item>GFW</item>
+        <item>RU</item>
+    </string-array>
+    <string-array name="aether_psiphon_entries">
+        <item>Off</item>
+        <item>Inside Tunnel (Exit)</item>
+        <item>Before Tunnel (Entry)</item>
+        <item>Psiphon Only</item>
+    </string-array>
+    <string-array name="aether_psiphon_mode_entries">
+        <item>Auto (CDN + Direct)</item>
+        <item>CDN Fronted Only</item>
+        <item>Direct Only</item>
+    </string-array>
+    <string-array name="aether_tor_entries">
+        <item>Off</item>
+        <item>Inside Tunnel (Exit)</item>
+        <item>Before Tunnel (Entry)</item>
+        <item>Tor Only</item>
+    </string-array>
+    <string-array name="aether_tor_bridges_entries">
+        <item>Auto (Direct, then Bridges)</item>
+        <item>Built-in Bridges Only</item>
+        <item>Direct Only (No Bridges)</item>
+        <item>Custom Bridges</item>
+    </string-array>
+    <string-array name="aether_tor_relays_entries">
+        <item>Auto (Snowflake → WebTunnel → obfs4 → Conjure → Vanilla)</item>
+        <item>All Transports at Once</item>
+        <item>Vanilla Only</item>
+        <item>obfs4 Only</item>
+        <item>WebTunnel Only</item>
+        <item>Conjure Only</item>
+    </string-array>
 </resources>

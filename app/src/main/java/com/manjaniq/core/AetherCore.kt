@@ -1,115 +1,216 @@
 package com.manjaniq.core
 
 /**
- * PattNG port: the Aether core a configuration runs on, as the arguments its process is started
- * with. The core of a configuration is the command line it carries; a command line is read as
- * written and run as written, so that what a profile or a hand-written command says is what runs.
- * Two cores with the same arguments are one core, which is how one process serves several outbounds
- * as long as they dial out through the same [exit].
- *
- * Adapted to Manjaniq: this project loads `libaether.so` through the JNI bridge (`AetherBridge`)
- * rather than spawning a separate core process, so [AetherCore] describes the argument list that
- * `AetherBridge.coreStart` hands to `aether_core_start`, and the loopback port the app dials.
- *
- * The core is a pure value type: it holds no state, starts nothing, and opens no socket. The service
- * (`AetherService`) owns the process lifecycle and the readiness probe; this class only describes
- * what is to be started and where the app reaches it.
+ * The Aether core a configuration runs on, as the arguments its process is started with, the
+ * listeners among them. The core of a profile is built from the profile's settings, or is the
+ * command line the profile carries in their place. A command line is read as written and run as
+ * written, so that what the profile says is what runs.
  */
-data class AetherCore(
-    /** The argument list handed to `aether_core_start` (the `aether` command line minus the program name). */
-    val arguments: List<String>,
-
-    /** The exit-node the core dials out through. */
-    val exit: AetherExit = AetherExit.PLAIN,
-) {
+data class AetherCore(val arguments: List<String>, val exit: AetherExit = AetherExit.PLAIN) {
 
     /**
-     * The loopback port the app dials: the port the `--bind` listener names, or Aether's own
-     * default (`1819`) when the command leaves it out.
+     * The loopback port the app dials: Psiphon's or Tor's listener when one of them runs inside the
+     * tunnel and is what the app reaches, the core's own listener otherwise.
      */
-    val port: Int
-        get() = listenerPortOf(arguments)
-
-    /** Every port the core listens on, default ports filled in where a listener is unnamed. */
-    val ports: List<Int>
-        get() = boundListeners.mapNotNull { flag ->
-            portAfter(arguments, flag) ?: defaultListenerPorts[flag]
-        }.filter { it != 0 }.distinct()
+    val port: Int get() = AetherCoreManager.listenerPortOf(arguments) ?: AetherCoreManager.socksPort
 
     /**
-     * The first port two of the listeners the core binds at one time share, as a command written by
-     * hand may name; null when each listener has a port of its own. With only the core's own
-     * listener this is always null.
+     * Every port the core listens on as its modes run, its HTTP proxies' too: the ports it is told,
+     * and its defaults for the listeners it is not told about.
+     */
+    val ports: List<Int>
+        get() = portsOf(boundListeners).distinct()
+
+    /**
+     * The first port two of the listeners the core holds at one time share, as a command written by hand may name;
+     * null when each has a port of its own.
      */
     val sharedPort: Int?
-        get() = null
-
-    /** The command line a shell would write for this core, quotes included. */
-    fun command(): String =
-        (listOf(COMMAND_NAME) + arguments).joinToString(" ") { word ->
-            if (word.isEmpty() || word.any { it.isWhitespace() }) "\"$word\"" else word
+        get() = listenerGroups.firstNotNullOfOrNull { group ->
+            val seen = mutableSetOf<Int>()
+            portsOf(group).firstOrNull { !seen.add(it) }
         }
+
+    /**
+     * The first option of a listener the core binds whose address the core does not take; null when it takes each.
+     */
+    val invalidListener: String?
+        get() = boundListeners.firstOrNull { flag ->
+            val address = AetherCoreManager.listenerAddressAfter(arguments, flag) ?: return@firstOrNull false
+            !AetherCoreManager.isSocketAddress(address) && !(flag in HTTP_LISTENERS && (address.isEmpty() || address == "off"))
+        }
+
+    /**
+     * The option of the listener the app dials when the core takes its address but the app does not reach it there;
+     * null when it does, or when the command names none and the app gives it one.
+     */
+    val unreachableListener: String?
+        get() {
+            val flag = AetherCoreManager.listenerFlagOf(arguments)
+            val address = AetherCoreManager.listenerAddressAfter(arguments, flag) ?: return null
+            if (!AetherCoreManager.isSocketAddress(address)) return null
+            return flag.takeUnless { AetherCoreManager.reachesLoopback(address.substringBeforeLast(':')) }
+        }
+
+    private fun portsOf(listeners: List<String>): List<Int> =
+        listeners.mapNotNull { flag ->
+            if (flag in arguments) AetherCoreManager.portAfter(arguments, flag) else AetherCoreManager.defaultListenerPorts[flag]
+        }.filter { it != 0 }
+
+    private val boundListeners: List<String>
+        get() {
+            val bound = listenerGroups.flatten().toSet()
+            return LISTENERS.filter { it in bound }
+        }
+
+    private val listenerGroups: List<List<String>>
+        get() {
+            val tor = AetherCoreManager.torModeOf(arguments)
+            val psiphon = AetherCoreManager.psiphonModeOf(arguments)
+            if (AetherKeys.REGISTER in arguments) {
+                return listOf(
+                    LISTENERS.filter { flag ->
+                        (tor == AetherTor.REVERSE && (flag == AetherCoreManager.TOR_BIND || flag == AetherCoreManager.TOR_HTTP)) ||
+                            (psiphon == AetherPsiphon.REVERSE && (flag == AetherCoreManager.PSIPHON_BIND || flag == AetherCoreManager.PSIPHON_HTTP))
+                    }
+                )
+            }
+            if (AetherCoreManager.aloneOf(arguments) != null) {
+                val aloneHttp = if (tor == AetherTor.ONLY) AetherCoreManager.TOR_HTTP else AetherCoreManager.PSIPHON_HTTP
+                return listOf(listOf("--bind", AetherCoreManager.HTTP_PROXY), listOf("--bind", aloneHttp))
+            }
+            return listOf(LISTENERS.filter { flag ->
+                when (flag) {
+                    AetherCoreManager.TOR_BIND -> tor == AetherTor.CHAIN || tor == AetherTor.REVERSE
+                    AetherCoreManager.TOR_HTTP -> tor != AetherTor.OFF
+                    AetherCoreManager.PSIPHON_BIND -> psiphon == AetherPsiphon.CHAIN || psiphon == AetherPsiphon.REVERSE
+                    AetherCoreManager.PSIPHON_HTTP -> psiphon != AetherPsiphon.OFF
+                    else -> true
+                }
+            })
+        }
+
+    /** The protocol, which tells whose identity files the core uses. */
+    val protocol: AetherProtocol get() = AetherCoreManager.protocolOf(arguments)
+
+    /** The tunnel as the names of its parts from the outside in, carriers included; see [AetherCoreManager.pathOf]. */
+    val path: List<String> get() = AetherCoreManager.pathOf(arguments)
+
+    /** [path], with the WARP protocol named by [label], as a screen names it. */
+    fun path(label: (AetherProtocol) -> String): List<String> = AetherCoreManager.pathOf(arguments, label)
+
+    /** The command line a profile carries for this core; [ofCommand] reads it back. */
+    val command: String get() = (listOf(COMMAND_NAME) + arguments).joinToString(" ", transform = ::quoted)
+
+    /** Fallback function form of [command]. */
+    fun command(): String = command
+
+    /** True when a process started with [processArguments] runs this core, on whatever SOCKS ports and at whatever log level. */
+    fun runsAs(processArguments: List<String>): Boolean =
+        AetherCoreManager.tunnelArguments(processArguments) == AetherCoreManager.tunnelArguments(arguments)
+
+    /** True when the core is told which proxy to dial out through, as a command written by hand may be. */
+    val hasUpstream: Boolean get() = AetherCoreManager.UPSTREAM in arguments
+
+    /**
+     * This core dialling out through the SOCKS inbound on [port] of the loopback address.
+     * A core told an upstream of its own keeps it.
+     */
+    fun through(port: Int): AetherCore =
+        if (hasUpstream) this else copy(arguments = arguments + listOf(AetherCoreManager.UPSTREAM, "socks5://${AetherCoreManager.LOOPBACK}:$port"))
 
     companion object {
-        /** The name a command line starts with; the app runs its own copy of the core whatever the name says. */
         const val COMMAND_NAME = "aether"
-
-        /** Aether's own default SOCKS listen port: 127.0.0.1:1819. */
         const val DEFAULT_SOCKS_PORT = 1819
-
-        /** The loopback address the app dials the core on. */
         const val LOOPBACK = "127.0.0.1"
-
-        /** The option that names the core's own SOCKS listener. */
         const val SOCKS_BIND = "--bind"
-
-        /** The option that names the proxy the core dials out through. */
         const val UPSTREAM = "--upstream"
 
-        /** The ports the core's SOCKS listeners take where a command does not name them. */
-        val defaultListenerPorts: Map<String, Int> = mapOf(SOCKS_BIND to DEFAULT_SOCKS_PORT)
+        private val LISTENERS = listOf(
+            "--bind",
+            AetherCoreManager.TOR_BIND,
+            AetherCoreManager.PSIPHON_BIND,
+            AetherCoreManager.HTTP_PROXY,
+            AetherCoreManager.TOR_HTTP,
+            AetherCoreManager.PSIPHON_HTTP,
+        )
 
-        /**
-         * The listener options a core may be told to bind, in the order it binds them: its own
-         * listener first (the one the app dials).
-         */
-        val boundListeners: List<String> = listOf(SOCKS_BIND)
+        private val HTTP_LISTENERS = setOf(
+            AetherCoreManager.HTTP_PROXY,
+            AetherCoreManager.TOR_HTTP,
+            AetherCoreManager.PSIPHON_HTTP,
+        )
 
-        /**
-         * The port a command names for [flag], or null when it names no port for it: an unparsable
-         * value means the command names a listener whose port cannot be read.
-         */
-        fun portAfter(arguments: List<String>, flag: String): Int? {
-            val at = arguments.indexOf(flag)
-            return if (at < 0 || arguments.size <= at + 1) null else arguments[at + 1].substringAfterLast(":").toIntOrNull()
+        fun of(profile: ProfileItem, listenPort: Int = AetherCoreManager.socksPort): AetherCore {
+            val core = profile.aetherCommand?.takeIf { it.isNotBlank() }?.let { ofCommand(it, listenPort) }
+                ?: AetherCore(
+                    AetherCoreManager.withoutOption(
+                        AetherCoreManager.buildArguments(profile, listenPort),
+                        "--log-level",
+                    )
+                )
+            return core.copy(exit = AetherExit.of(profile))
         }
 
-        /** The port the core's own listener takes, or [DEFAULT_SOCKS_PORT] when the command names none. */
-        fun listenerPortOf(arguments: List<String>): Int =
-            portAfter(arguments, SOCKS_BIND) ?: DEFAULT_SOCKS_PORT
+        fun ofCommand(command: String, listenPort: Int = AetherCoreManager.socksPort): AetherCore? {
+            val arguments = readableArguments(command) ?: return null
+            val listener = AetherCoreManager.listenerFlagOf(arguments)
+            if (listener !in arguments) return AetherCore(AetherCoreManager.withListener(arguments, listener, listenPort))
+            return AetherCore(arguments)
+        }
 
-        /** The words of a command line: split on whitespace, quotes keep a word together. */
-        fun words(command: String): List<String> {
+        private fun readableArguments(command: String): List<String>? {
+            val arguments = argumentsOf(command)
+            if (arguments.isEmpty()) return null
+            val listener = AetherCoreManager.listenerFlagOf(arguments)
+            return arguments.takeIf { listener !in arguments || AetherCoreManager.portAfter(arguments, listener) != null }
+        }
+
+        fun leavesThroughWarp(profile: ProfileItem): Boolean {
+            val arguments = profile.aetherCommand?.takeIf { it.isNotBlank() }?.let(::readableArguments)
+            return if (arguments != null) {
+                AetherCoreManager.leavesThroughWarp(arguments)
+            } else {
+                AetherCoreManager.leavesThroughWarp(
+                    AetherTor.fromString(profile.aetherTor),
+                    AetherPsiphon.fromString(profile.aetherPsiphon),
+                )
+            }
+        }
+
+        internal fun argumentsOf(command: String): List<String> {
+            val words = words(command)
+            return if (words.firstOrNull()?.startsWith("-") == false) words.drop(1) else words
+        }
+
+        internal fun words(command: String): List<String> {
             val words = mutableListOf<String>()
-            var current = StringBuilder()
+            val word = StringBuilder()
             var quote: Char? = null
             var open = false
             for (c in command) {
                 when {
-                    quote != null -> if (c == quote) quote = null else current.append(c)
-                    c == '"' || c == '\'' -> { quote = c; open = true }
-                    c.isWhitespace() -> if (open) { words.add(current.toString()); current.setLength(0); open = false }
-                    else -> { current.append(c); open = true }
+                    quote != null -> if (c == quote) quote = null else word.append(c)
+                    c == '"' || c == '\'' -> {
+                        quote = c
+                        open = true
+                    }
+                    c.isWhitespace() -> if (open) {
+                        words.add(word.toString())
+                        word.setLength(0)
+                        open = false
+                    }
+                    else -> {
+                        word.append(c)
+                        open = true
+                    }
                 }
             }
-            if (open) words.add(current.toString())
+            if (open) words.add(word.toString())
             return words
         }
 
-        /** The arguments of [command]: its [words], without a program name in front. */
-        fun argumentsOf(command: String): List<String> {
-            val words = words(command)
-            return if (words.isEmpty() || !words.first().startsWith("-")) words.dropWhile { !it.startsWith("-") } else words
-        }
+        private fun quoted(word: String): String =
+            if (word.isEmpty() || word.any(Char::isWhitespace)) "\"$word\"" else word
     }
 }

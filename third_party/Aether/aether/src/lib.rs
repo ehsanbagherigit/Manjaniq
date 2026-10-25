@@ -957,6 +957,7 @@ struct RegisterSet {
     wireguard_inner: bool,
     masque: bool,
     masque_inner: bool,
+    gool: bool,
 }
 
 impl RegisterSet {
@@ -966,6 +967,7 @@ impl RegisterSet {
             wireguard_inner: false,
             masque: false,
             masque_inner: false,
+            gool: false,
         };
         match value.trim().to_lowercase().as_str() {
             "all" => Ok(RegisterSet {
@@ -973,6 +975,7 @@ impl RegisterSet {
                 wireguard_inner: true,
                 masque: true,
                 masque_inner: true,
+                gool: true,
             }),
             "masque" => Ok(RegisterSet {
                 masque: true,
@@ -982,7 +985,12 @@ impl RegisterSet {
                 wireguard: true,
                 ..none
             }),
-            "gool" | "wiw" | "warp-in-warp" => Ok(RegisterSet {
+            "gool" | "wg-over-masque" => Ok(RegisterSet {
+                masque: true,
+                gool: true,
+                ..none
+            }),
+            "gool-classic" | "wiw" | "warp-in-warp" => Ok(RegisterSet {
                 wireguard: true,
                 wireguard_inner: true,
                 ..none
@@ -993,7 +1001,7 @@ impl RegisterSet {
                 ..none
             }),
             other => Err(AetherError::Other(format!(
-                "--register takes masque, wg, gool, mim or all, not '{other}'"
+                "--register takes masque, wg, gool, gool-classic, mim or all, not '{other}'"
             ))),
         }
     }
@@ -1051,6 +1059,12 @@ async fn register_identities(wanted: RegisterSet, base_config: &str) -> Result<(
             "masque inner",
             derive_sibling_path(&masque, "secondary"),
             true,
+        ),
+        (
+            wanted.gool,
+            "gool",
+            derive_sibling_path(&masque, "gool"),
+            false,
         ),
     ];
 
