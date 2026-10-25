@@ -23,29 +23,30 @@
         <item>h3</item>
     </string-array>
     <string-array name="aether_scan_values" translatable="false">
-        <item>aggressive</item>
-        <item>normal</item>
-        <item>gentle</item>
+        <item>turbo</item>
+        <item>balanced</item>
+        <item>thorough</item>
+        <item>verified</item>
+        <item>ironclad</item>
     </string-array>
     <string-array name="aether_obfuscation_values" translatable="false">
         <item>auto</item>
         <item>off</item>
         <item>light</item>
-        <item>standard</item>
-        <item>heavy</item>
-        <item>stealth</item>
+        <item>firewall</item>
+        <item>balanced</item>
         <item>gfw</item>
-        <item>ru</item>
+        <item>aggressive</item>
     </string-array>
     <string-array name="aether_ip_entries" translatable="false">
-        <item>4</item>
-        <item>6</item>
-        <item>4, 6</item>
+        <item>IPv4</item>
+        <item>IPv6</item>
+        <item>IPv4 + IPv6</item>
     </string-array>
     <string-array name="aether_ip_values" translatable="false">
-        <item>4</item>
-        <item>6</item>
-        <item>dual</item>
+        <item>v4</item>
+        <item>v6</item>
+        <item>both</item>
     </string-array>
     <string-array name="aether_psiphon_values" translatable="false">
         <item>off</item>

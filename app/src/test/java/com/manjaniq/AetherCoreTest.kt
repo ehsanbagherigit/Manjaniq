@@ -48,6 +48,22 @@ class AetherCoreTest {
         arguments.indexOf(flag).takeIf { it >= 0 }?.let { arguments.getOrNull(it + 1) }
 
     @Test
+    fun defaultSocksListenerBindsAndRendersLoopbackPort1819() {
+        val profile = ProfileItem.create()
+        val core = AetherCore.of(profile)
+
+        assertEquals("127.0.0.1:1819", valueAfter(core.arguments, "--bind"))
+        assertEquals(1819, core.port)
+        assertNull(core.invalidListener)
+        assertNull(core.unreachableListener)
+
+        val reparsed = AetherCore.ofCommand(core.command)
+        assertNotNull(reparsed)
+        assertEquals(1819, reparsed?.port)
+        assertTrue(reparsed?.runsAs(core.arguments) == true)
+    }
+
+    @Test
     fun bindsToTheLoopbackPortItIsGiven() {
         assertEquals("127.0.0.1:10819", valueAfter(AetherCoreManager.buildArguments(profile(), 10819), "--bind"))
         assertEquals("127.0.0.1:0", valueAfter(AetherCoreManager.buildArguments(profile(), 0, scan = true), "--bind"))

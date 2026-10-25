@@ -501,11 +501,20 @@ jobs:
       - name: Gate the APK size
         run: python3 scripts/ci/check_apk_size.py --limit-mb 40 dist/manjaniq-arm64-v8a-debug.apk
 
-      - name: Upload debug APKs
+      # Keep each ABI in its own downloadable archive so users can fetch only
+      # the APK their device or emulator can install.
+      - name: Upload ARM64 debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: manjaniq-debug-apk
-          path: dist/*.apk
+          name: manjaniq-arm64-debug-apk
+          path: dist/manjaniq-arm64-v8a-debug.apk
+          if-no-files-found: error
+
+      - name: Upload x86_64 debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: manjaniq-x86_64-debug-apk
+          path: dist/manjaniq-x86_64-debug.apk
           if-no-files-found: error
 
   emulator-smoke:
@@ -522,10 +531,10 @@ jobs:
           echo "HEAD=$(git rev-parse HEAD)"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
-      - name: Download the exact APK built for this commit
+      - name: Download the x86_64 APK built for this commit
         uses: actions/download-artifact@v4
         with:
-          name: manjaniq-debug-apk
+          name: manjaniq-x86_64-debug-apk
           path: tested-apk
 
       - name: Enable KVM (hardware acceleration)

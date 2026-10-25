@@ -190,7 +190,6 @@
     <string name="action_cancel">لغو</string>
     <string name="menu_item_save_config">ذخیره کانفیگ</string>
     <string name="menu_item_del_config">حذف کانفیگ</string>
-    <string name="server_lab_remarks">ملاحظات</string>
     <string name="server_lab_address">نشانی</string>
     <string name="server_lab_port">پورت</string>
     <string name="server_lab_content">محتوا</string>
@@ -348,19 +347,20 @@
     <string name="aether_custom_invalid_command">مقدار «aether» در پیکربندی سفارشی باید رشتهٔ فرمان Aether باشد (یافت شد: %1$s)</string>
     <string name="aether_custom_no_outbound">پیکربندی سفارشی فرمان «aether» دارد، اما خروجی socks به %1$s:%2$d ندارد</string>
     <string-array name="aether_scan_entries">
-        <item>تهاجمی (Aggressive)</item>
-        <item>معمولی (Normal)</item>
-        <item>ملایم (Gentle)</item>
+        <item>توربو (Turbo)</item>
+        <item>متعادل (Balanced)</item>
+        <item>دقیق (Thorough)</item>
+        <item>تأییدشده (Verified)</item>
+        <item>فوق‌مقاوم (Ironclad)</item>
     </string-array>
     <string-array name="aether_obfuscation_entries">
         <item>خودکار (Auto)</item>
         <item>خاموش (Off)</item>
         <item>سبک (Light)</item>
-        <item>استاندارد (Standard)</item>
-        <item>سنگین (Heavy)</item>
-        <item>پنهان‌کار (Stealth)</item>
+        <item>دیواره‌آتش (Firewall)</item>
+        <item>متعادل (Balanced)</item>
         <item>GFW</item>
-        <item>RU</item>
+        <item>تهاجمی (Aggressive)</item>
     </string-array>
     <string-array name="aether_psiphon_entries">
         <item>خاموش (Off)</item>

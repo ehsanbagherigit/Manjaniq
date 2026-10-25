@@ -192,7 +192,7 @@ fun FormDropdownField(
 
     ExposedDropdownMenuBox(
         expanded = expanded && enabled,
-        onExpandedChange = { if (enabled) expanded = !expanded },
+        onExpandedChange = { if (enabled) expanded = it },
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp),

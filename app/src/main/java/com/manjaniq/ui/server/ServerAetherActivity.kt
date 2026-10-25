@@ -216,11 +216,7 @@ fun ServerAetherScreen(
         onFinish()
     }
 
-    fun validateForAction(config: ProfileItem, requireRemarks: Boolean): Boolean {
-        if (requireRemarks && config.remarks.isEmpty()) {
-            Toast.makeText(context, R.string.server_lab_remarks, Toast.LENGTH_SHORT).show()
-            return false
-        }
+    fun validateForAction(config: ProfileItem): Boolean {
         if (!isPsiphonAvailable && state.psiphon != AetherPsiphon.OFF) {
             Toast.makeText(context, R.string.aether_psiphon_unavailable, Toast.LENGTH_SHORT).show()
             return false
@@ -243,14 +239,14 @@ fun ServerAetherScreen(
     fun saveServer() {
         val candidate = buildCandidate()
         val normalized = candidate.copy()
-        if (!validateForAction(normalized, requireRemarks = true)) return
+        if (!validateForAction(normalized)) return
         viewModel.checkKeysBeforeSave(normalized, candidate)
     }
 
     fun startScan() {
         val candidate = buildCandidate()
         val normalized = candidate.copy()
-        if (!validateForAction(normalized, requireRemarks = false)) return
+        if (!validateForAction(normalized)) return
         viewModel.scan(candidate)
     }
 
@@ -260,7 +256,7 @@ fun ServerAetherScreen(
                 val candidate = buildCandidate()
                 if (holdsChecked(candidate, current.profile, listenPort)) {
                     val normalized = candidate.copy()
-                    if (validateForAction(normalized, requireRemarks = true)) {
+                    if (validateForAction(normalized)) {
                         persistConfig(normalized)
                     }
                 }
@@ -322,7 +318,7 @@ fun ServerAetherScreen(
                         viewModel.scan(dialog.profile, anyway = true)
                     } else {
                         val candidate = dialog.profile.copy()
-                        if (validateForAction(candidate, requireRemarks = true)) {
+                        if (validateForAction(candidate)) {
                             persistConfig(candidate)
                         }
                     }
@@ -477,10 +473,7 @@ fun AetherHomePanel(
                         port = found.primary.port.toString(),
                     )
                 }
-                val updated = initialConfig.copy().also {
-                    if (state.remarks.isBlank()) state = state.copy(remarks = "Aether")
-                    state.applyTo(it, listenPort)
-                }
+                val updated = initialConfig.copy().also { state.applyTo(it, listenPort) }
                 AetherSettingsStorage.saveActiveProfile(context, updated)
                 Toast.makeText(
                     context,
@@ -498,15 +491,10 @@ fun AetherHomePanel(
     }
 
     fun buildCandidate(): ProfileItem = initialConfig.copy().also {
-        val current = if (state.remarks.isBlank()) state.copy(remarks = "Aether") else state
-        current.applyTo(it, listenPort)
+        state.applyTo(it, listenPort)
     }
 
-    fun validateForAction(config: ProfileItem, requireRemarks: Boolean): Boolean {
-        if (requireRemarks && config.remarks.isEmpty()) {
-            Toast.makeText(context, R.string.server_lab_remarks, Toast.LENGTH_SHORT).show()
-            return false
-        }
+    fun validateForAction(config: ProfileItem): Boolean {
         if (!isPsiphonAvailable && state.psiphon != AetherPsiphon.OFF) {
             Toast.makeText(context, R.string.aether_psiphon_unavailable, Toast.LENGTH_SHORT).show()
             return false
@@ -538,7 +526,7 @@ fun AetherHomePanel(
     fun saveAndStart() {
         val candidate = buildCandidate()
         val normalized = candidate.copy()
-        if (!validateForAction(normalized, requireRemarks = false)) return
+        if (!validateForAction(normalized)) return
         AetherSettingsStorage.saveActiveProfile(context, normalized)
         AetherService.requestStart(context)
     }
@@ -546,14 +534,14 @@ fun AetherHomePanel(
     fun saveServer() {
         val candidate = buildCandidate()
         val normalized = candidate.copy()
-        if (!validateForAction(normalized, requireRemarks = true)) return
+        if (!validateForAction(normalized)) return
         viewModel.checkKeysBeforeSave(normalized, candidate)
     }
 
     fun startScan() {
         val candidate = buildCandidate()
         val normalized = candidate.copy()
-        if (!validateForAction(normalized, requireRemarks = false)) return
+        if (!validateForAction(normalized)) return
         viewModel.scan(candidate)
     }
 
@@ -563,7 +551,7 @@ fun AetherHomePanel(
                 val candidate = buildCandidate()
                 if (holdsChecked(candidate, current.profile, listenPort)) {
                     val normalized = candidate.copy()
-                    if (validateForAction(normalized, requireRemarks = true)) {
+                    if (validateForAction(normalized)) {
                         persistConfig(normalized)
                     }
                 }
@@ -613,7 +601,7 @@ fun AetherHomePanel(
                         viewModel.scan(dialog.profile, anyway = true)
                     } else {
                         val candidate = dialog.profile.copy()
-                        if (validateForAction(candidate, requireRemarks = true)) {
+                        if (validateForAction(candidate)) {
                             persistConfig(candidate)
                         }
                     }
@@ -883,13 +871,6 @@ private fun ServerAetherForm(
 
     SectionHeader(title = stringResource(R.string.aether_setting))
 
-    FormTextField(
-        label = stringResource(R.string.server_lab_remarks),
-        value = state.remarks,
-        onValueChange = { onStateChange(state.copy(remarks = it)) },
-        enabled = !isScanning,
-    )
-
     if (state.warpRuns) {
         FormDropdownField(
             label = stringResource(R.string.aether_lab_protocol),
@@ -1039,7 +1020,7 @@ private fun ServerAetherForm(
         enabled = fieldsEnabled,
     )
 
-    if (state.warpRuns) {
+    if (state.warpRuns && state.psiphon != AetherPsiphon.OFF) {
         FormTextField(
             label = stringResource(R.string.aether_lab_exit_loc),
             value = state.exitLoc,

@@ -42,7 +42,8 @@ object AetherCoreManager {
     private const val BINARY_NAME = "libaether.so"
     private const val TOR_LYREBIRD_BINARY = "libtor_lyrebird.so"
     private const val TOR_CONJURE_BINARY = "libtor_conjure.so"
-    private const val PSIPHON_BINARY = "libpsiphon.so"
+    // Must match scripts/ci/build_helpers.sh and the APK's jniLibs filename.
+    private const val PSIPHON_BINARY = "libpsiphon_tunnel_core.so"
     private const val TOR_DIR_NAME = "tor"
     private const val TOR_PROBE_DIR_NAME = "tor-probe"
     private const val TOR_BRIDGES_FILE_NAME = "tor-bridges.txt"
@@ -228,7 +229,7 @@ object AetherCoreManager {
         File(context.applicationInfo.nativeLibraryDir, PSIPHON_BINARY)
 
     fun hasPsiphon(context: Context): Boolean =
-        psiphonFile(context).canExecute()
+        psiphonFile(context).let { it.isFile && it.canExecute() }
 
     fun isRunning(context: Context? = null): Boolean =
         activeJobHandle != null || process?.isAlive == true || (context != null && sessionProcess(context) != null)

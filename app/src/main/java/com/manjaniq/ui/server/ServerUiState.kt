@@ -43,7 +43,6 @@ sealed interface AetherDialog {
 }
 
 data class AetherUiState(
-    val remarks: String = "",
     val protocol: AetherProtocol = AetherProtocol.MASQUE,
     val transport: AetherTransport = AetherTransport.HTTP2,
     val scanMode: AetherScanMode = AetherScanMode.AGGRESSIVE,
@@ -96,7 +95,6 @@ data class AetherUiState(
 
     companion object {
         fun fromProfile(config: ProfileItem): AetherUiState = AetherUiState(
-            remarks = config.remarks,
             protocol = AetherProtocol.fromString(config.aetherProtocol),
             transport = AetherTransport.fromString(config.aetherTransport),
             scanMode = AetherScanMode.fromString(config.aetherScanMode),
@@ -135,7 +133,6 @@ data class AetherUiState(
     }
 
     fun applyTo(config: ProfileItem, socksPort: Int = AetherCoreManager.DEFAULT_SOCKS_PORT) {
-        config.remarks = remarks.trim()
         config.aetherProtocol = protocol.type
         config.aetherTransport = transport.type
         config.aetherScanMode = scanMode.type
@@ -197,7 +194,11 @@ data class AetherUiState(
             config.aetherEchDomain = null
         }
         config.aetherDns = dns.trim().ifEmpty { null }
-        config.aetherExitLoc = exitLoc.trim().uppercase().ifEmpty { null }
+        config.aetherExitLoc = if (psiphon != AetherPsiphon.OFF && warpRuns) {
+            exitLoc.trim().uppercase().ifEmpty { null }
+        } else {
+            null
+        }
         config.aetherExitNode = exitNode.trim().ifEmpty { null }
         config.aetherFinalMask = finalMask.trim().ifEmpty { null }
         config.aetherDialMode = dialMode.trim().ifEmpty { null }

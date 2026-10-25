@@ -190,7 +190,6 @@
     <string name="action_cancel">Cancel</string>
     <string name="menu_item_save_config">Save config</string>
     <string name="menu_item_del_config">Delete config</string>
-    <string name="server_lab_remarks">Remarks</string>
     <string name="server_lab_address">Address</string>
     <string name="server_lab_port">Port</string>
     <string name="server_lab_content">Content</string>
@@ -348,19 +347,20 @@
     <string name="aether_custom_invalid_command">Custom config \"aether\" must be an Aether command string (found: %1$s)</string>
     <string name="aether_custom_no_outbound">Custom config has an \"aether\" command, but no socks outbound to %1$s:%2$d</string>
     <string-array name="aether_scan_entries">
-        <item>Aggressive</item>
-        <item>Normal</item>
-        <item>Gentle</item>
+        <item>Turbo</item>
+        <item>Balanced</item>
+        <item>Thorough</item>
+        <item>Verified</item>
+        <item>Ironclad</item>
     </string-array>
     <string-array name="aether_obfuscation_entries">
         <item>Auto</item>
         <item>Off</item>
         <item>Light</item>
-        <item>Standard</item>
-        <item>Heavy</item>
-        <item>Stealth</item>
+        <item>Firewall</item>
+        <item>Balanced</item>
         <item>GFW</item>
-        <item>RU</item>
+        <item>Aggressive</item>
     </string-array>
     <string-array name="aether_psiphon_entries">
         <item>Off</item>

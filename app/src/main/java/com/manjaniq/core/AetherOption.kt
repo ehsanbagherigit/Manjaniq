@@ -55,7 +55,15 @@ enum class AetherScanMode(val type: String) {
         const val STEALTH = "stealth"
         val AGGRESSIVE: AetherScanMode get() = THOROUGH
 
-        fun fromString(type: String?) = entries.find { it.type == type } ?: if (type == STEALTH) VERIFIED else BALANCED
+        fun fromString(type: String?): AetherScanMode {
+            val value = type?.lowercase(Locale.ROOT)
+            return when (value) {
+                "aggressive" -> THOROUGH
+                "normal" -> BALANCED
+                "gentle", STEALTH -> VERIFIED
+                else -> entries.find { it.type == value } ?: BALANCED
+            }
+        }
     }
 }
 
@@ -74,7 +82,16 @@ enum class AetherObfuscation(val type: String) {
 
     companion object {
         val HEAVY: AetherObfuscation get() = AGGRESSIVE
-        fun fromString(type: String?) = entries.find { it.type == type } ?: AUTO
+
+        fun fromString(type: String?): AetherObfuscation {
+            val value = type?.lowercase(Locale.ROOT)
+            return when (value) {
+                "standard" -> BALANCED
+                "heavy" -> AGGRESSIVE
+                "stealth", "ru" -> FIREWALL
+                else -> entries.find { it.type == value } ?: AUTO
+            }
+        }
     }
 }
 
@@ -89,7 +106,13 @@ enum class AetherIpVersion(val type: String) {
 
     companion object {
         val BOTH: AetherIpVersion get() = DUAL
-        fun fromString(type: String?) = entries.find { it.type == type } ?: V4
+
+        fun fromString(type: String?): AetherIpVersion = when (type?.lowercase(Locale.ROOT)) {
+            "4", "ipv4" -> V4
+            "6", "ipv6" -> V6
+            "dual", "4,6", "4, 6", "ipv4,ipv6", "ipv4, ipv6" -> DUAL
+            else -> entries.find { it.type == type?.lowercase(Locale.ROOT) } ?: V4
+        }
     }
 }
 

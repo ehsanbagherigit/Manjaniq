@@ -134,6 +134,11 @@ class ServerAetherViewModel @JvmOverloads constructor(
 
     fun refreshSession() {
         viewModelScope.launch {
+            // Refresh packaged-helper availability along with live session state. This avoids keeping
+            // stale capability UI after an ABI-specific install/update or an activity recreation.
+            _isCoreAvailable.value = source.isCoreAvailable()
+            _isPsiphonAvailable.value = source.isPsiphonAvailable()
+            _isTorTransportsAvailable.value = source.isTorTransportsAvailable()
             _session.value = source.activeSession()
             _psiphonRegions.value = source.psiphonRegions()
             _listenPort.value = source.listenPort()
