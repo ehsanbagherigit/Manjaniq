@@ -53,13 +53,22 @@ We would like to express our sincere gratitude to the following developers and o
 rstagit - For core contributions, RSTA integration, and networking utilities.
 CluvexStudio - For design frameworks and architectural inspiration.
 patterniha - For reference patterns, PattNG implementations, and core components.
+
+----
+
+
 🤝 Contributing
 Contributions, feature requests, and bug reports are welcome! Feel free to open an issue or submit a pull request.
+
+----
+
+
 📄 License
 This project is licensed under the MIT License. See the LICENSE file for details.
 
-----
+
 ---
+
 
 ## 🏗️ Project Structure
 
