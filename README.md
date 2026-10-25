@@ -16,7 +16,7 @@
 
 ## 📖 About the Project
 
-**Manjaniq** is a modular Android networking client that integrates third-party cores to support internet access in restrictive network environments. It includes techniques intended to help circumvent censorship and DPI-based filtering. 
+Manjaniq is a modular Android networking client that integrates third-party cores to support internet access in restrictive network environments. It includes techniques intended to help circumvent censorship and DPI-based filtering.
 
 Engineered for local SOCKS5 and loopback traffic routing (operating strictly without VPN/TUN layers), Manjaniq relies on a modern **Jetpack Compose** interface to deliver a stable, secure, and lightweight proxy management experience.
 
@@ -45,7 +45,20 @@ Engineered for local SOCKS5 and loopback traffic routing (operating strictly wit
 * **UI Framework:** Jetpack Compose & Material 3.
 * **Interfacing:** JNI (Java Native Interface) bridge for high-speed native execution.
 * **CI/CD & Automation:** GitHub Actions (automated compilation, artifact packaging, and emulator smoke tests).
-  
+
+---
+
+🙏 Acknowledgments & Special Thanks
+We would like to express our sincere gratitude to the following developers and organizations whose open-source projects, architectures, and inspirations made Manjaniq possible:
+rstagit - For core contributions, RSTA integration, and networking utilities.
+CluvexStudio - For design frameworks and architectural inspiration.
+patterniha - For reference patterns, PattNG implementations, and core components.
+🤝 Contributing
+Contributions, feature requests, and bug reports are welcome! Feel free to open an issue or submit a pull request.
+📄 License
+This project is licensed under the MIT License. See the LICENSE file for details.
+
+----
 ---
 
 ## 🏗️ Project Structure
@@ -55,14 +68,4 @@ com.manjaniq/
 ├── core/           # Core management, identity handlers, and argument renderers
 ├── ui/             # Jetpack Compose screens, view models, and UI components
 ├── native/         # JNI bridge implementations and native library bindings
-└── data/           # Storage, preferences, a
-nd configuration handlers
-Acknowledgments & Special Thanks
-We would like to express our sincere gratitude to the following developers and organizations whose open-source projects, architectures, and inspirations made Manjaniq possible:
-rstagit - For core contributions, RSTA integration, and networking utilities.
-CluvexStudio - For design frameworks and architectural inspiration.
-patterniha - For reference patterns, PattNG implementations, and core components.
-🤝 Contributing
-Contributions, feature requests, and bug reports are welcome! Feel free to open an issue or submit a pull request.
-📄 License
-This project is licensed under the MIT License. See the LICENSE file for details.
+└── data/           # Storage, preferences, and configuration handlers
