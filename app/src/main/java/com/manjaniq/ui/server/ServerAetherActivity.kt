@@ -177,20 +177,12 @@ fun ServerAetherScreen(
             is AetherScanState.Found -> {
                 val found: AetherScanResult = current.result
                 state = if (state.protocol.twoHops) {
-                    val outerText = found.primary.format()
-                    val innerText = found.secondary?.format().orEmpty()
-                    if (state.protocol == AetherProtocol.WG_OVER_MASQUE) {
-                        state.copy(
-                            server = found.primary.host,
-                            port = found.primary.port.toString(),
-                            wiwInner = innerText.ifEmpty { state.wiwInner },
-                        )
-                    } else {
-                        state.copy(
-                            wiwOuter = outerText,
-                            wiwInner = innerText.ifEmpty { state.wiwInner },
-                        )
-                    }
+                    val outerText = found.primary.toString()
+                    val innerText = found.secondary?.toString().orEmpty()
+                    state.copy(
+                        wiwOuter = outerText,
+                        wiwInner = innerText.ifEmpty { state.wiwInner },
+                    )
                 } else {
                     state.copy(
                         server = found.primary.host,
@@ -473,20 +465,12 @@ fun AetherHomePanel(
             is AetherScanState.Found -> {
                 val found: AetherScanResult = current.result
                 state = if (state.protocol.twoHops) {
-                    val outerText = found.primary.format()
-                    val innerText = found.secondary?.format().orEmpty()
-                    if (state.protocol == AetherProtocol.WG_OVER_MASQUE) {
-                        state.copy(
-                            server = found.primary.host,
-                            port = found.primary.port.toString(),
-                            wiwInner = innerText.ifEmpty { state.wiwInner },
-                        )
-                    } else {
-                        state.copy(
-                            wiwOuter = outerText,
-                            wiwInner = innerText.ifEmpty { state.wiwInner },
-                        )
-                    }
+                    val outerText = found.primary.toString()
+                    val innerText = found.secondary?.toString().orEmpty()
+                    state.copy(
+                        wiwOuter = outerText,
+                        wiwInner = innerText.ifEmpty { state.wiwInner },
+                    )
                 } else {
                     state.copy(
                         server = found.primary.host,
@@ -870,20 +854,8 @@ private fun ServerAetherForm(
             }
             .unzip()
     }
-    val allTorRelaysEntries = stringArrayResource(R.array.aether_tor_relays_entries).toList()
-    val allTorRelaysValues = stringArrayResource(R.array.aether_tor_relays_values).toList()
-    val (torRelaysValues, torRelaysEntries) = remember(allTorRelaysValues, allTorRelaysEntries, isTorTransportsAvailable, state.torRelays) {
-        val transportRelays = setOf(
-            AetherTorRelays.OBFS4.type,
-            AetherTorRelays.WEBTUNNEL.type,
-            AetherTorRelays.CONJURE.type,
-        )
-        allTorRelaysValues.zip(allTorRelaysEntries)
-            .filter { (value, _) ->
-                isTorTransportsAvailable || value !in transportRelays || value == state.torRelays.type
-            }
-            .unzip()
-    }
+    val torRelaysEntries = stringArrayResource(R.array.aether_tor_relays_entries).toList()
+    val torRelaysValues = stringArrayResource(R.array.aether_tor_relays_values).toList()
     val fingerprintEntries = stringArrayResource(R.array.aether_fingerprint_entries).toList()
     val fingerprintValues = stringArrayResource(R.array.aether_fingerprint_values).toList()
     val echDnsOptions = stringArrayResource(R.array.aether_ech_dns_options).toList()

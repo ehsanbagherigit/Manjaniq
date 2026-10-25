@@ -21,7 +21,7 @@ data class AetherKeysSettings(
 ) {
     val exit: AetherExit
         get() = exitNode.nullIfBlank()?.let { AetherExit(node = it.trim()) }
-            ?: AetherExit(finalMask.nullIfBlank(), dialMode.nullIfBlank())
+            ?: AetherExit(finalMask = finalMask.trim(), dialMode = dialMode.trim())
 
     fun toJsonString(): String {
         val obj = JSONObject()

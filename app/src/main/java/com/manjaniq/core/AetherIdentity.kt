@@ -9,6 +9,9 @@ data class AetherIdentity(
     val ipv4: String = "",
     val ipv6: String = "",
 ) {
+    val shortDeviceId: String
+        get() = deviceId.take(8)
+
     fun isComplete(): Boolean = deviceId.isNotBlank()
 }
 

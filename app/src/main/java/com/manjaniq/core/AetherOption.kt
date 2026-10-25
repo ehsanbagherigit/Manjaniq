@@ -53,6 +53,7 @@ enum class AetherScanMode(val type: String) {
     companion object {
         /** The name the verified mode had before aether 2.1; profiles, links and configurations from then still carry it. */
         const val STEALTH = "stealth"
+        val AGGRESSIVE: AetherScanMode get() = THOROUGH
 
         fun fromString(type: String?) = entries.find { it.type == type } ?: if (type == STEALTH) VERIFIED else BALANCED
     }
@@ -72,6 +73,7 @@ enum class AetherObfuscation(val type: String) {
     AGGRESSIVE("aggressive");
 
     companion object {
+        val HEAVY: AetherObfuscation get() = AGGRESSIVE
         fun fromString(type: String?) = entries.find { it.type == type } ?: AUTO
     }
 }
@@ -125,10 +127,12 @@ enum class AetherPsiphonCdnSet(val type: String) {
     LEGACY("legacy-android-overrides");
 
     companion object {
+        val ALL: Set<AetherPsiphonCdnSet> = entries.toSet()
+
         /** The sets named in [text], a comma or space separated list: in the order above, once each, strangers left out. */
-        fun parse(text: String?): List<AetherPsiphonCdnSet> {
+        fun parse(text: String?): Set<AetherPsiphonCdnSet> {
             val named = text.orEmpty().split(Regex("[,\\s]+")).filter { it.isNotEmpty() }.toSet()
-            return entries.filter { it.type in named }
+            return entries.filterTo( linkedSetOf() ) { it.type in named }
         }
 
         /** [sets] as the core and the profile take them, comma separated; null for none. */
@@ -379,6 +383,7 @@ enum class AetherFingerprint(
         }
 
     companion object {
+        val SAFARI: AetherFingerprint get() = CHROME_120
         fun fromString(type: String?) = entries.find { it.type == type } ?: CHROME
     }
 }

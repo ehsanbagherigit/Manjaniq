@@ -21,6 +21,17 @@ data class AetherExit(
             dialMode = profile.aetherDialMode?.trim().orEmpty(),
             node = profile.aetherExitNode?.trim().orEmpty(),
         )
+
+        fun takesFinalMask(finalMask: String?): Boolean {
+            val trimmed = finalMask?.trim().orEmpty()
+            if (trimmed.isEmpty()) return true
+            return try {
+                org.json.JSONObject(trimmed)
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
     }
 }
 

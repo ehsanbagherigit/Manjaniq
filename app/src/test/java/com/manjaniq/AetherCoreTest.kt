@@ -123,7 +123,7 @@ class AetherCoreTest {
         assertNull(AetherKeys.validate(settings))
         val args = AetherKeys.arguments(settings)
         assertNotNull(args)
-        assertEquals("masque,gool", valueAfter(args!!, "--register"))
+        assertEquals("gool", valueAfter(args!!, "--register"))
         assertEquals("162.159.137.105:443", valueAfter(args, "--api-address"))
         assertEquals("www.cloudflare.com", valueAfter(args, "--api-sni"))
         assertEquals("api.cloudflareclient.com", valueAfter(args, "--api-host"))

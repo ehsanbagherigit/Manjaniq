@@ -8,14 +8,8 @@ data class AetherScanResult(
     val endpoint: AetherEndpoint,
     val innerHop: AetherEndpoint? = null,
 ) {
-    val primary: AetherEndpoint get() = endpoint
-    val secondary: AetherEndpoint? get() = innerHop
-} {
-    val primary: AetherEndpoint
-        get() = endpoint
-
-    val secondary: AetherEndpoint?
-        get() = innerHop
+    val primary: AetherEndpoint = endpoint
+    val secondary: AetherEndpoint? = innerHop
 
     fun format(): String = if (innerHop != null) {
         "${endpoint.format()} -> ${innerHop.format()}"
