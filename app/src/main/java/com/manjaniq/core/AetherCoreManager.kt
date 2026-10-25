@@ -857,26 +857,85 @@ object AetherCoreManager {
         else -> "--bind"
     }
 
+    internal fun listenerAddressOf(arguments: List<String>): String? =
+        listenerAddressAfter(arguments, listenerFlagOf(arguments))
+
     internal fun listenerPortOf(arguments: List<String>): Int? =
-        portAfter(arguments, listenerFlagOf(arguments))
+        listenerAddressOf(arguments)?.substringAfterLast(':', "")?.toIntOrNull()
 
     internal fun portAfter(arguments: List<String>, flag: String): Int? =
-        valueAfter(arguments, flag)?.takeIf(::isSocketAddress)?.substringAfterLast(':')?.toIntOrNull()
+        listenerAddressAfter(arguments, flag)?.substringAfterLast(':', "")?.toIntOrNull()
 
     internal fun listenerAddressAfter(arguments: List<String>, flag: String): String? =
-        if (flag in arguments) valueAfter(arguments, flag).orEmpty() else null
+        valueAfter(arguments, flag)?.let { if (flag == "--bind") it else it.trim(::isRustWhitespace) }
 
-    internal fun isSocketAddress(address: String): Boolean {
-        val port = address.substringAfterLast(':', "").toIntOrNull() ?: return false
-        if (port !in 0..65535) return false
-        return AetherEndpoint.of(address.substringBeforeLast(':'), "1") != null
-    }
+    internal fun isRustWhitespace(c: Char): Boolean =
+        c in '\u0009'..'\u000D' || c == ' ' || c == '\u0085' || c == '\u00A0' || c == '\u1680' || c in '\u2000'..'\u200A' ||
+            c == '\u2028' || c == '\u2029' || c == '\u202F' || c == '\u205F' || c == '\u3000'
 
     internal fun reachesLoopback(host: String): Boolean {
-        val bare = host.removeSurrounding("[", "]")
-        if (!AetherEndpoint.isValidHost(bare)) return false
-        val address = runCatching { InetAddress.getByName(bare) }.getOrNull() ?: return false
-        return address.isAnyLocalAddress || address.address.contentEquals(byteArrayOf(127, 0, 0, 1))
+        if (!host.startsWith('[')) return host == LOOPBACK || host == "0.0.0.0"
+        val groups = ipv6Groups(host.removePrefix("[").removeSuffix("]").substringBefore('%')) ?: return false
+        if (groups.all { it == 0 }) return true
+        val mapped = (0..4).all { groups[it] == 0 } && groups[5] == 0xFFFF
+        return mapped && ((groups[6] == 0x7F00 && groups[7] == 0x0001) || (groups[6] == 0 && groups[7] == 0))
+    }
+
+    internal fun ipv6Groups(text: String): IntArray? {
+        if ('%' in text || !isIpv6Literal(text)) return null
+        fun groupsOf(part: String): List<Int> = if (part.isEmpty()) emptyList() else part.split(':').flatMap { group ->
+            if ('.' in group) {
+                val octets = group.split('.').map { it.toInt() }
+                listOf((octets[0] shl 8) or octets[1], (octets[2] shl 8) or octets[3])
+            } else {
+                listOf(group.toInt(16))
+            }
+        }
+        val halves = text.split("::")
+        val head = groupsOf(halves[0])
+        val tail = if (halves.size == 2) groupsOf(halves[1]) else emptyList()
+        val zeros = if (halves.size == 2) 8 - head.size - tail.size else 0
+        return (head + List(zeros) { 0 } + tail).toIntArray()
+    }
+
+    internal fun isSocketAddress(address: String): Boolean {
+        val colon = address.lastIndexOf(':')
+        if (colon <= 0 || !isDecimalUpTo(address.substring(colon + 1), 65_535)) return false
+        val host = address.substring(0, colon)
+        return if (host.startsWith('[') && host.endsWith(']')) isIpv6Literal(host.substring(1, host.length - 1)) else isIpv4Literal(host)
+    }
+
+    internal fun isIpv4Literal(text: String): Boolean {
+        val parts = text.split('.')
+        return parts.size == 4 && parts.all { part ->
+            part.isNotEmpty() && part.length <= 3 && part.all { it in '0'..'9' } && (part == "0" || !part.startsWith('0')) &&
+                part.toInt() <= 255
+        }
+    }
+
+    internal fun isIpv6Literal(text: String): Boolean {
+        val address = text.substringBefore('%')
+        if ('%' in text && !isDecimalUpTo(text.substringAfter('%'), 4_294_967_295)) return false
+        val halves = address.split("::")
+        if (halves.size > 2) return false
+        val head = if (halves[0].isEmpty()) emptyList() else halves[0].split(':')
+        val tail = if (halves.size < 2 || halves[1].isEmpty()) emptyList() else halves[1].split(':')
+        val groups = head + tail
+        var count = 0
+        for ((index, group) in groups.withIndex()) {
+            count += when {
+                '.' in group -> if (index == groups.lastIndex && isIpv4Literal(group) && (halves.size == 1 || tail.isNotEmpty())) 2 else return false
+                group.isNotEmpty() && group.length <= 4 && group.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' } -> 1
+                else -> return false
+            }
+        }
+        return if (halves.size == 2) count <= 7 else count == 8
+    }
+
+    private fun isDecimalUpTo(text: String, max: Long): Boolean {
+        if (text.isEmpty() || !text.all { it in '0'..'9' }) return false
+        val significant = text.trimStart('0')
+        return significant.length <= 10 && (significant.isEmpty() || significant.toLong() <= max)
     }
 
     internal fun withListener(arguments: List<String>, flag: String, port: Int): List<String> =
