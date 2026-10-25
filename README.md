@@ -1,6 +1,8 @@
 <div align="center">
 
-# Manjaniq 🚀
+<img src="https://raw.githubusercontent.com/ehsanbagherigit/Manjaniq/master/assets/logos/manjaniq_logo.png" alt="Manjaniq Logo" width="120" height="120">
+
+# Manjaniq
 
 **An Advanced Android SOCKS5 & Loopback Proxy Client powered by the Aether Core.**
 
