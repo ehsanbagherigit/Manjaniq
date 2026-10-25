@@ -212,5 +212,8 @@ data class AetherCore(val arguments: List<String>, val exit: AetherExit = Aether
 
         private fun quoted(word: String): String =
             if (word.isEmpty() || word.any(Char::isWhitespace)) "\"$word\"" else word
+
+        fun formatCommand(arguments: List<String>): String =
+            (listOf(COMMAND_NAME) + arguments).joinToString(" ", transform = ::quoted)
     }
 }

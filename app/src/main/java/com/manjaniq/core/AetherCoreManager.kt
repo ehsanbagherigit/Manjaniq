@@ -280,8 +280,10 @@ object AetherCoreManager {
             AetherBridge.initialize(context)
             AetherBridge.envReset()
             val cursorStart = currentLogCursor()
-            val handle = AetherBridge.coreStart(fullArguments).getOrElse { e ->
-                Log.e(TAG, "Failed to start Aether core via JNI", e)
+            val startResult = AetherBridge.coreStart(fullArguments)
+            val handle = startResult.getOrNull()?.optLong("job", -1L)?.takeIf { it >= 0L }
+            if (handle == null) {
+                Log.e(TAG, "Failed to start Aether core via JNI: ${startResult.getErrorOrNull()}")
                 return@withContext false
             }
             activeJobHandle = handle
@@ -293,16 +295,11 @@ object AetherCoreManager {
                 while (isActive && activeJobHandle == handle) {
                     val batch = AetherBridge.logLines(cursor).getOrNull()
                     if (batch != null) {
-                        val arr = batch.optJSONArray("lines")
-                        if (arr != null) {
-                            for (i in 0 until arr.length()) {
-                                val entry = arr.optJSONObject(i) ?: continue
-                                val seq = entry.optLong("seq", cursor)
-                                if (seq > cursor) cursor = seq
-                                val line = entry.optString("text", "")
-                                if (line.isNotEmpty()) {
-                                    handleCoreLine(line, onOutput)
-                                }
+                        for (entry in batch) {
+                            if (entry.seq > cursor) cursor = entry.seq
+                            val line = entry.text
+                            if (line.isNotEmpty()) {
+                                handleCoreLine(line, onOutput)
                             }
                         }
                     }
@@ -401,10 +398,8 @@ object AetherCoreManager {
     }
 
     private fun currentLogCursor(): Long {
-        val obj = AetherBridge.logLines(0).getOrNull() ?: return 0L
-        val arr = obj.optJSONArray("lines") ?: return 0L
-        if (arr.length() == 0) return 0L
-        return arr.optJSONObject(arr.length() - 1)?.optLong("seq", 0L) ?: 0L
+        val lines = AetherBridge.logLines(0).getOrNull() ?: return 0L
+        return lines.lastOrNull()?.seq ?: 0L
     }
 
     fun stop(context: Context? = null) {
@@ -487,8 +482,10 @@ object AetherCoreManager {
             AetherBridge.initialize(context)
             AetherBridge.envReset()
             val startCursor = currentLogCursor()
-            val handle = AetherBridge.coreStart(fullArguments).getOrElse { e ->
-                Log.e(TAG, "$source: failed to start Aether job", e)
+            val startResult = AetherBridge.coreStart(fullArguments)
+            val handle = startResult.getOrNull()?.optLong("job", -1L)?.takeIf { it >= 0L }
+            if (handle == null) {
+                Log.e(TAG, "$source: failed to start Aether job: ${startResult.getErrorOrNull()}")
                 return@withContext null
             }
             val lines = Channel<String>(Channel.UNLIMITED)
@@ -499,18 +496,13 @@ object AetherCoreManager {
                         while (isActive) {
                             val batch = AetherBridge.logLines(cursor).getOrNull()
                             if (batch != null) {
-                                val arr = batch.optJSONArray("lines")
-                                if (arr != null) {
-                                    for (i in 0 until arr.length()) {
-                                        val entry = arr.optJSONObject(i) ?: continue
-                                        val seq = entry.optLong("seq", cursor)
-                                        if (seq > cursor) cursor = seq
-                                        val text = entry.optString("text", "")
-                                        if (text.isNotEmpty()) {
-                                            PsiphonServerList.regionsOf(text)?.let(PsiphonServerList::remember)
-                                            onOutput(text)
-                                            lines.trySend(text)
-                                        }
+                                for (entry in batch) {
+                                    if (entry.seq > cursor) cursor = entry.seq
+                                    val text = entry.text
+                                    if (text.isNotEmpty()) {
+                                        PsiphonServerList.regionsOf(text)?.let(PsiphonServerList::remember)
+                                        onOutput(text)
+                                        lines.trySend(text)
                                     }
                                 }
                             }
@@ -1221,7 +1213,7 @@ object AetherCoreManager {
         if (processes.isEmpty()) return
 
         processes.forEach { proc ->
-            AndroidProcess.sendSignal(proc.pid, AndroidProcess.SIGNAL_TERM)
+            AndroidProcess.sendSignal(proc.pid, android.system.OsConstants.SIGTERM)
         }
         val deadline = System.currentTimeMillis() + SHUTDOWN_WAIT_MS
         while (System.currentTimeMillis() < deadline && processes.any { File("/proc/${it.pid}").exists() }) {

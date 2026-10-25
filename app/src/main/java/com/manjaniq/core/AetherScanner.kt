@@ -8,6 +8,9 @@ data class AetherScanResult(
     val endpoint: AetherEndpoint,
     val innerHop: AetherEndpoint? = null,
 ) {
+    val primary: AetherEndpoint get() = endpoint
+    val secondary: AetherEndpoint? get() = innerHop
+} {
     val primary: AetherEndpoint
         get() = endpoint
 

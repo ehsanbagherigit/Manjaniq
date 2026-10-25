@@ -163,6 +163,18 @@ object AetherIdentityManager {
             filesOf(AetherCoreManager.protocolOf(arguments))
         }
 
+    fun keyFilesOf(profile: ProfileItem, scan: Boolean = false): List<String> {
+        val arguments = if (!scan && AetherFmt.isCustomCommand(profile)) {
+            AetherCore.of(profile).arguments
+        } else {
+            AetherCoreManager.buildArguments(profile, scan = scan)
+        }
+        return filesNeededBy(arguments)
+    }
+
+    fun sharesKeyWith(kind: AetherKeyKind, protocol: AetherProtocol?): Boolean =
+        protocol == null || filesOf(protocol).any { it in filesOf(kind) }
+
     suspend fun missing(context: Context, files: List<String>): List<String> =
         withContext(Dispatchers.IO) {
             settle(context)

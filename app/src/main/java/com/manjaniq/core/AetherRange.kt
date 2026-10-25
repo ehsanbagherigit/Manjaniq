@@ -2,37 +2,34 @@ package com.manjaniq.core
 
 data class AetherRange(val min: Int, val max: Int) {
 
-    fun format(): String = if (min == max) "$min" else "$min-$max"
+    override fun toString(): String = if (min == max) "$min" else "$min-$max"
+
+    fun format(): String = toString()
 
     companion object {
-        private const val MIN_FRAGMENT_SIZE = 1
-        private const val MAX_FRAGMENT_SIZE = 4096
-        private const val MIN_FRAGMENT_DELAY = 0
-        private const val MAX_FRAGMENT_DELAY = 1000
 
-        fun parse(value: String?, allowedMin: Int, allowedMax: Int): AetherRange? {
-            val trimmed = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-            val parts = trimmed.split('-')
-            val (min, max) = when (parts.size) {
-                1 -> {
-                    val n = parts[0].trim().toIntOrNull() ?: return null
-                    n to n
-                }
-                2 -> {
-                    val low = parts[0].trim().toIntOrNull() ?: return null
-                    val high = parts[1].trim().toIntOrNull() ?: return null
-                    low to high
-                }
-                else -> return null
-            }
-            if (min < allowedMin || max > allowedMax || min > max) return null
-            return AetherRange(min, max)
+        val FRAGMENT_SIZE = 1..4096
+        val FRAGMENT_DELAY = 0..1000
+
+        private fun decimal(text: String): Int? {
+            if (text.isEmpty() || text.length > 5) return null
+            return text.fold(0) { value, ch -> value * 10 + (ch.digitToIntOrNull() ?: return null) }
         }
 
+        fun parse(text: String?, bounds: IntRange): AetherRange? {
+            val parts = text?.trim()?.split('-') ?: return null
+            if (parts.size !in 1..2) return null
+            val values = parts.map { part -> decimal(part.trim())?.takeIf { it in bounds } ?: return null }
+            return AetherRange(values.min(), values.max())
+        }
+
+        fun parse(value: String?, allowedMin: Int, allowedMax: Int): AetherRange? =
+            parse(value, allowedMin..allowedMax)
+
         fun parseFragmentSize(value: String?): AetherRange? =
-            parse(value, MIN_FRAGMENT_SIZE, MAX_FRAGMENT_SIZE)
+            parse(value, FRAGMENT_SIZE)
 
         fun parseFragmentDelay(value: String?): AetherRange? =
-            parse(value, MIN_FRAGMENT_DELAY, MAX_FRAGMENT_DELAY)
+            parse(value, FRAGMENT_DELAY)
     }
 }

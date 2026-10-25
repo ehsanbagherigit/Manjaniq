@@ -4,52 +4,99 @@ import java.net.URI
 
 data class AetherEndpoint(val host: String, val port: Int) {
 
-    fun format(): String = if (':' in host) "[$host]:$port" else "$host:$port"
+    override fun toString(): String = if (':' in host) "[$host]:$port" else "$host:$port"
+
+    fun format(): String = toString()
 
     companion object {
-        private val ipv4Regex = Regex("""^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$""")
-        private val ipv6Chars = Regex("""^[0-9a-fA-F:]+$""")
+
         private val domainLabel = Regex("""^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$""")
         private val countryCode = Regex("""^[a-zA-Z]{2}$""")
 
-        fun parse(value: String?): AetherEndpoint? {
-            val trimmed = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-            val (rawHost, rawPort) = if (trimmed.startsWith('[')) {
-                val close = trimmed.indexOf(']')
-                if (close < 0 || close + 2 > trimmed.length || trimmed[close + 1] != ':') return null
-                trimmed.substring(1, close) to trimmed.substring(close + 2)
-            } else {
-                val colon = trimmed.lastIndexOf(':')
-                if (colon <= 0 || trimmed.indexOf(':') != colon) return null
-                trimmed.substring(0, colon) to trimmed.substring(colon + 1)
-            }
-            return of(rawHost, rawPort)
-        }
-
         fun of(host: String?, port: String?): AetherEndpoint? {
-            val cleanHost = stripBrackets(host?.trim() ?: return null)
-            val portNum = port?.trim()?.toIntOrNull() ?: return null
-            if (!isValidHost(cleanHost) || portNum !in 1..65535) return null
-            return AetherEndpoint(cleanHost, portNum)
+            val address = host?.trim()?.removeSurrounding("[", "]")?.let(::canonicalAddress) ?: return null
+            val number = port?.trim()?.let(::decimal)?.takeIf { it in 1..65535 } ?: return null
+            return AetherEndpoint(address, number)
         }
 
-        fun isValidHost(host: String): Boolean {
-            val ipv4 = ipv4Regex.matchEntire(host)
-            if (ipv4 != null) {
-                return ipv4.groupValues.drop(1).all { (it.toIntOrNull() ?: 256) in 0..255 }
+        fun parse(value: String?): AetherEndpoint? {
+            val text = value?.trim().orEmpty()
+            val separator = text.lastIndexOf(':')
+            if (separator <= 0) return null
+            val host = text.substring(0, separator)
+            if (':' in host && !(host.startsWith('[') && host.endsWith(']'))) return null
+            return of(host, text.substring(separator + 1))
+        }
+
+        fun isValidHost(host: String): Boolean = canonicalAddress(host.removeSurrounding("[", "]")) != null
+
+        private fun canonicalAddress(address: String): String? =
+            if (':' in address) {
+                ipv6Groups(address)?.let(::formatIpv6)
+            } else {
+                ipv4Octets(address)?.joinToString(".")
             }
-            return isValidIpv6(host)
+
+        private fun decimal(text: String): Int? {
+            if (text.isEmpty() || text.length > 5) return null
+            return text.fold(0) { value, ch -> value * 10 + (ch.digitToIntOrNull() ?: return null) }
         }
 
-        private fun isValidIpv6(host: String): Boolean {
-            if (':' !in host || ":::" in host || !ipv6Chars.matches(host)) return false
-            if (host.startsWith(':') && !host.startsWith("::")) return false
-            if (host.endsWith(':') && !host.endsWith("::")) return false
-            val doubleColons = host.windowed(2).count { it == "::" }
-            if (doubleColons > 1) return false
-            val groups = host.split(':').filter { it.isNotEmpty() }
-            if (groups.any { it.length > 4 }) return false
-            return if (doubleColons == 1) groups.size <= 7 else groups.size == 8
+        private fun ipv4Octets(address: String): List<Int>? {
+            val parts = address.split('.')
+            if (parts.size != 4) return null
+            return parts.map { part ->
+                if (part.length !in 1..3 || part.length > 1 && part.first().digitToIntOrNull() == 0) return null
+                decimal(part)?.takeIf { it <= 255 } ?: return null
+            }
+        }
+
+        private fun ipv6Groups(address: String): List<Int>? {
+            val halves = address.split("::")
+            if (halves.size > 2) return null
+            val compressed = halves.size == 2
+            val head = hexGroups(halves[0], allowIpv4 = !compressed) ?: return null
+            val tail = if (compressed) hexGroups(halves[1], allowIpv4 = true) ?: return null else emptyList()
+            val missing = 8 - head.size - tail.size
+            if (if (compressed) missing < 1 else missing != 0) return null
+            return head + List(missing) { 0 } + tail
+        }
+
+        private fun hexGroups(section: String, allowIpv4: Boolean): List<Int>? {
+            if (section.isEmpty()) return emptyList()
+            val pieces = section.split(':')
+            return buildList {
+                pieces.forEachIndexed { index, piece ->
+                    if (allowIpv4 && index == pieces.lastIndex && '.' in piece) {
+                        val octets = ipv4Octets(piece) ?: return null
+                        add(octets[0] shl 8 or octets[1])
+                        add(octets[2] shl 8 or octets[3])
+                    } else {
+                        if (piece.length !in 1..4) return null
+                        add(piece.fold(0) { value, ch -> value * 16 + (ch.digitToIntOrNull(16) ?: return null) })
+                    }
+                }
+            }
+        }
+
+        private fun formatIpv6(groups: List<Int>): String {
+            var runStart = -1
+            var runLength = 1
+            var index = 0
+            while (index < groups.size) {
+                val start = index
+                while (index < groups.size && groups[index] == 0) index++
+                if (index - start > runLength) {
+                    runStart = start
+                    runLength = index - start
+                }
+                index++
+            }
+            val text = groups.map { it.toString(16) }
+            if (runStart < 0) return text.joinToString(":")
+            val head = text.subList(0, runStart).joinToString(":")
+            val tail = text.subList(runStart + runLength, text.size).joinToString(":")
+            return "$head::$tail"
         }
 
         fun isValidDomain(value: String?): Boolean {
@@ -59,83 +106,32 @@ data class AetherEndpoint(val host: String, val port: Int) {
             return labels.last().any { it.isLetter() }
         }
 
-        /**
-         * Parses an API address (`--api-address`): an IPv4 address, an IPv6 address (in brackets when a
-         * port follows), or a domain name, with or without `:port`. Returns the normalized string as
-         * the core takes it, or null when invalid.
-         */
         fun parseHostOrAddress(value: String?): String? {
             val trimmed = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
             parse(trimmed)?.let { return it.format() }
             val colon = trimmed.lastIndexOf(':')
             if (colon > 0 && trimmed.indexOf(':') == colon) {
                 val host = trimmed.substring(0, colon)
-                val port = trimmed.substring(colon + 1).toIntOrNull() ?: return null
-                if (port !in 1..65535 || !isValidDomain(host)) return null
+                val port = decimal(trimmed.substring(colon + 1))?.takeIf { it in 1..65535 } ?: return null
+                if (!isValidDomain(host)) return null
                 return "$host:$port"
             }
-            val bare = stripBrackets(trimmed)
+            val bare = trimmed.removeSurrounding("[", "]")
             return when {
-                isValidHost(bare) -> bare
+                canonicalAddress(bare) != null -> canonicalAddress(bare)
                 !trimmed.startsWith('[') && isValidDomain(trimmed) -> trimmed
                 else -> null
             }
         }
 
-        fun isValidEchDns(value: String?): Boolean {
-            val trimmed = value?.trim()?.takeIf { it.isNotEmpty() } ?: return false
-            return when {
-                trimmed.startsWith("udp://") -> isSocketOrHost(trimmed.removePrefix("udp://"))
-                trimmed.startsWith("tcp://") -> isSocketOrHost(trimmed.removePrefix("tcp://"))
-                trimmed.startsWith("https://") -> isValidDohUrl(trimmed)
-                else -> false
-            }
-        }
-
-        private fun isSocketOrHost(address: String): Boolean =
-            parse(address) != null || isValidHost(stripBrackets(address))
-
-        private fun isValidDohUrl(value: String): Boolean {
-            val parts = value.split('@')
-            val urlPart = parts.first()
-            val uri = try {
-                URI(urlPart)
-            } catch (_: Exception) {
-                return false
-            }
-            if (uri.scheme != "https" || uri.userInfo != null || uri.fragment != null) return false
-            val host = uri.host?.let(::stripBrackets)?.takeIf { it.isNotEmpty() } ?: return false
-            if (!isValidHost(host) && !isValidDomain(host)) return false
-            if (uri.port != -1 && uri.port !in 1..65535) return false
-
-            var seenAddress = false
-            var seenSni = false
-            for (option in parts.drop(1)) {
-                when {
-                    option.startsWith("address=") -> {
-                        if (seenAddress) return false
-                        seenAddress = true
-                        val target = option.removePrefix("address=")
-                        if (!isValidHost(stripBrackets(target)) && !isValidDomain(target)) return false
-                    }
-                    option.startsWith("sni=") -> {
-                        if (seenSni) return false
-                        seenSni = true
-                        val sni = option.removePrefix("sni=")
-                        if (!isValidDomain(sni)) return false
-                    }
-                    else -> return false
-                }
-            }
-            return true
-        }
+        fun isValidEchDns(value: String?): Boolean = AetherFmt.isEchDns(value.orEmpty())
 
         fun isValidDnsList(value: String?): Boolean {
             val trimmed = value?.trim()?.takeIf { it.isNotEmpty() } ?: return true
             val items = trimmed.split(',')
             return items.isNotEmpty() && items.all { item ->
                 val clean = item.trim()
-                clean.isNotEmpty() && isSocketOrHost(clean)
+                clean.isNotEmpty() && (parse(clean) != null || canonicalAddress(clean.removeSurrounding("[", "]")) != null)
             }
         }
 
@@ -146,8 +142,5 @@ data class AetherEndpoint(val host: String, val port: Int) {
             val codes = body.split(',', ' ').map { it.trim() }.filter { it.isNotEmpty() }
             return codes.isNotEmpty() && codes.all { countryCode.matches(it) }
         }
-
-        private fun stripBrackets(host: String): String =
-            if (host.startsWith('[') && host.endsWith(']')) host.substring(1, host.length - 1) else host
     }
 }

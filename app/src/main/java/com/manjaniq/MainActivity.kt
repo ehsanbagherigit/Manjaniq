@@ -11,7 +11,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.WindowCompat
-import com.manjaniq.core.AetherHelpers
 import com.manjaniq.core.AppPreferences
 import com.manjaniq.core.LocaleHelper
 import com.manjaniq.ui.components.ManjaniqApp
@@ -43,11 +42,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Record where this installation keeps its native libraries, so the Aether
-        // settings model can tell whether a packaged Tor transport or Psiphon
-        // client can be started (Android 10+ only permits exec from that
-        // directory). Cheap, read-only, and it never touches the network.
-        AetherHelpers.configure(applicationContext)
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
 

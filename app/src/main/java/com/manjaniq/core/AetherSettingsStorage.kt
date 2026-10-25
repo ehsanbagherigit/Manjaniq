@@ -10,6 +10,7 @@ object AetherSettingsStorage {
     private const val KEY_LISTEN_PORT = "aether_listen_port"
     private const val KEY_SELECTED_SERVER = "aether_selected_server"
     private const val KEY_ACTIVE_PROFILE_GUID = "default_aether"
+    private const val KEY_PSIPHON_REGIONS = "aether_psiphon_regions"
     private const val SERVER_PREFIX = "aether_server_"
 
     @Volatile
@@ -57,15 +58,21 @@ object AetherSettingsStorage {
         encodeString(KEY_SELECTED_SERVER, guid)
     }
 
+    fun getPsiphonRegions(): String = decodeString(KEY_PSIPHON_REGIONS).orEmpty()
+
+    fun putPsiphonRegions(regions: String) {
+        encodeString(KEY_PSIPHON_REGIONS, regions)
+    }
+
     fun decodeServerConfig(guid: String): ProfileItem? {
         memoryProfiles[guid]?.let { return it.copy() }
         val raw = prefs?.getString(SERVER_PREFIX + guid, null) ?: return null
-        return ProfileItem.fromJson(raw)?.also { memoryProfiles[guid] = it }?.copy()
+        return ProfileItem.fromJsonString(raw)?.also { memoryProfiles[guid] = it }?.copy()
     }
 
     fun encodeServerConfig(guid: String, profile: ProfileItem) {
         memoryProfiles[guid] = profile.copy()
-        prefs?.edit()?.putString(SERVER_PREFIX + guid, profile.toJson())?.apply()
+        prefs?.edit()?.putString(SERVER_PREFIX + guid, profile.toJsonString())?.apply()
     }
 
     fun removeServer(guid: String) {

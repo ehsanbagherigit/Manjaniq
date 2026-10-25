@@ -128,6 +128,8 @@ data class ProfileItem(
     var aetherTorBridgeLines: String? = null,
     var aetherTorRelays: String? = null,
     var aetherCommand: String? = null,
+    var aetherFinalMask: String? = null,
+    var aetherDialMode: String? = null,
 ) {
     fun toJsonString(): String {
         val obj = JSONObject()
@@ -224,6 +226,8 @@ data class ProfileItem(
         putStr("aetherTorBridgeLines", aetherTorBridgeLines)
         putStr("aetherTorRelays", aetherTorRelays)
         putStr("aetherCommand", aetherCommand)
+        putStr("aetherFinalMask", aetherFinalMask)
+        putStr("aetherDialMode", aetherDialMode)
         return obj.toString()
     }
 
@@ -233,7 +237,7 @@ data class ProfileItem(
 
         fun defaultTargetStrategy(profile: ProfileItem): String {
             if (profile.configType != EConfigType.AETHER) return "AsIs"
-            return if (AetherCoreManager.leavesThroughWarp(profile)) "UseIP" else "AsIs"
+            return if (AetherCoreManager.leavesThroughWarp(AetherCore.of(profile, AetherCoreManager.socksPort).arguments)) "UseIP" else "AsIs"
         }
 
         fun fromJsonString(json: String?): ProfileItem? {
@@ -332,6 +336,8 @@ data class ProfileItem(
                     aetherTorBridgeLines = str("aetherTorBridgeLines"),
                     aetherTorRelays = str("aetherTorRelays"),
                     aetherCommand = str("aetherCommand"),
+                    aetherFinalMask = str("aetherFinalMask"),
+                    aetherDialMode = str("aetherDialMode"),
                 )
             } catch (_: Exception) {
                 null

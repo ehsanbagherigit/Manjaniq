@@ -1,11 +1,13 @@
 package com.manjaniq.ui.server
 
 import android.content.Context
+import android.util.Log
 import com.manjaniq.core.AetherCore
 import com.manjaniq.core.AetherCoreManager
 import com.manjaniq.core.AetherExitNode
 import com.manjaniq.core.AetherIdentityManager
 import com.manjaniq.core.AetherIdentityStatus
+import com.manjaniq.core.AetherKeyKind
 import com.manjaniq.core.AetherProtocol
 import com.manjaniq.core.AetherPsiphon
 import com.manjaniq.core.AetherScanResult
@@ -19,6 +21,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 data class AetherSession(val protocol: AetherProtocol?, val usesWarp: Boolean = true) {
+
+    fun disturbedByScanOf(protocol: AetherProtocol): Boolean =
+        this.protocol == null || AetherIdentityManager.sharesIdentity(protocol, this.protocol)
+
+    fun usesKeysOf(kind: AetherKeyKind): Boolean =
+        protocol == null || AetherIdentityManager.filesOf(protocol).any { it in AetherIdentityManager.filesOf(kind) }
 
     fun sharesKeyWith(other: AetherProtocol): Boolean {
         if (!usesWarp) return false
@@ -75,7 +83,7 @@ class AetherEditorRepository(context: Context) : AetherEditorSource {
     }
 
     override suspend fun missingKeys(files: List<String>): List<String> = withContext(Dispatchers.IO) {
-        AetherIdentityManager.missingFiles(appContext, files)
+        AetherIdentityManager.missing(appContext, files)
     }
 
     override suspend fun clearPsiphonData(): Boolean = withContext(Dispatchers.IO) {
@@ -83,7 +91,13 @@ class AetherEditorRepository(context: Context) : AetherEditorSource {
     }
 
     override suspend fun psiphonRegions(): List<String> = withContext(Dispatchers.IO) {
-        PsiphonServerList.regions(AetherIdentityManager.workDir(appContext))
+        val entries = PsiphonServerList.entriesFile(appContext.filesDir, AetherIdentityManager.workDir(appContext)) { problem ->
+            Log.w("AetherEditor", "${PsiphonServerList.PSIPHON_SERVERS_DAT} is not a usable Psiphon list", problem)
+        }
+        val listed = entries?.let { file ->
+            runCatching { PsiphonServerList.regions(file.readText()) }.getOrDefault(emptySet())
+        }.orEmpty()
+        (listed + PsiphonServerList.remembered()).toSortedSet().toList()
     }
 
     override suspend fun listenPort(): Int = withContext(Dispatchers.IO) {
@@ -103,6 +117,9 @@ class AetherEditorRepository(context: Context) : AetherEditorSource {
     }
 
     companion object {
+        internal fun sessionOf(protocol: AetherProtocol?, processesListed: Boolean, listenerAnswers: () -> Boolean): AetherSession? =
+            protocol?.let(::AetherSession) ?: AetherSession(protocol = null).takeIf { !processesListed && listenerAnswers() }
+
         internal fun activeSession(context: Context): AetherSession? {
             val process = AetherCoreManager.sessionProcess(context)
             if (process != null) {
@@ -126,8 +143,10 @@ class AetherEditorRepository(context: Context) : AetherEditorSource {
                 }
                 return AetherSession(AetherCoreManager.protocolOf(core.arguments))
             }
-            return AetherCoreManager.portsOf().firstOrNull(AetherCoreManager::answersSocks)?.let {
+            return if (AetherCoreManager.answersSocks(AetherCoreManager.socksPort)) {
                 AetherSession(protocol = null)
+            } else {
+                null
             }
         }
     }
