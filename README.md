@@ -1,86 +1,64 @@
-# Manjaniq
+<div align="center">
 
-Modular network utility application for Android. Its feature is a native
-UI controlling the genuine RSTA SNI Spoof Go engine, integrated as an
-embeddable JNI library at `engine/rstaspoof/` (the pristine upstream file
-is kept, for reference/diffing, at `rsta-source/rstaspoof.go`). The app is a
-local proxy controller: point other apps at the configured listen address;
-it does not redirect all device traffic and needs no root.
+# Manjaniq 🚀
 
-- Kotlin + Jetpack Compose, Go/cgo JNI bridge (`native/`), foreground service
-- Application ID / namespace: `com.manjaniq`
-- minSdk 26, targetSdk/compileSdk 35, ABI: arm64-v8a
-- App models live under `app/src/main/java/com/manjaniq/core/`
-  (the project-root `core/` directory holds reference copies that are
-  deliberately not compiled — see `app/build.gradle.kts`).
+**An Advanced Android SOCKS5 & Loopback Proxy Client powered by the Aether Core.**
 
-See `ARCHITECTURE.md`, `ROADMAP.md`, `UI_DESIGN_GUIDE.md`, and `report.md`
-for the design and progress documentation.
+[![CI/CD Status](https://github.com/ehsanbagherigit/manjaniq/actions/workflows/build-debug.yml/badge.svg)](https://github.com/ehsanbagherigit/manjaniq/actions)
+[![Android Min SDK](https://img.shields.io/badge/Min%20SDK-29%28Android%2010%29-blue.svg)](https://developer.android.com)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## Build (GitHub Actions — recommended)
+</div>
 
-Debug APKs are built automatically by the workflow at
-`.github/workflows/build-debug.yml` on every push and pull request:
+---
 
-1. Push this repository to GitHub. The workflow builds the Go engine
-   (`engine/rstaspoof`) into `libmanjaniq_native.so` (arm64-v8a) with the
-   NDK and packages it into the APK automatically.
-2. Open the repository's **Actions** tab and wait for the **Build Debug APK**
-   workflow.
-3. Download the `manjaniq-debug-apk` artifact, which contains
-   `app-debug.apk`.
+## 📖 About the Project
 
-No signing, publishing, or secrets are configured; the workflow only produces
-an unsigned debug APK.
+**Manjaniq** is a high-performance Android proxy client engineered for local SOCKS5 and loopback traffic routing (operating strictly without VPN/TUN layers). Built around the native **Aether Core** framework and a modern **Jetpack Compose** interface, Manjaniq provides a stable, secure, and lightweight proxy management experience.
 
-## Build (local)
+---
 
-Requires JDK 17. The Android SDK is not required to be installed manually when
-building through GitHub Actions; for local builds the Android Gradle Plugin
-will download SDK components only if an SDK is installed (for example via
-Android Studio, or by setting `ANDROID_HOME` and installing
-`platforms;android-35` and `build-tools;35.0.0`).
+## ✨ Key Features
 
-```bash
-./gradlew assembleDebug
-# Output: app/build/outputs/apk/debug/app-debug.apk
-```
+* **Pure SOCKS5 / Loopback Architecture:** Binds directly to a local loopback port (`127.0.0.1:1819`) without invoking system-wide VPN services.
+* **Aether Core Integration:** Fully ported core modules, identity managers (`AetherIdentityManager`), key parsers, and command renderers matching the reference design.
+* **Psiphon Support with Conditional UI:** Integrated Psiphon tunneling capabilities featuring dynamically conditioned **Exit Country Codes** (visible and active exclusively when Psiphon is toggled ON).
+* **Advanced Proxy Settings:** Comprehensive scan modes, IP version selector, and UDP obfuscation controls.
+* **Clean UI & Modern Design:** Built with Jetpack Compose and Material Design 3, completely stripped of deprecated fields (such as remote "remark" inputs) for a streamlined user experience.
 
-Useful commands:
+---
 
-```bash
-./gradlew --version     # Verify wrapper and Gradle version (8.9)
-./gradlew help          # Sanity-check project configuration
-./gradlew lint          # Run Android lint
-```
+## 🛠️ Tech Stack
 
-## Toolchain versions
+* **Language:** Kotlin (Android UI & Application Logic) / Rust (`libaether.so` JNI Native Core).
+* **UI Framework:** Jetpack Compose & Material 3.
+* **Interfacing:** JNI (Java Native Interface) bridge for high-speed native execution.
+* **CI/CD & Automation:** GitHub Actions (automated compilation, artifact packaging, and emulator smoke tests).
 
-| Component | Version |
-|---|---|
-| Gradle (wrapper) | 8.9 |
-| Android Gradle Plugin | 8.7.2 |
-| Kotlin | 2.0.21 |
-| Compose Compiler | Kotlin Compose plugin 2.0.21 |
-| Compose BOM | 2024.09.03 |
-| JDK | 17 |
+---
 
-## Project layout
+## 📱 Download & Installation
 
-```
-Manjaniq/
-├── app/                          # Android application module
-│   └── src/main/
-│       ├── java/com/manjaniq/    # MainActivity + Compose UI
-│       ├── res/                  # Strings, theme
-│       └── AndroidManifest.xml
-├── core/
-│   ├── models/                   # EngineState, RSTAConfig, OperationResult
-│   ├── interfaces/               # EngineController, EngineStatusProvider, Logger
-│   └── common/                   # Reserved (empty)
-├── engine/rstaspoof/             # Genuine RSTA engine (embeddable Go package)
-├── native/                       # JNI bridge (bridge.go + bridge.c) and verifier
-├── rsta-source/                  # Pristine upstream RSTA source (reference only)
-├── .github/workflows/            # CI build
-└── *.md                          # Architecture, roadmap, UI guide, report
-```
+You can download the latest pre-compiled debug APKs directly from the **GitHub Actions** workflow:
+
+1. Navigate to the [Actions](https://github.com/ehsanbagherigit/manjaniq/actions) tab in the repository.
+2. Select the latest successful workflow run (`Build Debug APK`).
+3. Download the architecture-specific artifacts:
+   * **`manjaniq-arm64-debug-apk`** (For modern ARM64 devices)
+   * **`manjaniq-x86_64-debug-apk`** (For emulators and x86_64 systems)
+
+---
+
+## 🏗️ Project Structure
+
+```text
+com.manjaniq/
+├── core/           # Aether core management, identity handlers, and argument renderers
+├── ui/             # Jetpack Compose screens, view models, and UI components
+├── native/         # JNI bridge implementations and native library bindings
+└── data/           # Storage, preferences, and co
+nfiguration handlers
+🤝 Contributing
+Contributions, feature requests, and bug reports are welcome! Feel free to open an issue or submit a pull request.
+📄 License
+This project is licensed under the MIT License. See the LICENSE file for details.
