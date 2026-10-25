@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="aether_protocol_entries" translatable="false">
+        <item>MASQUE</item>
+        <item>WireGuard</item>
+        <item>Warp in Warp (Gool)</item>
+        <item>MASQUE in MASQUE</item>
+        <item>WireGuard over MASQUE</item>
+    </string-array>
+    <string-array name="aether_protocol_values" translatable="false">
+        <item>masque</item>
+        <item>wg</item>
+        <item>gool</item>
+        <item>mim</item>
+        <item>wg-over-masque</item>
+    </string-array>
+    <string-array name="aether_transport_entries" translatable="false">
+        <item>HTTP/2 (TCP)</item>
+        <item>HTTP/3 (QUIC)</item>
+    </string-array>
+    <string-array name="aether_transport_values" translatable="false">
+        <item>h2</item>
+        <item>h3</item>
+    </string-array>
+    <string-array name="aether_scan_values" translatable="false">
+        <item>turbo</item>
+        <item>balanced</item>
+        <item>thorough</item>
+        <item>verified</item>
+        <item>ironclad</item>
+    </string-array>
+    <string-array name="aether_obfuscation_values" translatable="false">
+        <item>auto</item>
+        <item>off</item>
+        <item>light</item>
+        <item>firewall</item>
+        <item>balanced</item>
+        <item>gfw</item>
+        <item>aggressive</item>
+    </string-array>
+    <string-array name="aether_ip_entries" translatable="false">
+        <item>IPv4</item>
+        <item>IPv6</item>
+        <item>IPv4 + IPv6</item>
+    </string-array>
+    <string-array name="aether_ip_values" translatable="false">
+        <item>v4</item>
+        <item>v6</item>
+        <item>both</item>
+    </string-array>
+    <string-array name="aether_psiphon_values" translatable="false">
+        <item>off</item>
+        <item>chain</item>
+        <item>reverse</item>
+        <item>only</item>
+    </string-array>
+    <string-array name="aether_psiphon_mode_values" translatable="false">
+        <item>auto</item>
+        <item>cdn</item>
+        <item>direct</item>
+    </string-array>
+    <string-array name="aether_psiphon_cdn_set_entries" translatable="false">
+        <item>Cloudflare</item>
+        <item>Fastly</item>
+        <item>CloudFront</item>
+        <item>Akamai</item>
+        <item>Bunny</item>
+        <item>Vercel</item>
+        <item>GitHub</item>
+        <item>Curated</item>
+        <item>Legacy</item>
+    </string-array>
+    <string-array name="aether_tor_values" translatable="false">
+        <item>off</item>
+        <item>chain</item>
+        <item>reverse</item>
+        <item>only</item>
+    </string-array>
+    <string-array name="aether_tor_bridges_values" translatable="false">
+        <item>auto</item>
+        <item>first</item>
+        <item>never</item>
+        <item>own</item>
+    </string-array>
+    <string-array name="aether_tor_relays_values" translatable="false">
+        <item>auto</item>
+        <item>only</item>
+        <item>off</item>
+    </string-array>
+    <string-array name="aether_fingerprint_entries" translatable="false">
+        <item>Chrome</item>
+        <item>Chrome 120</item>
+        <item>Firefox</item>
+        <item>Semi-Python</item>
+        <item>Go</item>
+    </string-array>
+    <string-array name="aether_fingerprint_values" translatable="false">
+        <item>chrome</item>
+        <item>chrome-120</item>
+        <item>firefox</item>
+        <item>semi-python</item>
+        <item>go</item>
+    </string-array>
+    <string-array name="aether_ech_dns_options" translatable="false">
+        <item>udp://1.1.1.1</item>
+        <item>udp://1.0.0.1</item>
+        <item>udp://8.8.8.8</item>
+        <item>udp://9.9.9.9</item>
+        <item>tcp://1.1.1.1</item>
+        <item>tcp://8.8.8.8</item>
+        <item>https://1.1.1.1/dns-query</item>
+        <item>https://1.0.0.1/dns-query</item>
+        <item>https://8.8.8.8/dns-query</item>
+        <item>https://9.9.9.9/dns-query</item>
+        <item>https://cloudflare-dns.com/dns-query</item>
+        <item>https://dns.google/dns-query</item>
+        <item>https://dns.quad9.net/dns-query</item>
+    </string-array>
+    <string-array name="aether_ech_domain_options" translatable="false">
+        <item>cloudflare-ech.com</item>
+        <item>crypto.cloudflare.com</item>
+    </string-array>
+    <string-array name="aether_api_name_options" translatable="false">
+        <item>api.devices.cloudflare.com</item>
+        <item>api.cloudflareclient.com</item>
+    </string-array>
+    <string-array name="aether_upstream_options" translatable="false">
+        <item>socks5://127.0.0.1:10808</item>
+        <item>socks5://127.0.0.1:1080</item>
+        <item>socks5://127.0.0.1:2080</item>
+        <item>socks5://127.0.0.1:9050</item>
+    </string-array>
+</resources>

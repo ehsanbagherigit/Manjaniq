@@ -4,6 +4,26 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+/**
+ * The ABIs this build packages, from `-Pmanjaniq.abis=arm64-v8a,x86_64`.
+ *
+ * A physical device is arm64-v8a, and every native file in the APK is ~2-3x the
+ * size it needs to be once a second architecture is carried for an emulator:
+ * libaether.so (Rust + BoringSSL), libmanjaniq_native.so (Go), libc++_shared.so
+ * and the Psiphon helper each exist once per ABI. CI therefore assembles the
+ * deliverable with `-Pmanjaniq.abis=arm64-v8a` and a second, x86_64-only APK for
+ * the emulator gate (.github/workflows/build-debug.yml), which is why the
+ * default here is still both: a plain `./gradlew assembleDebug` must go on
+ * producing an APK an emulator can install.
+ */
+val manjaniqAbis: List<String> =
+    (project.findProperty("manjaniq.abis") as String?)
+        ?.split(',')
+        ?.map { it.trim() }
+        ?.filter { it.isNotEmpty() }
+        ?.takeIf { it.isNotEmpty() }
+        ?: listOf("arm64-v8a", "x86_64")
+
 android {
     namespace = "com.manjaniq"
     compileSdk = 35
@@ -16,8 +36,10 @@ android {
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
+        // Only the architectures this build actually ships (see [manjaniqAbis]).
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters.clear()
+            abiFilters += manjaniqAbis
         }
     }
 
@@ -32,7 +54,30 @@ android {
     }
     packaging {
         jniLibs {
-            useLegacyPackaging = false
+            /**
+             * True so the APK is installed with `extractNativeLibs=true`, i.e. the
+             * native libraries are written into the app's read-only library
+             * directory instead of being mapped from inside the APK.
+             *
+             * Android 10 (API 29) enforces W^X: an app that targets 29 or newer may
+             * not `execve` a file in its own writable data directory. Aether runs
+             * two helper processes - a Tor pluggable transport
+             * (`bridges.rs` -> `--tor-pt`) and `psiphon-tunnel-core`
+             * (`psiphon.rs:749` -> `--psiphon-bin`) - and those arrive as
+             * `lib<name>.so` entries in jniLibs (scripts/ci/build_helpers.sh).
+             * Without extraction they are not files on disk at all, so they cannot
+             * be started; with it, they live in the one directory the platform both
+             * populates and allows exec from.
+             *
+             * `AetherHelpers` only ever resolves a helper inside that directory and
+             * refuses an executable that sits in `filesDir`, so nothing here weakens
+             * the W^X boundary: the data directory still holds no executable code.
+             *
+             * Cost: the libraries occupy disk twice (once in the APK, once
+             * extracted) and installation is a little slower. libaether.so itself
+             * loads either way.
+             */
+            useLegacyPackaging = true
         }
     }
 
@@ -49,6 +94,13 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    // The dependency metadata blob AGP can write into the APK (an app-store
+    // reporting feature) is dead weight for a local/CI build.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
 
     testOptions {
@@ -68,6 +120,8 @@ kotlin {
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.activity:activity-compose:1.9.3")
 
@@ -76,9 +130,13 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
+    // Only five icons are drawn (Home, Settings, Info, List, Menu), all of which
+    // live in material-icons-core. `material-icons-extended` carries ~10k vector
+    // icons - several megabytes of dex - and one icon used to need it.
+    implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.navigation:navigation-compose:2.8.4")
-    debugImplementation("androidx.compose.ui:ui-tooling")
+    // ui-tooling (the preview/debug inspector) is not packaged: this project has
+    // no @Preview composables, and it only ever shipped into the debug APK.
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.13")

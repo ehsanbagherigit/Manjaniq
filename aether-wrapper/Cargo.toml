@@ -2,7 +2,7 @@
 name = "aether-jni"
 version = "0.1.0"
 edition = "2021"
-description = "Manjaniq JNI wrapper for Aether v2.3.0"
+description = "Manjaniq JNI wrapper for Aether v2.4.0"
 license = "AGPL-3.0-only"
 
 [lib]
@@ -11,11 +11,46 @@ crate-type = ["cdylib"]
 path = "src/lib.rs"
 
 [dependencies]
-# Path-pinned to vendored third_party/Aether (v2.3.0 peeled 6175b67). Avoids git fetch
-# and allows rust-version patch (1.98 -> 1.56) for CI stable.
+# Path-pinned to vendored third_party/Aether (v2.4.0 peeled d58f9d5). Avoids git fetch
+# and allows rust-version patch on quiche for CI stable.
+#
+# NO `tor` FEATURE.
+#
+# The `tor` feature pulls arti-client (+ its `pt-client`, `static-sqlite` and
+# `liblzma` dependencies) into libaether.so. The app has no Tor route any more -
+# the Tor routes and their pluggable transports were removed with the engine
+# options screen - and no argument list this app builds ever contains `--tor*`
+# (`AetherConfig.toAetherArgs`), so that code could never run. Without the
+# feature `tor.rs` compiles its `unsupported()` stubs instead
+# (`tor.rs:210-228`), which is upstream's supported non-tor configuration, and
+# the parts of arti, sqlite and liblzma stop being packaged: a third of the
+# shared library's bytes that nothing on this platform could reach.
 aether = { path = "../third_party/Aether/aether" }
 jni = "0.21.1"
 serde_json = "1"
+# The bridge installs its own `log` sink (logcat + an in-memory ring the app
+# reads back), so the engine's own messages reach the device log and the app's
+# log panel instead of a stderr nobody owns. Same version the core resolves.
+log = "0.4"
 
 # Build requirements documented in aether/README.md:
 # CMake, C++ compiler, Perl required for BoringSSL (NDK provides clang)
+
+# Profile settings only take effect from the workspace root, i.e. from here:
+# `third_party/Aether/aether/Cargo.toml` is a path *dependency* of this crate,
+# so the `[profile.release]` block it carries (lto = "fat", strip = true, …) has
+# never applied to this build. Cargo only reads the profiles of the workspace
+# root, which is why libaether.so has so far shipped unstripped and without
+# link-time optimisation.
+#
+# `strip = "symbols"` removes the symbol tables that were the bulk of the file;
+# `lto = "thin"` lets the cross-crate inlining happen (thin rather than fat keeps
+# the CI build within its time budget) and drops the dead code the JNI surface
+# never reaches. Neither changes behaviour: the JNI exports are `#[no_mangle]`
+# and therefore stay in the dynamic symbol table.
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 16
+panic = "unwind"
+strip = "symbols"

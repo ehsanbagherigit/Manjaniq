@@ -129,9 +129,3 @@ data class RSTAConfig(
 
 private val HOSTNAME_REGEX =
     Regex("^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$")
-
-// OperationResult represents the result of an operation with success/failure semantics.
-sealed class OperationResult<T> {
-    data class Success<T>(val data: T) : OperationResult<T>()
-    data class Failure<T>(val errorMessage: String, val errorCode: Int? = null) : OperationResult<T>()
-}

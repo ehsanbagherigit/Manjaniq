@@ -1,0 +1,146 @@
+package com.manjaniq.core
+
+import java.net.URI
+
+data class AetherEndpoint(val host: String, val port: Int) {
+
+    override fun toString(): String = if (':' in host) "[$host]:$port" else "$host:$port"
+
+    fun format(): String = toString()
+
+    companion object {
+
+        private val domainLabel = Regex("""^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$""")
+        private val countryCode = Regex("""^[a-zA-Z]{2}$""")
+
+        fun of(host: String?, port: String?): AetherEndpoint? {
+            val address = host?.trim()?.removeSurrounding("[", "]")?.let(::canonicalAddress) ?: return null
+            val number = port?.trim()?.let(::decimal)?.takeIf { it in 1..65535 } ?: return null
+            return AetherEndpoint(address, number)
+        }
+
+        fun parse(value: String?): AetherEndpoint? {
+            val text = value?.trim().orEmpty()
+            val separator = text.lastIndexOf(':')
+            if (separator <= 0) return null
+            val host = text.substring(0, separator)
+            if (':' in host && !(host.startsWith('[') && host.endsWith(']'))) return null
+            return of(host, text.substring(separator + 1))
+        }
+
+        fun isValidHost(host: String): Boolean = canonicalAddress(host.removeSurrounding("[", "]")) != null
+
+        private fun canonicalAddress(address: String): String? =
+            if (':' in address) {
+                ipv6Groups(address)?.let(::formatIpv6)
+            } else {
+                ipv4Octets(address)?.joinToString(".")
+            }
+
+        private fun decimal(text: String): Int? {
+            if (text.isEmpty() || text.length > 5) return null
+            return text.fold(0) { value, ch -> value * 10 + (ch.digitToIntOrNull() ?: return null) }
+        }
+
+        private fun ipv4Octets(address: String): List<Int>? {
+            val parts = address.split('.')
+            if (parts.size != 4) return null
+            return parts.map { part ->
+                if (part.length !in 1..3 || part.length > 1 && part.first().digitToIntOrNull() == 0) return null
+                decimal(part)?.takeIf { it <= 255 } ?: return null
+            }
+        }
+
+        private fun ipv6Groups(address: String): List<Int>? {
+            val halves = address.split("::")
+            if (halves.size > 2) return null
+            val compressed = halves.size == 2
+            val head = hexGroups(halves[0], allowIpv4 = !compressed) ?: return null
+            val tail = if (compressed) hexGroups(halves[1], allowIpv4 = true) ?: return null else emptyList()
+            val missing = 8 - head.size - tail.size
+            if (if (compressed) missing < 1 else missing != 0) return null
+            return head + List(missing) { 0 } + tail
+        }
+
+        private fun hexGroups(section: String, allowIpv4: Boolean): List<Int>? {
+            if (section.isEmpty()) return emptyList()
+            val pieces = section.split(':')
+            return buildList {
+                pieces.forEachIndexed { index, piece ->
+                    if (allowIpv4 && index == pieces.lastIndex && '.' in piece) {
+                        val octets = ipv4Octets(piece) ?: return null
+                        add(octets[0] shl 8 or octets[1])
+                        add(octets[2] shl 8 or octets[3])
+                    } else {
+                        if (piece.length !in 1..4) return null
+                        add(piece.fold(0) { value, ch -> value * 16 + (ch.digitToIntOrNull(16) ?: return null) })
+                    }
+                }
+            }
+        }
+
+        private fun formatIpv6(groups: List<Int>): String {
+            var runStart = -1
+            var runLength = 1
+            var index = 0
+            while (index < groups.size) {
+                val start = index
+                while (index < groups.size && groups[index] == 0) index++
+                if (index - start > runLength) {
+                    runStart = start
+                    runLength = index - start
+                }
+                index++
+            }
+            val text = groups.map { it.toString(16) }
+            if (runStart < 0) return text.joinToString(":")
+            val head = text.subList(0, runStart).joinToString(":")
+            val tail = text.subList(runStart + runLength, text.size).joinToString(":")
+            return "$head::$tail"
+        }
+
+        fun isValidDomain(value: String?): Boolean {
+            val domain = value?.trim()?.trimEnd('.')?.takeIf { it.isNotEmpty() && it.length <= 253 } ?: return false
+            val labels = domain.split('.')
+            if (labels.any { !domainLabel.matches(it) }) return false
+            return labels.last().any { it.isLetter() }
+        }
+
+        fun parseHostOrAddress(value: String?): String? {
+            val trimmed = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            parse(trimmed)?.let { return it.format() }
+            val colon = trimmed.lastIndexOf(':')
+            if (colon > 0 && trimmed.indexOf(':') == colon) {
+                val host = trimmed.substring(0, colon)
+                val port = decimal(trimmed.substring(colon + 1))?.takeIf { it in 1..65535 } ?: return null
+                if (!isValidDomain(host)) return null
+                return "$host:$port"
+            }
+            val bare = trimmed.removeSurrounding("[", "]")
+            return when {
+                canonicalAddress(bare) != null -> canonicalAddress(bare)
+                !trimmed.startsWith('[') && isValidDomain(trimmed) -> trimmed
+                else -> null
+            }
+        }
+
+        fun isValidEchDns(value: String?): Boolean = AetherFmt.isEchDns(value.orEmpty())
+
+        fun isValidDnsList(value: String?): Boolean {
+            val trimmed = value?.trim()?.takeIf { it.isNotEmpty() } ?: return true
+            val items = trimmed.split(',')
+            return items.isNotEmpty() && items.all { item ->
+                val clean = item.trim()
+                clean.isNotEmpty() && (parse(clean) != null || canonicalAddress(clean.removeSurrounding("[", "]")) != null)
+            }
+        }
+
+        fun isValidExitLoc(value: String?): Boolean {
+            val trimmed = value?.trim()?.takeIf { it.isNotEmpty() } ?: return true
+            val body = trimmed.removePrefix("!").trim()
+            if (body.isEmpty()) return false
+            val codes = body.split(',', ' ').map { it.trim() }.filter { it.isNotEmpty() }
+            return codes.isNotEmpty() && codes.all { countryCode.matches(it) }
+        }
+    }
+}

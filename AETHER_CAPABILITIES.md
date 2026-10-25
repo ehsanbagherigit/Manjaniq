@@ -7,11 +7,25 @@ Scope: the Aether module of this app only (`app/src/main/java/com/manjaniq/{Aeth
 Nothing here is inferred from a feature name. Every row cites the file and line
 that establishes it, or says explicitly that it could not be established.
 
+> **Updated: one start path.** The app now starts Aether only through
+> `aether_core_start` - the core's own command line - so every setting the screen
+> offers is handed to the engine and applied. The granular FFI calls
+> (`aether_identity_open` -> `aether_scan_start` -> `aether_tunnel_start`) were
+> removed from the bridge, the JNI wrapper and the service: their payload structs
+> carry a fixed handful of fields, so most of the configuration could never be
+> applied through them. Sections 1-8 below are the audit of that former path,
+> kept because their citations are still true of the vendored core; read any
+> "recorded only"/"not forwarded" row there as history. §9 documents the path the
+> app actually uses, the packaged helper processes it needs, and what Android 10+
+> (W^X) allows.
+
 ---
 
-## 1. What "reachable" means in this build
+## 1. What "reachable" means in this build (history: the removed granular path)
 
-`AetherService` drives Aether through three granular FFI calls plus polling:
+`AetherService` used to drive Aether through three granular FFI calls plus
+polling. Nothing in the app calls them any more; §9 describes the start path in
+use. The table is kept because it explains why they were not enough:
 
 | FFI call | Payload struct | Fields Aether actually reads |
 |---|---|---|
@@ -315,3 +329,155 @@ Listed so nothing is mistaken for missing when it is only unwired:
   returns device id, addresses, organization, gateway proxy, assigned endpoint and
   the MASQUE certificate state (`api.rs:228-238`). No caller: it is a separate call
   from the open reply, and nothing in the panel needs it yet.
+
+---
+
+## 9. The start path in use: `aether_core_start`
+
+### 9.1 Why the command line, and nothing else
+
+The three granular calls carry fixed payload structs (`ffi.rs:215-260`):
+
+| call | fields |
+|---|---|
+| `aether_identity_open` | `path`, `transport`, `model`, `locale`, `team` |
+| `aether_scan_start` | `transport`, `mode`, `ip`, `profile`, `ports`, `excluded`, `ech` |
+| `aether_tunnel_start` | `peer`, `transport`, `socks`, `http`, `profile`, `keepalive`, `ech` |
+
+Everything else the core implements - `--gool`, `--mim`, `--tor*`, `--psiphon*`,
+`--team`/`--access-*`/`--gateway`, `--routes`/`--route-block`/`--route-direct`,
+`--upstream`, `--dns`, `--quick-reconnect`, `--stats`, `--mark`, `--register`,
+`--tls-*`, `--ech*`, `--h2`/`--h3` - has no field there, because it is parsed by
+`cli.rs` into `AETHER_*` variables before `run_with` starts (`lib.rs:77`).
+
+`aether_core_start` (`ffi.rs:492`) runs `cli::parse_args` over a JSON array of
+arguments and then `run_with`, returning a pollable, cancellable job. That is the
+app's only start path. `AetherConfig.toAetherArgs` builds the list from the same
+model the settings screen edits, and `AetherService.startEngine` drives it: start
+the job, poll it, probe the loopback SOCKS listener until it answers, then hold
+the job until it ends.
+
+There is no stored mode and no mode check: `AetherConfig.validate()` accepts all
+four protocols (`--masque`, `--wg`, `--gool`, `--mim` all write `AETHER_PROTOCOL`
+in `cli.rs:551-563`), and a configuration written by an earlier build that still
+carries a `startMode` member loads with that member ignored.
+
+### 9.2 What a child process needs, and why it lives in lib/
+
+Two Aether features spawn an executable:
+
+| child process | spawned by | flag | needed for |
+|---|---|---|---|
+| `psiphon-tunnel-core` | `psiphon.rs:749` | `--psiphon-bin` | every `--psiphon*` mode |
+| lyrebird (obfs4, snowflake, webtunnel) | `bridges.rs` | `--tor-pt [name=]<path>` | bridges that name a pluggable transport; plain Tor needs none |
+
+Upstream ships both in a `pt/` folder built as static `GOOS=linux CGO_ENABLED=0`
+ELFs - a pure-Go binary needs no libc, so it runs unchanged under Android
+(`third_party/Aether/.github/workflows/release.yml`, `android` job).
+
+Android 10 (API 29) enforces W^X: an app may not `execve` a file in its writable
+data directory. The read-only native library directory is therefore the only
+place these may live, so:
+
+1. `scripts/ci/build_helpers.sh` runs the upstream build scripts and installs the
+   results as `lib/arm64-v8a/liblyrebird.so` and
+   `lib/arm64-v8a/libpsiphon_tunnel_core.so` (and the same for `x86_64`);
+2. `app/build.gradle.kts` sets `useLegacyPackaging = true`, i.e. the APK installs
+   with `extractNativeLibs=true`, so those entries become real files in
+   `nativeLibraryDir`;
+3. `AetherHelpers` resolves them **only** there, requires the execute bit, and
+   refuses a path outside that directory (`AetherHelpers.isExecutableLibraryFile`);
+4. `AetherConfig.toAetherArgs` names the resolved files on the command line, and
+   only where the user left the field blank - a path the user typed always wins.
+
+State is the other way round: tor's cache and psiphon's data must be writable, so
+`--tor-dir` / `--psiphon-dir` point into `filesDir` (`filesDir/aether/tor`,
+`filesDir/aether/psiphon`). Data is writable, code is not.
+
+Because a helper can be absent (upstream unreachable during the build, or a build
+that chooses not to ship one), both paths fail closed:
+
+* `AetherConfig.validate()` refuses a Psiphon route with no binary and no packaged
+  helper, and a bridged Tor route with no transport, naming the missing file;
+* the CI step that packages them reports a `::warning::`, never a failure, and
+  the APK verification prints what was actually packaged.
+
+### 9.3 Reach
+
+Every setting the screen offers is in the argument list, and
+`AetherSingleEngineTest.everySettingTheScreenOffersReachesTheArgumentList` proves
+it by reading the argument list the service is handed. The "ENGINE OPTIONS"
+group and its model (`AetherEngineOptions`) were removed, so the table below is
+the whole surface: what is not listed is not configurable in this build.
+
+| setting | applied through |
+|---|---|
+| transport, scanMode, ipVersion, socksBind, httpProxyBind, peer, identityPath | `--bind`, `--scan`, `-4/-6/--dual`, `--masque`/`--wg`/`--gool`/`--mim`, `--config` |
+| echEnabled, noizeProfile, teamName | `--ech auto`, `--noize`, `--team` |
+| fragmentEnabled/Size/Delay | `--h2`/`--h3`, `--fragment`/`--no-fragment`, `--fragment-size`, `--fragment-delay` |
+| fragmentSniSplit | `AETHER_MASQUE_H2_FRAGMENT_SNI` through `AetherBridge.fragmentingApply` (upstream has no flag) |
+| dns, upstream, quickReconnect | `--dns`, `--upstream`, `--quick-reconnect` |
+| gool, mim | `--gool`, `--mim` (per-protocol endpoints were part of the removed group) |
+| Psiphon (toggle, region, listener) on the Psiphon route | `--psiphon`, `--psiphon-region`, `--psiphon-bind`; the packaged `psiphon-tunnel-core` is named with `--psiphon-bin`/`--psiphon-dir` |
+| Zero Trust team | `--team` (written once, from the route field) |
+
+Removed with the group: Tor layering and bridges, the gool/mim endpoint
+overrides, the Zero Trust service-token credentials and gateway toggle, routing
+lists, TLS/ECH overrides, timing/stats/marks, log levels and `--register`. Their
+models, strings, tests and the four Tor routes were deleted with them; a stored
+configuration that still names any of it loads and is simply not applied.
+
+### 9.4 UI
+
+* There is no start-path choice to make: the route's settings *are* the command
+  line.
+* Transport chips offer all four protocols. Nothing is greyed out for a mode,
+  because there is no second mode to switch to.
+* No reach note is printed: a setting shown on screen is a setting the engine is
+  handed. `AetherPanelUiTest.everyProtocolIsOfferedAndClickable` pins that no
+  "not selectable"/"recorded only" label survives.
+* The route list has two entries: `Warp direct` and `Aether + Psiphon`. The four
+  Tor routes and the **Engine options** group were deleted together with their
+  model, strings and tests; the remaining controls are the route's own sections
+  (gateway, tunnel, advanced, and Psiphon where the route uses it) plus the
+  fragmenting area.
+* `AetherSingleEngineTest.everySettingARouteOffersCanBeRendered` and
+  `theRemovedSettingsAreNotOfferedAnyMore` keep that claim honest: every key a
+  route names is drawable, and a key that belonged to the deleted group is not
+  offered by any route.
+
+### 9.5 One start begins from its own argument list
+
+`run_with` reads its settings from the process environment, and `cli::parse_args`
+writes them there (`cli.rs:647-653`). The app runs in one Android process that
+outlives a tunnel, so a value written by the previous start would otherwise still
+be in force: turning Tor off would leave `AETHER_TOR=chain` behind and the engine
+would keep chaining through Tor while the screen said it was off. Kotlin has no
+`setenv`, so `AetherBridge.envReset()` (`nativeAetherEnvReset` in
+`aether-wrapper/src/lib.rs`) removes every `AETHER_*` name and the service calls it
+before it applies fragmenting and before it starts the job. Only `AETHER_*` names
+are touched, the call is synchronous and it returns before the job that parses the
+argument list exists, so each start is decided by the configuration and nothing
+else. A reset that cannot be reported stops the start with that reason, rather than
+running a configuration that might be half the previous one.
+
+### 9.6 Identity and the removed registration run
+
+Registration is now what the core does on its own: a start without an identity
+file registers one at `--config` before it dials. The explicit `--register`
+one-shot run, its budget (`AetherJobPolling.identityTimeoutMs`), the failure
+reporting (`AetherRegistrationOutcome`) and the connectivity snapshot
+(`AetherNetworkCheck`) belonged to the removed engine-options group and were
+deleted with it.
+
+What replaced it is a preflight that makes the identity path and the two
+listeners the app's business before the core is asked to run
+(`AetherPreflight`):
+
+* the identity path must be relative and stay inside `filesDir`, and its
+  directory is created before the start (a nested path used to have none);
+* `localhost:PORT` is rewritten to `127.0.0.1:PORT`, because the core parses
+  both listeners with `SocketAddr::parse` and otherwise falls back to its own
+  default (SOCKS) or drops the listener silently (HTTP proxy, `lib.rs:2572-2585`);
+* both ports are probed for a bind conflict first, so "already in use" is said in
+  the app's words instead of arriving as an engine error mid-tunnel.

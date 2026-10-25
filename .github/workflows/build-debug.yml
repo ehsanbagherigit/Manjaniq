@@ -10,11 +10,22 @@ permissions:
   pull-requests: write
   checks: write
 
+# One run per branch. Four pushes in a row used to mean four full pipelines -
+# both native builds, both APKs and an emulator boot each - racing each other,
+# and the only run that can still matter is the newest. Superseded runs are
+# cancelled instead of queued, so a fix gets its answer sooner and the branch
+# does not spend an hour of runner time proving an already-replaced commit.
+concurrency:
+  group: build-debug-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # Gates (all required - no job is continue-on-error):
 #   build          : asset/format validation, Go engine tests (incl. the
 #                    ephemeral-port tests), native libs, Kotlin compile,
 #                    host unit tests (incl. Robolectric real-UI launch),
-#                    debug APK assembly + content verification, artifact.
+#                    one APK per ABI (arm64 deliverable, x86_64 for the
+#                    emulator) + content verification, the 40 MiB size gate
+#                    on the deliverable, artifact.
 #   emulator-smoke : installs the exact APK artifact from `build`, launches
 #                    the real launcher activity, verifies RESUMED + process
 #                    liveness, then runs the on-device instrumentation
@@ -138,15 +149,18 @@ jobs:
           # arm64-v8a
           export GOARCH=arm64
           export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+          # -trimpath and -ldflags="-s -w" drop the build paths and the symbol
+          # tables. A Go c-shared library keeps its exported cgo symbols either
+          # way; what goes is debug metadata that was a third of the file.
           go build \
-            -buildmode=c-shared \
+            -buildmode=c-shared -trimpath -ldflags="-s -w" \
             -o app/src/main/jniLibs/arm64-v8a/libmanjaniq_native.so \
             ./native
           # x86_64 (for emulator smoke test)
           export GOARCH=amd64
           export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang"
           go build \
-            -buildmode=c-shared \
+            -buildmode=c-shared -trimpath -ldflags="-s -w" \
             -o app/src/main/jniLibs/x86_64/libmanjaniq_native.so \
             ./native
           ls -lh app/src/main/jniLibs/arm64-v8a/ app/src/main/jniLibs/x86_64/
@@ -158,13 +172,13 @@ jobs:
           export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-${ANDROID_HOME:-}/ndk/25.2.9519653}"
           echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
           test -n "${ANDROID_NDK_HOME}" || { echo "::error::ANDROID_NDK_HOME not set"; echo "ANDROID_HOME=${ANDROID_HOME}"; ls -ld ${ANDROID_HOME}/ndk 2>&1 || true; exit 1; }
-          # Verify source is pinned to v2.3.0 (vendored path or git tag)
+          # Verify source is pinned to v2.4.0 (vendored path or git tag)
           test -f third_party/Aether-LICENSE || { echo "::error::Missing third_party/Aether-LICENSE (AGPL)"; exit 1; }
           test -f aether-wrapper/Cargo.toml || { echo "::error::aether-wrapper/Cargo.toml missing"; exit 1; }
-          (grep -q 'tag = "v2.3.0"' aether-wrapper/Cargo.toml || grep -q 'path = "../third_party/Aether/aether"' aether-wrapper/Cargo.toml) || { echo "::error::aether-wrapper not pinned to v2.3.0"; cat aether-wrapper/Cargo.toml; exit 1; }
+          (grep -q 'tag = "v2.4.0"' aether-wrapper/Cargo.toml || grep -q 'path = "../third_party/Aether/aether"' aether-wrapper/Cargo.toml) || { echo "::error::aether-wrapper not pinned to v2.4.0"; cat aether-wrapper/Cargo.toml; exit 1; }
           test -f third_party/Aether/aether/Cargo.toml || { echo "::error::vendored Aether missing"; ls third_party/Aether/ 2>&1 | head -n 20; exit 1; }
-          grep -q 'version = "2.3.0"' third_party/Aether/aether/Cargo.toml || { echo "::error::vendored Aether not v2.3.0"; cat third_party/Aether/aether/Cargo.toml | head -n 10; exit 1; }
-          # Vendor path in third_party/Aether (v2.3.0 peeled 6175b67) already patched: rust-version 1.98→1.56, 1.88→1.56
+          grep -q 'version = "2.4.0"' third_party/Aether/aether/Cargo.toml || { echo "::error::vendored Aether not v2.4.0"; cat third_party/Aether/aether/Cargo.toml | head -n 10; exit 1; }
+          # Vendor path in third_party/Aether (v2.4.0 peeled d58f9d5) patched to omit rust-version 1.88 on quiche
           sudo apt-get update && sudo apt-get install -y cmake perl pkg-config || true
           rustc --version || echo "rustc missing"; cargo --version || echo "cargo missing"; cargo ndk --version 2>&1 || cargo-ndk --version 2>&1 || echo "cargo-ndk missing, will try cargo ndk"
           cmake --version 2>&1 | head -n1 || echo "cmake missing"; perl --version 2>&1 | head -n1 || echo "perl missing"
@@ -188,8 +202,13 @@ jobs:
           echo "--- tail x64 log ---"
           cat /tmp/aether_x64.log 2>&1 | tail -n 100 || echo "no x64 log"
           ls -R app/src/main/jniLibs 2>&1 | head -n 30
-          # Emit first error with file location as annotation (visible via API)
-          if [ -f /tmp/aether_arm64.log ]; then
+          # Emit the first error with its file location as an annotation, but
+          # only when the build failed: cargo prints `--> file:line` for its
+          # warnings too, and an error annotation for a successful build is a red
+          # mark on a green run.
+          BUILT=0
+          if [ "${RC:-1}" -eq 0 ] && [ -f app/src/main/jniLibs/arm64-v8a/libaether.so ]; then BUILT=1; fi
+          if [ "$BUILT" -eq 0 ] && [ -f /tmp/aether_arm64.log ]; then
             LOC=$(grep -E "^\s*--> " /tmp/aether_arm64.log 2>&1 | head -n5 | tr '\n' '|' | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-1200)
             ERR=$(grep -m1 -E "error\[|error: |FAILED|failed to run caml|missing lifetime" /tmp/aether_arm64.log 2>&1 | head -n1 | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-800)
             CTX=$(grep -B2 -A2 -E "missing lifetime" /tmp/aether_arm64.log 2>&1 | head -n10 | tr '\n' '|' | sed 's/%/%25/g; s/\r/%0D/g' | cut -c1-1200)
@@ -253,6 +272,20 @@ jobs:
             echo "INFO: libaether does not list libc++_shared.so in DT_NEEDED (maybe statically linked?) - still package for safety" | tee -a /tmp/aether_arm64.log
           fi
 
+      - name: Build the Aether helper binary (Psiphon)
+        run: |
+          set -uo pipefail
+          # The helper process Aether spawns: psiphon-tunnel-core for every
+          # --psiphon* mode. Built as a static GOOS=linux ELF precisely the way
+          # upstream's android release job does
+          # (third_party/Aether/.github/workflows/release.yml: android job), then
+          # installed under lib<name>.so so the packager puts them in lib/<abi>/,
+          # the only directory Android 10+ permits exec from.
+          bash scripts/ci/build_helpers.sh arm64 app/src/main/jniLibs/arm64-v8a /tmp/aether_helpers_arm64.log
+          bash scripts/ci/build_helpers.sh amd64 app/src/main/jniLibs/x86_64 /tmp/aether_helpers_x64.log
+          echo "=== jniLibs after helpers ==="
+          ls -l app/src/main/jniLibs/arm64-v8a app/src/main/jniLibs/x86_64
+
       - name: Verify native libraries (RSTA + Aether)
         run: |
           set -euo pipefail
@@ -268,6 +301,38 @@ jobs:
             echo "::error::libaether.so not built - workflow must produce it"
             exit 1
           fi
+          # Helper binaries Aether spawns at run time. They are warned about, not
+          # failed on: libaether works without them (AetherHelpers reports the gap
+          # in the UI), and an upstream outage must not turn the pipeline red.
+          for helper in libpsiphon_tunnel_core.so; do
+            for abi in arm64-v8a x86_64; do
+              file="app/src/main/jniLibs/$abi/$helper"
+              if [ -f "$file" ]; then
+                echo "helper present: $file ($(stat -c%s "$file") bytes)"
+              else
+                echo "::warning title=Helper missing::$file was not produced; the Psiphon route will report the missing executable in the app"
+              fi
+            done
+          done
+          # A packaged helper must be a static ELF: Android would refuse a glibc
+          # interpreter, and a dynamic binary there fails only on the device.
+          for abi in arm64-v8a x86_64; do
+            for helper in libpsiphon_tunnel_core.so; do
+              file="app/src/main/jniLibs/$abi/$helper"
+              [ -f "$file" ] || continue
+              if readelf -l "$file" 2>/dev/null | grep -q 'INTERP'; then
+                echo "::warning title=Helper is dynamic::$file links an interpreter and may not start on Android"
+              else
+                echo "static ELF confirmed: $file"
+              fi
+            done
+          done
+
+      - name: Verify JNI bindings (Kotlin externals vs native exports)
+        run: python3 scripts/ci/check_jni_bindings.py
+
+      - name: Validate string resources (escapes, placeholders, translations)
+        run: python3 scripts/ci/check_strings.py
 
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
@@ -289,6 +354,8 @@ jobs:
           path: |
             /tmp/aether_arm64.log
             /tmp/aether_x64.log
+            /tmp/aether_helpers_arm64.log
+            /tmp/aether_helpers_x64.log
           if-no-files-found: warn
 
       - name: Upload Gradle logs and unit test results
@@ -327,58 +394,87 @@ jobs:
               body: body
             });
 
-      - name: Build debug APK
-        run: bash scripts/ci/gradle_step.sh /tmp/gradle_assemble.log assembleDebug --stacktrace
+      # TWO APKs, ONE ARCHITECTURE EACH
+      # --------------------------------
+      # A physical device is arm64-v8a. The x86_64 leg exists so the emulator gate
+      # can run the same code, and carrying it in the shipped APK doubles every
+      # native file - libaether.so (Rust + BoringSSL + quiche), the Go engine, the
+      # C++ STL and the Psiphon helper. Gradle packages only the ABIs named by
+      # -Pmanjaniq.abis (see app/build.gradle.kts), so the deliverable is built
+      # arm64-only and the emulator artifact on its own. The second invocation is
+      # a Gradle cache hit for everything but native packaging.
+      - name: Build the debug APKs (arm64 deliverable + x86_64 for the emulator)
+        run: |
+          set -euo pipefail
+          rm -rf dist && mkdir -p dist
+          bash scripts/ci/gradle_step.sh /tmp/gradle_assemble.log assembleDebug -Pmanjaniq.abis=arm64-v8a --stacktrace
+          cp "$(ls app/build/outputs/apk/debug/*.apk)" dist/manjaniq-arm64-v8a-debug.apk
+          rm -f app/build/outputs/apk/debug/*.apk
+          bash scripts/ci/gradle_step.sh /tmp/gradle_assemble_x86_64.log assembleDebug -Pmanjaniq.abis=x86_64 --stacktrace
+          cp "$(ls app/build/outputs/apk/debug/*.apk)" dist/manjaniq-x86_64-debug.apk
+          ls -l dist
+          sha256sum dist/*.apk
 
       - name: Verify APK contents
         run: |
           set -euo pipefail
-          APK="$(ls app/build/outputs/apk/debug/*.apk)"
-          test -n "$APK"
-          echo "Checking $APK"
-          sha256sum "$APK"
-          unzip -l "$APK" > /tmp/apk_listing.txt
-          grep -q "classes.dex" /tmp/apk_listing.txt
-          grep -q "lib/arm64-v8a/libmanjaniq_native.so" /tmp/apk_listing.txt
-          grep -q "lib/x86_64/libmanjaniq_native.so" /tmp/apk_listing.txt
-          grep -q "lib/arm64-v8a/libaether.so" /tmp/apk_listing.txt || { echo "::error::APK missing lib/arm64-v8a/libaether.so"; exit 1; }
-          grep -q "lib/x86_64/libaether.so" /tmp/apk_listing.txt || echo "::warning::APK missing lib/x86_64/libaether.so"
-          # libc++_shared.so must be packaged for libaether (BoringSSL/C++). Fail if missing when libaether present.
-          if grep -q "lib/arm64-v8a/libaether.so" /tmp/apk_listing.txt; then
-            grep -q "lib/arm64-v8a/libc++_shared.so" /tmp/apk_listing.txt || { echo "::error::APK missing lib/arm64-v8a/libc++_shared.so required by libaether.so (dlopen failed: library \"libc++_shared.so\" not found)"; unzip -l "$APK" | grep -E "libc\\+\\+|libaether"; exit 1; }
-            echo "APK contains lib/arm64-v8a/libc++_shared.so - libc++ fix verified"
-          fi
-          if grep -q "lib/x86_64/libaether.so" /tmp/apk_listing.txt; then
-            grep -q "lib/x86_64/libc++_shared.so" /tmp/apk_listing.txt || echo "::warning::APK missing lib/x86_64/libc++_shared.so (emulator may fail)"
-          fi
-          # libc++_shared.so must be packaged for libaether (BoringSSL/C++). Fail if missing when libaether present.
-          if grep -q "lib/arm64-v8a/libaether.so" /tmp/apk_listing.txt; then
-            grep -q "lib/arm64-v8a/libc++_shared.so" /tmp/apk_listing.txt || { echo "::error::APK missing lib/arm64-v8a/libc++_shared.so required by libaether.so (dlopen failed: library \"libc++_shared.so\" not found)"; unzip -l "$APK" | grep -E "libc\+\+|libaether"; exit 1; }
-            echo "APK contains lib/arm64-v8a/libc++_shared.so - libc++ fix verified"
-          fi
-          if grep -q "lib/x86_64/libaether.so" /tmp/apk_listing.txt; then
-            grep -q "lib/x86_64/libc++_shared.so" /tmp/apk_listing.txt || echo "::warning::APK missing lib/x86_64/libc++_shared.so (emulator may fail)"
-          fi
-          # Launcher + brand resources must be packaged (regression for missing icon / stale logo)
-          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
-            grep -q "res/mipmap-${d}-v4/ic_launcher.png\|res/mipmap-${d}/ic_launcher.png\|mipmap-${d}.*ic_launcher" /tmp/apk_listing.txt \
-              || { echo "::error::missing ic_launcher for density $d"; exit 1; }
-          done
-          grep -q "ic_launcher_foreground" /tmp/apk_listing.txt
-          grep -q "ic_manjaniq_logo" /tmp/apk_listing.txt
-          grep -q "ic_rsta_logo" /tmp/apk_listing.txt
-          grep -q "ic_aether_logo" /tmp/apk_listing.txt
-          # The packaged in-app logo must be the regenerated one (same bytes as the resource in this checkout;
-          # AGP does not re-encode PNGs in debug builds when cruncher is off, so compare via decode instead).
-          rm -rf /tmp/apkcheck && mkdir -p /tmp/apkcheck
-          unzip -o -q "$APK" "lib/arm64-v8a/*" "res/*" -d /tmp/apkcheck || true
-          python3 - <<'PY'
+          for APK in dist/manjaniq-arm64-v8a-debug.apk dist/manjaniq-x86_64-debug.apk; do
+            case "$APK" in
+              *arm64-v8a*) ABI=arm64-v8a ;;
+              *x86_64*) ABI=x86_64 ;;
+              *) echo "::error::cannot tell the ABI of $APK"; exit 1 ;;
+            esac
+            echo "=== $APK ($ABI) ==="
+            sha256sum "$APK"
+            LIST="/tmp/apk_listing_$ABI.txt"
+            ENTRIES="/tmp/apk_entries_$ABI.txt"
+            unzip -l "$APK" > "$LIST"
+            unzip -Z1 "$APK" > "$ENTRIES"
+            grep -q "classes.dex" "$LIST" || { echo "::error::$APK has no classes.dex"; exit 1; }
+            # One architecture only: another ABI's libraries are exactly the bytes
+            # this split removes.
+            OTHER_ABI="$(grep '^lib/' "$ENTRIES" | grep -v "^lib/$ABI/" | head -n 5 || true)"
+            if [ -n "$OTHER_ABI" ]; then
+              echo "::error title=Foreign ABI packaged::$APK carries libraries of another architecture: $(echo "$OTHER_ABI" | tr '\n' ' ')"
+              exit 1
+            fi
+            grep -q "^lib/$ABI/libmanjaniq_native.so$" "$ENTRIES" \
+              || { echo "::error::APK missing lib/$ABI/libmanjaniq_native.so"; exit 1; }
+            grep -q "^lib/$ABI/libaether.so$" "$ENTRIES" \
+              || { echo "::error::APK missing lib/$ABI/libaether.so"; exit 1; }
+            # libc++_shared.so must be packaged for libaether (BoringSSL/C++), or
+            # the device reports "dlopen failed: library libc++_shared.so not found".
+            grep -q "^lib/$ABI/libc++_shared.so$" "$ENTRIES" \
+              || { echo "::error::APK missing lib/$ABI/libc++_shared.so required by libaether.so (dlopen failed: library \"libc++_shared.so\" not found)"; exit 1; }
+            echo "APK contains lib/$ABI/libc++_shared.so - libc++ fix verified"
+            # Aether's helper process (Psiphon) must be in lib/<abi>/: the only
+            # path Android 10+ allows an app to exec. Warned about rather than
+            # failed on - an upstream outage must not turn the pipeline red.
+            if grep -q "^lib/$ABI/libpsiphon_tunnel_core.so$" "$ENTRIES"; then
+              echo "helper packaged: lib/$ABI/libpsiphon_tunnel_core.so"
+            else
+              echo "::warning title=Helper not packaged::lib/$ABI/libpsiphon_tunnel_core.so missing; Aether reports the Psiphon helper as unavailable"
+            fi
+            # Launcher + brand resources must be packaged (regression for missing icon / stale logo)
+            for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+              grep -q "mipmap-${d}.*ic_launcher" "$ENTRIES" \
+                || { echo "::error::missing ic_launcher for density $d in $APK"; exit 1; }
+            done
+            grep -q "ic_launcher_foreground" "$ENTRIES"
+            grep -q "ic_manjaniq_logo" "$ENTRIES"
+            grep -q "ic_rsta_logo" "$ENTRIES"
+            grep -q "ic_aether_logo" "$ENTRIES"
+            # The packaged in-app logo must be the regenerated one; AGP does not
+            # re-encode PNGs in debug builds when cruncher is off, so compare by
+            # decoding rather than by bytes.
+            rm -rf /tmp/apkcheck && mkdir -p /tmp/apkcheck
+            unzip -o -q "$APK" "lib/$ABI/*" "res/*" -d /tmp/apkcheck || true
+            python3 - <<'PY'
           import glob, sys
           from PIL import Image, ImageChops, ImageStat
           src = Image.open('app/src/main/res/drawable/ic_manjaniq_logo.png').convert('RGB')
           packed = glob.glob('/tmp/apkcheck/res/**/ic_manjaniq_logo*.png', recursive=True) + glob.glob('/tmp/apkcheck/res/*/*ic_manjaniq_logo*.png')
           if not packed:
-              # aapt2 obfuscation is off for debug; still tolerate numbered names by scanning drawable dirs
               packed = [p for p in glob.glob('/tmp/apkcheck/res/drawable*/*.png')]
           best = None
           for p in packed:
@@ -395,20 +491,36 @@ jobs:
               print('::error::packaged APK does not contain the current official Manjaniq logo drawable')
               sys.exit(1)
           PY
-          bash native/verify_native_lib.sh /tmp/apkcheck/lib/arm64-v8a/libmanjaniq_native.so
-          bash native/verify_aether_lib.sh /tmp/apkcheck/lib/arm64-v8a/libaether.so
+            bash native/verify_native_lib.sh "/tmp/apkcheck/lib/$ABI/libmanjaniq_native.so"
+            bash native/verify_aether_lib.sh "/tmp/apkcheck/lib/$ABI/libaether.so"
+          done
 
-      - name: Upload debug APK
+      # The size gate. 40 MiB is the budget for the APK a physical device
+      # installs; it prints what the APK is made of and fails when the budget is
+      # exceeded (scripts/ci/check_apk_size.py).
+      - name: Gate the APK size
+        run: python3 scripts/ci/check_apk_size.py --limit-mb 40 dist/manjaniq-arm64-v8a-debug.apk
+
+      # Keep each ABI in its own downloadable archive so users can fetch only
+      # the APK their device or emulator can install.
+      - name: Upload ARM64 debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: manjaniq-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: manjaniq-arm64-debug-apk
+          path: dist/manjaniq-arm64-v8a-debug.apk
+          if-no-files-found: error
+
+      - name: Upload x86_64 debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: manjaniq-x86_64-debug-apk
+          path: dist/manjaniq-x86_64-debug.apk
           if-no-files-found: error
 
   emulator-smoke:
     runs-on: ubuntu-latest
     needs: build
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -419,10 +531,10 @@ jobs:
           echo "HEAD=$(git rev-parse HEAD)"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
-      - name: Download the exact APK built for this commit
+      - name: Download the x86_64 APK built for this commit
         uses: actions/download-artifact@v4
         with:
-          name: manjaniq-debug-apk
+          name: manjaniq-x86_64-debug-apk
           path: tested-apk
 
       - name: Enable KVM (hardware acceleration)
@@ -481,9 +593,9 @@ jobs:
           # RSTA (Go)
           export CGO_ENABLED=1 GOOS=android GO111MODULE=on
           export GOARCH=arm64 CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
-          go build -buildmode=c-shared -o app/src/main/jniLibs/arm64-v8a/libmanjaniq_native.so ./native
+          go build -buildmode=c-shared -trimpath -ldflags="-s -w" -o app/src/main/jniLibs/arm64-v8a/libmanjaniq_native.so ./native
           export GOARCH=amd64 CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang"
-          go build -buildmode=c-shared -o app/src/main/jniLibs/x86_64/libmanjaniq_native.so ./native
+          go build -buildmode=c-shared -trimpath -ldflags="-s -w" -o app/src/main/jniLibs/x86_64/libmanjaniq_native.so ./native
           # Aether (Rust) - x86_64 needed for emulator
           cd aether-wrapper
           # Vendored path already patched; rebuild for emulator (no --locked, wrapper has no Cargo.lock)
@@ -502,6 +614,17 @@ jobs:
             fi
           done
           ls -lh app/src/main/jniLibs/arm64-v8a/ app/src/main/jniLibs/x86_64/
+
+      - name: Build the Aether helper binary (Psiphon)
+        run: |
+          set -uo pipefail
+          # Same helpers as the build job, and for the same reason: the emulator
+          # runs the real instrumentation suite against an APK that must carry
+          # them, and the ones for this ABI are needed to launch a Tor/Psiphon
+          # route at all.
+          bash scripts/ci/build_helpers.sh arm64 app/src/main/jniLibs/arm64-v8a /tmp/aether_helpers_arm64.log
+          bash scripts/ci/build_helpers.sh amd64 app/src/main/jniLibs/x86_64 /tmp/aether_helpers_x64.log
+          ls -l app/src/main/jniLibs/arm64-v8a app/src/main/jniLibs/x86_64
 
       - name: Free disk space for emulator
         run: |
@@ -528,6 +651,12 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           script: bash scripts/ci/emulator_smoke.sh
+        env:
+          # The artifact now holds one APK per architecture; the emulator is
+          # x86_64, so phase 1 installs that one. It is the same commit, the same
+          # Gradle task and the same native libraries as the arm64 deliverable -
+          # only the ABI filter differs.
+          TESTED_APK: ${{ github.workspace }}/tested-apk/manjaniq-x86_64-debug.apk
 
       - name: Evidence summary
         if: always()

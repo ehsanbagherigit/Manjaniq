@@ -1,11 +1,14 @@
 package com.manjaniq
 
+import android.content.Context
 import android.util.Log
 import com.manjaniq.core.models.Result
+import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 /**
- * Kotlin/JNI bridge for Aether v2.3.0 (commit 6175b67df370ab856bcee07fe85b524031903956).
+ * Kotlin/JNI bridge for Aether v2.4.0 (commit d58f9d568083129ce2c767c85054021eb3ee6a38).
  *
  * Uses `libaether.so` produced by aether-wrapper (cdylib) which bundles the
  * full Aether core + JNI shim (`Java_com_manjaniq_AetherBridge_*`).
@@ -20,12 +23,24 @@ object AetherBridge {
 
     private const val TAG = "AetherBridge"
 
-    /** Captured library load error, null on success */
-    private val loadError: Throwable?
+    /**
+     * Captured library load error, null on success.
+     *
+     * `@Volatile` (and not a `val`) because [initialize] can retry the load with an
+     * absolute path once a `Context` is available - see [loadNativeLibrary]. The
+     * first attempt happens in [init] so that a caller which never hands a
+     * `Context` over (a unit test, a host tool) keeps exactly the old behaviour.
+     */
+    @Volatile
+    private var loadError: Throwable? = null
+
+    /** True once `libaether.so` is mapped into this process. */
+    @Volatile
+    private var loaded: Boolean = false
 
     /** Whether native is available */
     val isNativeAvailable: Boolean
-        get() = loadError == null
+        get() = loaded && loadError == null
 
     /** ABI list from the OS - for diagnostics and tests */
     val SUPPORTED_ABIS: List<String>
@@ -52,29 +67,123 @@ object AetherBridge {
     }
 
     init {
-        var err: Throwable? = null
-        var diag = ""
+        loadNativeLibrary(null)
+    }
+
+    /**
+     * Loads `libaether.so` the way Android API 29+ requires, and can be called
+     * again with a [Context] when the first, context-less attempt failed.
+     *
+     * TWO FAILURES THIS ADDRESSES
+     * ---------------------------
+     *  * **`libc++_shared.so` is not found.** `libaether.so` is a Rust cdylib built
+     *    against the NDK's libc++, so its `DT_NEEDED` names `libc++_shared.so`. It
+     *    *is* packaged next to it, but on Android the dependency is resolved inside
+     *    the app's linker namespace, and a plain `System.loadLibrary("aether")` is
+     *    the only thing that ever asked for `aether`. Loading the C++ runtime by
+     *    name first, from the same directory, makes it resident before the core
+     *    asks for it - the documented remedy for "dlopen failed: library
+     *    libc++_shared.so not found".
+     *  * **The library is not in the loader's search path.** With
+     *    `android:extractNativeLibs` the files are real files in
+     *    `applicationInfo.nativeLibraryDir`; `System.load` with that absolute path
+     *    is the fallback when `loadLibrary` cannot find the name (an install whose
+     *    namespace was restricted, an APK installed without extraction).
+     *
+     * Both attempts are recorded, so [getLoadDiagnostics] can say which paths were
+     * tried and what the linker said. Nothing here throws: a missing library is a
+     * failure result for the caller, never a crash at class-initialisation time.
+     */
+    @Synchronized
+    fun initialize(context: Context?) {
+        if (isNativeAvailable) return
+        loadNativeLibrary(context?.applicationContext)
+    }
+
+    private fun loadNativeLibrary(context: Context?) {
+        if (loaded) return
+
+        // 1. The name-based path: this is what an APK installed with extraction
+        //    uses, and it is the only form that pre-loads a dependency by name.
+        try {
+            System.loadLibrary("c++_shared")
+        } catch (_: Throwable) {
+            // Not packaged (or the core is linked statically): not fatal on its own.
+        }
         try {
             System.loadLibrary("aether")
+            markLoaded()
+            return
         } catch (t: Throwable) {
-            err = t
-            diag = buildLoadDiagnostics(t)
-            Log.e(TAG, "Failed to load libaether.so: $diag", t)
-            // Try to hint ABI mismatch
-            try {
-                val abi = android.os.Build.SUPPORTED_ABIS.joinToString(",")
-                Log.e(TAG, "Supported ABIs: $abi, diagnostics: $diag")
-            } catch (_: Throwable) {}
+            loadError = t
+            Log.e(TAG, "System.loadLibrary(\"aether\") failed: ${buildLoadDiagnostics(t)}", t)
         }
-        loadError = err
-        if (err == null) {
+
+        // 2. The absolute path inside the app's native library directory.
+        val directory = nativeLibraryDir(context)
+        if (directory == null) {
+            reportLoadFailure("no native library directory is visible to this process")
+            return
+        }
+        val runtime = File(directory, "libc++_shared.so")
+        if (runtime.isFile) {
             try {
-                val v = nativeAetherVersion()
-                Log.i(TAG, "Aether native loaded: $v")
+                System.load(runtime.absolutePath)
+                Log.i(TAG, "Pre-loaded ${runtime.absolutePath}")
             } catch (t: Throwable) {
-                Log.w(TAG, "Version call failed post-load: ${t.message}")
+                Log.w(TAG, "Could not pre-load ${runtime.absolutePath}: ${t.message}")
             }
         }
+        val core = File(directory, "libaether.so")
+        if (!core.isFile) {
+            reportLoadFailure(
+                "${core.absolutePath} does not exist: the APK was installed without its " +
+                    "native libraries (extractNativeLibs=false, or a split for another ABI)"
+            )
+            return
+        }
+        try {
+            System.load(core.absolutePath)
+            markLoaded()
+        } catch (t: Throwable) {
+            loadError = t
+            reportLoadFailure(
+                "System.load(${core.absolutePath}) failed: ${buildLoadDiagnostics(t)}"
+            )
+        }
+    }
+
+    /** The directory the platform exposes the packaged `.so` files from. */
+    private fun nativeLibraryDir(context: Context?): String? {
+        val fromContext = try {
+            context?.applicationInfo?.nativeLibraryDir
+        } catch (_: Throwable) {
+            null
+        }
+        if (!fromContext.isNullOrBlank()) return fromContext
+        // Without a Context the property is still the platform's own answer.
+        return try {
+            System.getProperty("java.library.path")?.split(File.pathSeparator)
+                ?.firstOrNull { it.isNotBlank() && File(it, "libaether.so").isFile }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun markLoaded() {
+        loaded = true
+        loadError = null
+        try {
+            val v = nativeAetherVersion()
+            Log.i(TAG, "Aether native loaded: $v")
+        } catch (t: Throwable) {
+            Log.w(TAG, "Version call failed post-load: ${t.message}")
+        }
+    }
+
+    private fun reportLoadFailure(reason: String) {
+        Log.e(TAG, "libaether.so is unavailable: $reason (ABIs: ${SUPPORTED_ABIS.joinToString(",")})")
+        if (loadError == null) loadError = IllegalStateException(reason)
     }
 
     // ---- Low-level JNI exports (Rust aether-jni provides these) ----
@@ -82,12 +191,9 @@ object AetherBridge {
     private external fun nativeAetherJobPoll(id: Long): String
     private external fun nativeAetherJobCancel(id: Long): String
     private external fun nativeAetherJobFree(id: Long): String
-    private external fun nativeAetherIdentityOpen(payload: String): String
-    private external fun nativeAetherIdentitySummary(id: Long): String
-    private external fun nativeAetherIdentityFree(id: Long): String
-    private external fun nativeAetherScanStart(identityId: Long, payload: String): String
-    private external fun nativeAetherVerifyStart(identityId: Long, payload: String): String
-    private external fun nativeAetherTunnelStart(identityId: Long, payload: String): String
+    private external fun nativeAetherEnvReset(): String
+    private external fun nativeAetherEnvSet(payload: String): String
+    private external fun nativeAetherLogLines(since: Long): String
     private external fun nativeAetherCoreStart(argsJson: String): String
     private external fun nativeAetherFragmentingApply(payload: String): String
     private external fun nativeAetherTeamSignIn(payload: String): String
@@ -118,99 +224,6 @@ object AetherBridge {
     fun jobCancel(id: Long): Result<JSONObject> = safeJsonCall { nativeAetherJobCancel(id) }
     fun jobFree(id: Long): Result<JSONObject> = safeJsonCall { nativeAetherJobFree(id) }
 
-    fun identityOpen(
-        path: String,
-        transport: String? = null,
-        model: String? = null,
-        locale: String? = null,
-        team: JSONObject? = null
-    ): Result<JSONObject> {
-        val payload = JSONObject().apply {
-            put("path", path)
-            if (transport != null) put("transport", transport)
-            if (model != null) put("model", model)
-            if (locale != null) put("locale", locale)
-            if (team != null) put("team", team)
-        }
-        return safeJsonCall { nativeAetherIdentityOpen(payload.toString()) }
-    }
-
-    fun identitySummary(id: Long): Result<JSONObject> =
-        safeJsonCall { nativeAetherIdentitySummary(id) }
-
-    fun identityFree(id: Long): Result<JSONObject> =
-        safeJsonCall { nativeAetherIdentityFree(id) }
-
-    fun scanStart(
-        identityId: Long,
-        transport: String? = null,
-        mode: String? = null,
-        ip: String? = null,
-        profile: String? = null,
-        ports: List<Int>? = null,
-        excluded: List<String>? = null,
-        ech: Boolean? = null
-    ): Result<JSONObject> {
-        val payload = JSONObject().apply {
-            if (transport != null) put("transport", transport)
-            if (mode != null) put("mode", mode)
-            if (ip != null) put("ip", ip)
-            if (profile != null) put("profile", profile)
-            if (ports != null) put("ports", org.json.JSONArray(ports))
-            if (excluded != null) put("excluded", org.json.JSONArray(excluded))
-            if (ech != null) put("ech", ech)
-        }
-        return safeJsonCall { nativeAetherScanStart(identityId, payload.toString()) }
-    }
-
-    fun verifyStart(
-        identityId: Long,
-        peer: String,
-        transport: String? = null,
-        socks: String? = null,
-        http: String? = null,
-        profile: String? = null,
-        keepalive: Int? = null,
-        ech: Boolean? = null
-    ): Result<JSONObject> {
-        val payload = JSONObject().apply {
-            put("peer", peer)
-            if (transport != null) put("transport", transport)
-            if (socks != null) put("socks", socks)
-            if (http != null) put("http", http)
-            if (profile != null) put("profile", profile)
-            if (keepalive != null) put("keepalive", keepalive)
-            if (ech != null) put("ech", ech)
-        }
-        return safeJsonCall { nativeAetherVerifyStart(identityId, payload.toString()) }
-    }
-
-    fun tunnelStart(
-        identityId: Long,
-        peer: String,
-        transport: String? = null,
-        socks: String? = null,
-        http: String? = null,
-        profile: String? = null,
-        keepalive: Int? = null,
-        ech: Boolean? = null
-    ): Result<JSONObject> {
-        val payload = JSONObject().apply {
-            put("peer", peer)
-            if (transport != null) put("transport", transport)
-            if (socks != null) put("socks", socks)
-            if (http != null) put("http", http)
-            if (profile != null) put("profile", profile)
-            if (keepalive != null) put("keepalive", keepalive)
-            if (ech != null) put("ech", ech)
-        }
-        return safeJsonCall { nativeAetherTunnelStart(identityId, payload.toString()) }
-    }
-
-    /**
-     * Low-level core start: args as JSON array of strings, e.g. ["--bind","127.0.0.1:1819","--masque"]
-     * Use empty string for default args.
-     */
     /**
      * Applies the TLS ClientHello fragmenting configuration to the engine.
      *
@@ -235,33 +248,107 @@ object AetherBridge {
         sniSplit: Boolean,
         http2Carrier: Boolean = enabled
     ): Result<JSONObject> {
-        val payload = JSONObject().apply {
-            put("enabled", enabled)
-            put("http2", http2Carrier)
-            put("sniSplit", sniSplit)
-            put("size", size.trim())
-            put("delay", delay.trim())
+        return safeJsonCall {
+            val payload = JSONObject().apply {
+                put("enabled", enabled)
+                put("http2", http2Carrier)
+                put("sniSplit", sniSplit)
+                put("size", size.trim())
+                put("delay", delay.trim())
+            }
+            nativeAetherFragmentingApply(payload.toString())
         }
-        return safeJsonCall { nativeAetherFragmentingApply(payload.toString()) }
     }
 
-    fun coreStart(args: List<String> = emptyList()): Result<JSONObject> {
-        val json = if (args.isEmpty()) "[]" else org.json.JSONArray(args).toString()
-        return safeJsonCall { nativeAetherCoreStart(json) }
+    /**
+     * Clears the engine's own `AETHER_*` environment before a start.
+     *
+     * `run_with` reads its settings from the process environment and `cli` writes
+     * them there, so a value from the previous start would otherwise survive into
+     * this one - turning Tor off would leave `AETHER_TOR=chain` set and the engine
+     * would keep chaining through it. The app has no `setenv` of its own; this is
+     * the JNI call that does it (`aether-wrapper/src/lib.rs`). Only `AETHER_*`
+     * names are touched.
+     */
+    fun envReset(): Result<JSONObject> = safeJsonCall { nativeAetherEnvReset() }
+
+    /**
+     * Writes the writable locations the engine resolves from the process
+     * environment, before a start.
+     *
+     * Android gives an app none of the variables a desktop process has:
+     * `std::env::temp_dir()` is `$TMPDIR` and otherwise `/data/local/tmp`, which
+     * the app cannot write (psiphon's state file and the pluggable-transport probe
+     * both write there), and `HOME` - where a component that keeps a state
+     * directory of its own would look - is unset or `/`. Kotlin cannot `setenv`,
+     * so this call does it, and the native side accepts only `TMPDIR`, `TEMP`,
+     * `TMP`, `HOME` and `AETHER_*` names.
+     *
+     * The reply holds what the environment holds *after* the write, so the caller
+     * logs the paths in force rather than the ones it asked for.
+     */
+    fun envSet(values: Map<String, String>): Result<JSONObject> = safeJsonCall {
+        nativeAetherEnvSet(JSONObject(values).toString())
+    }
+
+    /** One line the engine logged, as the native sink kept it. */
+    data class EngineLogLine(val seq: Long, val level: String, val text: String)
+
+    /**
+     * The engine's own log lines recorded after [since], oldest first.
+     *
+     * Aether logs every step of a start through the `log` crate, and its own
+     * writer is stderr - which under Android nobody reads. The bridge installs a
+     * sink that keeps the last 512 lines in memory (and mirrors them to logcat
+     * under the `AetherCore` tag), and this call hands them to the app so a
+     * failed start is visible in the panel instead of silent.
+     *
+     * The caller passes the highest [EngineLogLine.seq] it has already seen, so
+     * nothing is shown twice.
+     */
+    fun logLines(since: Long): Result<List<EngineLogLine>> {
+        val reply = safeJsonCall { nativeAetherLogLines(since) }.getOrNull() ?: return Result.failure(
+            loadError?.let { "Native lib not loaded: $it" } ?: "the engine log could not be read"
+        )
+        val array = reply.optJSONArray("lines") ?: return Result.success(emptyList())
+        val lines = ArrayList<EngineLogLine>(array.length())
+        for (index in 0 until array.length()) {
+            val line = array.optJSONObject(index) ?: continue
+            lines.add(
+                EngineLogLine(
+                    seq = line.optLong("seq", 0L),
+                    level = line.optString("level", "INFO"),
+                    text = line.optString("text", "")
+                )
+            )
+        }
+        return Result.success(lines)
+    }
+
+    fun coreStart(args: List<String> = emptyList()): Result<JSONObject> = safeJsonCall {
+        nativeAetherCoreStart(JSONArray(args).toString())
     }
 
     fun teamSignIn(team: String, clientId: String? = null, clientSecret: String? = null, token: String? = null, email: String? = null): Result<JSONObject> {
-        val payload = JSONObject().apply {
-            put("team", team)
-            if (clientId != null) put("client_id", clientId)
-            if (clientSecret != null) put("client_secret", clientSecret)
-            if (token != null) put("token", token)
-            if (email != null) put("email", email)
+        return safeJsonCall {
+            val payload = JSONObject().apply {
+                put("team", team)
+                if (clientId != null) put("client_id", clientId)
+                if (clientSecret != null) put("client_secret", clientSecret)
+                if (token != null) put("token", token)
+                if (email != null) put("email", email)
+            }
+            nativeAetherTeamSignIn(payload.toString())
         }
-        return safeJsonCall { nativeAetherTeamSignIn(payload.toString()) }
     }
 
-    // Internal JSON helper - distinguishes "ok":false as failure
+    /**
+     * Runs one JNI call and turns its answer into a [Result].
+     *
+     * Every serialisation happens inside [block], after the missing-native check,
+     * so no call through this object can throw: without the library it is a
+     * failure result, and a payload that cannot be encoded is one too.
+     */
     private fun safeJsonCall(block: () -> String): Result<JSONObject> {
         if (loadError != null) return Result.failure("Native lib not loaded: $loadError")
         return try {
