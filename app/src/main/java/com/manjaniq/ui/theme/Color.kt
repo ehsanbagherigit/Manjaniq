@@ -35,6 +35,8 @@ val RstaGoldSurface = Color(0xFF1E1A0F)
 
 val AetherCyan = Color(0xFF3DD4E6)
 val AetherBlue = Color(0xFF2A8FE6)
+val AetherBlueSoft = Color(0xFF58AFFF)
+val AetherBlueSurface = Color(0xFF10243A)
 val AetherCyanSoft = Color(0xFF7EE8F5)
 val AetherSurface = Color(0xFF0F1B1E)
 

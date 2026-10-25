@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -18,6 +19,7 @@ import androidx.compose.ui.unit.sp
 import com.manjaniq.R
 import com.manjaniq.ui.TestTags
 import com.manjaniq.core.SelectedCore
+import com.manjaniq.ui.theme.AetherBlue
 import com.manjaniq.ui.theme.ManjaniqBorder
 import com.manjaniq.ui.theme.ManjaniqPurple
 import com.manjaniq.ui.theme.RstaGold
@@ -62,6 +64,8 @@ fun CoreSelector(
             CoreCard(
                 selected = selected == SelectedCore.AETHER,
                 accent = ManjaniqPurple,
+                selectedBorderColor = AetherBlue,
+                titleColor = Color.White,
                 logoRes = R.drawable.ic_aether_logo,
                 logoDesc = stringResource(R.string.cd_aether_logo),
                 name = stringResource(R.string.aether_name),
@@ -80,12 +84,14 @@ fun CoreSelector(
 @Composable
 fun CoreCard(
     selected: Boolean,
-    accent: androidx.compose.ui.graphics.Color,
+    accent: Color,
     logoRes: Int,
     logoDesc: String,
     name: String,
     description: String,
     badgeText: String,
+    selectedBorderColor: Color = accent,
+    titleColor: Color? = null,
     isComingSoon: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -104,7 +110,7 @@ fun CoreCard(
         ),
         border = BorderStroke(
             width = if (selected) 1.5.dp else 1.dp,
-            color = if (selected) accent else ManjaniqBorder
+            color = if (selected) selectedBorderColor else ManjaniqBorder
         ),
         elevation = CardDefaults.cardElevation(
             defaultElevation = if (selected) 2.dp else 0.dp
@@ -150,7 +156,7 @@ fun CoreCard(
 
                 Text(
                     text = name,
-                    color = if (selected && !isComingSoon) accent else MaterialTheme.colorScheme.onSurface,
+                    color = titleColor ?: if (selected && !isComingSoon) accent else MaterialTheme.colorScheme.onSurface,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold
                 )

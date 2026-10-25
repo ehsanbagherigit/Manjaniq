@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -56,6 +57,8 @@ import com.manjaniq.core.AetherIdentityManager
 import com.manjaniq.core.AetherKeyKind
 import com.manjaniq.core.AetherKeys
 import com.manjaniq.core.AetherKeysSettings
+import com.manjaniq.ui.theme.AetherBlueSoft
+import com.manjaniq.ui.theme.AetherBlueSurface
 import com.manjaniq.ui.theme.ManjaniqTheme
 
 class ServerAetherKeysActivity : ComponentActivity() {
@@ -388,12 +391,17 @@ private fun AetherKeysContent(
             FilledTonalButton(
                 onClick = onGetKeys,
                 enabled = isCoreAvailable && !isRenewing && !sessionSharesKey,
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = AetherBlueSurface,
+                    contentColor = AetherBlueSoft,
+                ),
                 modifier = Modifier.weight(1f),
             ) {
                 if (isRenewing) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(18.dp),
                         strokeWidth = 2.dp,
+                        color = AetherBlueSoft,
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(R.string.aether_action_renewing_key))

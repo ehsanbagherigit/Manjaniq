@@ -99,6 +99,8 @@ import com.manjaniq.core.ProfileItem
 import com.manjaniq.core.models.EngineState
 import com.manjaniq.service.AetherService
 import com.manjaniq.ui.TestTags
+import com.manjaniq.ui.theme.AetherBlueSoft
+import com.manjaniq.ui.theme.AetherBlueSurface
 import com.manjaniq.ui.theme.ManjaniqTheme
 import java.util.Locale
 
@@ -1330,12 +1332,17 @@ private fun ServerAetherForm(
             FilledTonalButton(
                 onClick = onScan,
                 enabled = isCoreAvailable && !isScanning && !isStarting && !sessionSharesKey,
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = AetherBlueSurface,
+                    contentColor = AetherBlueSoft,
+                ),
                 modifier = Modifier.weight(1f),
             ) {
                 if (isScanning) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(18.dp),
                         strokeWidth = 2.dp,
+                        color = AetherBlueSoft,
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(R.string.aether_action_scanning))
@@ -1382,6 +1389,10 @@ private fun ServerAetherForm(
         FilledTonalButton(
             onClick = onSave,
             enabled = !isScanning,
+            colors = ButtonDefaults.filledTonalButtonColors(
+                containerColor = AetherBlueSurface,
+                contentColor = AetherBlueSoft,
+            ),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 12.dp),
